@@ -1,0 +1,73 @@
+# Workspace root. Not a package: it only holds the dev toolchain and the
+# workspace member list. Each team's code lives in packages/* and services/*.
+[project]
+name = "agentcore-self-hosted"
+version = "0.1.0"
+description = "Self-hosted Temporal + AgentCore customer-support A2A demo (workspace root)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "support-agent",
+    "finance-agent",
+    "payments-mock",
+    "finance-a2a-api",
+]
+
+[dependency-groups]
+dev = [
+    "demo-testing",
+    "ruff>=0.15",
+    "pyright>=1.1.400",
+    "pytest>=8.3",
+    "pytest-asyncio>=1.0",
+    "honcho>=2.0",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.uv.workspace]
+members = ["packages/*", "services/*"]
+
+[tool.uv.sources]
+support-agent = { workspace = true }
+finance-agent = { workspace = true }
+payments-mock = { workspace = true }
+finance-a2a-api = { workspace = true }
+demo-testing = { workspace = true }
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".temporal", "build", ".generated", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "RUF"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "basic"
+include = ["packages", "services", "scripts", "tests"]
+exclude = ["**/.venv", "**/__pycache__", "build", ".generated"]
+# finance_a2a_api is the only code shared between teams: it is held to strict.
+strict = ["packages/finance-a2a-api/src"]
+
+[tool.pytest.ini_options]
+# Root conftest.py loads demo_testing.fixtures as a plugin.
+testpaths = ["packages", "services", "tests"]
+addopts = "-ra --strict-markers --import-mode=importlib"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = [
+    "unit: pure logic, no server",
+    "workflow: workflow tests on the time-skipping test server",
+    "integration: two-namespace dev server via WorkflowEnvironment.start_local",
+    "bedrock: live Bedrock model call (needs RUN_BEDROCK_TESTS=1 and AWS credentials)",
+    "cloud: needs the AWS demo environment",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["support_agent", "finance_agent", "finance_a2a_api", "payments_mock", "demo_testing"]

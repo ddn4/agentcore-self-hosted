@@ -1,0 +1,18 @@
+# Temporal envconfig profiles (TEMPORAL_CONFIG_FILE=config/temporal.toml).
+# Select one with TEMPORAL_PROFILE. Read by both the Temporal CLI and the
+# Python SDK (temporalio.envconfig). Addresses, server names and cert PATHS
+# only: never inline cert or key data here.
+#
+# No profile sets a namespace: each service defaults to its own (agents or
+# agent-services) in code, and CLI commands pass --namespace explicitly.
+# Env vars (TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE, TEMPORAL_TLS...) override.
+
+# Laptop dev server (make dev-server). 127.0.0.1, not localhost: localhost can
+# resolve to ::1 while the dev server binds only 127.0.0.1.
+[profile.local]
+address = "127.0.0.1:7233"
+
+[profile.local.tls]
+disabled = true
+
+# kind (v0.9) and eks-pf (v0.11) profiles are added by those tags.

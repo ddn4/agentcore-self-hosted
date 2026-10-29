@@ -1,0 +1,6 @@
+# asdf pins. Python itself comes from uv (.python-version = 3.12); this line
+# only keeps asdf shims consistent. nodejs must be >= 20.12 (AgentCore CLI, v0.8);
+# "lts" is used because asdf fails hard on a pinned version that is not installed.
+# terraform >= 1.10 is added here when infra/ lands (v0.10).
+python 3.12.12
+nodejs lts

@@ -1,0 +1,24 @@
+[project]
+name = "finance-agent"
+version = "0.1.0"
+description = "Team Finance: Finance Refund agent behind the finance-agent Nexus endpoint (namespace agent-services; runs on EKS)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "temporalio>=1.34.0,<2",
+    "temporalio-strands-agents>=0.1.0",
+    "strands-agents>=1.39.0",
+    "nexus-rpc>=1.1.0,<2",
+    "boto3>=1.34.92,<2",
+    "httpx>=0.27",
+    "finance-a2a-api",
+]
+
+[tool.uv.sources]
+finance-a2a-api = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/finance_agent"]

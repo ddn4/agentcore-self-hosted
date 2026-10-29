@@ -1,0 +1,70 @@
+# CI: `make check` with no AWS credentials, plus gitleaks over the full history.
+# Not run yet: the repo has no GitHub remote at v0.1 (plan section 2.1).
+# kubeconform (v0.9) and terraform validate (v0.10) join `make infra-static` later.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  TEMPORAL_CLI_VERSION: "1.9.1"   # keep in sync with docs/versions.md
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Temporal CLI ${{ env.TEMPORAL_CLI_VERSION }}
+        run: |
+          curl -sSfL -o /tmp/temporal.tgz \
+            "https://github.com/temporalio/cli/releases/download/v${TEMPORAL_CLI_VERSION}/temporal_cli_${TEMPORAL_CLI_VERSION}_linux_amd64.tar.gz"
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf /tmp/temporal.tgz -C "$HOME/.local/bin" temporal
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Show versions
+        run: |
+          temporal --version
+          uv --version
+
+      - name: Sync workspace
+        run: |
+          uv python install "${PYTHON_VERSION}"
+          uv sync --all-packages --frozen
+
+      - name: Doctor (no AWS)
+        env:
+          DOCTOR_SKIP_AWS: "1"
+        run: make doctor
+
+      - name: make check
+        run: make check
+
+  gitleaks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: scrub-check over history
+        run: scripts/scrub-check.sh --history

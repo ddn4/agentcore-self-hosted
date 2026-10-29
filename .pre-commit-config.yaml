@@ -1,0 +1,20 @@
+# pre-commit install   (optional; CI runs the same checks via make check)
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format
+        language: system
+        types: [python]
+      - id: scrub-check
+        name: scrub-check (account IDs, resource IDs, secrets; gitleaks if installed)
+        entry: scripts/scrub-check.sh
+        language: system
+        pass_filenames: false
+      # terraform fmt is added with infra/ in v0.10.
