@@ -23,6 +23,10 @@ An LLM loop as a Workflow that survives a crash.
 - Demo: `make case-a`, `make worker-support-scripted`, `make record-histories`, `make spikes`;
   `scripts/verify/v0.2-durable-agent.sh` (`kill -9` a real Worker mid-`invoke_model`).
 - ADR-0001 amended: effort field; no `structured_output_model` on Opus 5.5 (capture tool).
+- Offline wire test (`test_wire_offline.py`): the signed ConverseStream request from the
+  pinned model carries the Opus 5.5 ID, no sampling params, `toolChoice` auto, and effort
+  only when not `medium`.
+- Live Bedrock checks deferred to v0.3 (ledger 49; AWS SSO session expired at this tag).
 
 ## v0.1-scaffold
 
