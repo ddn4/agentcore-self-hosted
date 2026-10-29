@@ -14,6 +14,7 @@ BEDROCK_MODEL_ID     ?= global.anthropic.claude-opus-5-5
 BEDROCK_EFFORT       ?= medium
 AWS_REGION           ?= us-east-1
 SUPPORT_TASK_QUEUE   ?= support-dev-tq
+SUPPORT_A2A_MODE     ?= tool
 # Never touch the global docker context: every docker/kind call uses this one.
 DOCKER_CONTEXT       ?= colima-agentcore
 # .env may hold a relative path; make it absolute so tools run from any cwd agree.
@@ -28,7 +29,8 @@ PYTEST := $(UV) pytest
         dev-server-up dev-server-down dev-server-status dev-server-reset dev hello-smoke \
         verify clean worker-support worker-support-scripted case-a case-b record-histories spikes \
         spike-nested sub-agents worker-finance worker-finance-scripted worker-smoke payments-mock \
-        nexus-endpoint agent-card agent-card-golden smoke task-state card spike-nexus-ts
+        nexus-endpoint agent-card agent-card-golden smoke task-state card spike-nexus-ts \
+        timeline a2a e2e
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -110,10 +112,10 @@ worker-support: ## Support Worker (namespace agents, queue SUPPORT_TASK_QUEUE); 
 worker-support-scripted: ## Same Support Worker with a scripted model (offline crash demo; no AWS)
 	$(UV) python scripts/scripted_worker.py
 
-case-a: ## Case A ticket #1042 to the Support Supervisor; waits for the reply (WF=support-1042)
+case-a: ## Case A #1042: Supervisor -> sub-agents -> Finance over Nexus (WF=support-1042 SUPPORT_A2A_MODE=tool|handoff)
 	scripts/demo/case-a.sh $(or $(WF),support-1042)
 
-case-b: ## Case B ticket #2077 ($450): sub-agents say it needs escalation (WF=support-2077)
+case-b: ## Case B #2077 ($450): Finance rejects over its limit until v0.6; reply says escalated (WF=support-2077)
 	scripts/demo/case-b.sh $(or $(WF),support-2077)
 
 sub-agents: ## What each Support sub-agent answered in a run (WF=support-1042)
@@ -148,9 +150,18 @@ card: ## Standalone Nexus Operation from the CLI: FinanceAgentA2A.get_agent_card
 	  --service FinanceAgentA2A --operation get_agent_card \
 	  --operation-id card-$$(date +%s) --input '{}'
 
-task-state: ## The A2A task as Finance sees it: get_task query (WF=smoke-1042 -> a2a-task-smoke-1042)
-	temporal workflow query --namespace agent-services --workflow-id a2a-task-$(or $(WF),smoke-1042) \
-	  --type get_task
+task-state: ## The A2A task as Finance sees it: get_task in agent-services (WF=support-1042 -> a2a-task-support-1042)
+	scripts/demo/task-state.sh $(or $(WF),support-1042)
+
+timeline: ## Both sides of a Support conversation: agents, tools, the A2A hop, Finance's task (WF=support-1042)
+	$(UV) python scripts/timeline.py $(or $(WF),support-1042)
+
+a2a: ## The Supervisor's A2A view: Agent Card, exchanges with Finance, guard re-prompts (WF=support-1042)
+	temporal workflow query --namespace agents --workflow-id $(or $(WF),support-1042) --type a2a -o json \
+	  | jq '.queryResult[0]'
+
+e2e: ## End-to-end Cases against the RUNNING stack of TEMPORAL_PROFILE (make dev + nexus-endpoint first)
+	RUN_E2E=1 $(PYTEST) -m e2e tests/e2e
 
 spike-nexus-ts: ## Spike: the A2A hop under the time-skipping test servers (no AWS)
 	$(UV) python spikes/nexus_time_skipping.py

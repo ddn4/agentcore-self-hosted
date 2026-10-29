@@ -1,6 +1,17 @@
-"""Team Support's agents: the Supervisor and its two sub-agents (v0.3).
+"""Team Support's agents: the Supervisor, its two sub-agents (v0.3) and its Finance tool (v0.5).
 
-"Agents as tools", in-process (runbook §1.4, 5.6; ADR-0003):
+v0.5 adds the Supervisor's way to the **Finance Refund agent**, which belongs to
+another team and is reached over Nexus (ADR-0003 part 2):
+
+- ``ask_finance_agent_tool``: ``SUPPORT_A2A_MODE=tool``. An async in-workflow
+  ``@tool`` that awaits the A2A ``send_message`` Nexus operation (Q19a).
+- ``submit_refund_request_tool``: ``SUPPORT_A2A_MODE=handoff``. An unforced
+  capture tool; the Workflow makes the Nexus call after the Supervisor's turn.
+
+The Nexus call itself lives in ``finance_peer.py``; these factories only take a
+callback, so this module stays free of Nexus code.
+
+"Agents as tools", in-process (runbook §1.4, 5.6; ADR-0003 part 1):
 
 - **Order Lookup agent**: a ``TemporalAgent`` whose only tool is the
   ``lookup_order`` Activity. Answers with the order facts.
@@ -37,7 +48,7 @@ samples-python ``bedrock_agentcore/strands_agent/workflows.py``.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -91,17 +102,60 @@ the question is eligible. Answer with ELIGIBLE or NOT_ELIGIBLE, then one short
 reason that cites the policy rule. If it is eligible and the refund is over
 $100, add: FINANCE_MANAGER_APPROVAL_REQUIRED."""
 
-#: Runbook 5.6's SUPERVISOR_PROMPT minus the Finance part (that is v0.5).
-SUPERVISOR_PROMPT = """You are the Customer Support supervisor for an online store.
+_SUPERVISOR_FACTS = """You are the Customer Support supervisor for an online store.
 Use order_lookup_agent to establish the order facts, then return_policy_agent
 (give it the order facts and the customer's reason) to decide eligibility.
 Do not guess facts your agents can look up.
-You CANNOT issue refunds yourself. If the request is eligible, tell the customer
-that their refund request has been passed to the Finance team. If the Return
-Policy agent says a Finance manager must approve, tell the customer the request
-has been escalated for manager approval.
+You CANNOT issue refunds. Refunds belong to the Finance Refund agent, a separate
+agent owned by the Finance team. If the request is not eligible, or the order
+does not exist, do not contact Finance."""
+
+#: Runbook 5.6's SUPERVISOR_PROMPT (v0.5, ``SUPPORT_A2A_MODE=tool``): the
+#: Supervisor asks Finance itself, through the ``ask_finance_agent`` tool.
+SUPERVISOR_PROMPT = (
+    _SUPERVISOR_FACTS
+    + """
+If the request is eligible, call ask_finance_agent once, with the order id, the
+refund amount in USD, the customer's reason and a one-sentence summary, and wait
+for the Finance agent's decision. Never promise a refund before Finance decides.
 Finish with a short, friendly reply to the customer that states the item, the
-price in USD and whether the request is eligible, and why."""
+price in USD and the outcome: quote Finance's refund ID (R-...) if the refund was
+issued, or explain what happens next if it was not."""
+)
+
+#: Explicit-handoff fallback (runbook 5.6, ``SUPPORT_A2A_MODE=handoff``): the
+#: Supervisor only *captures* the request with the unforced capture tool
+#: ``submit_refund_request`` (ADR-0001 §6: Opus 5.5 refuses forced tool use, so
+#: no ``structured_output_model``). The Workflow makes the Nexus call in
+#: ``run()`` and hands Finance's decision back in a second message.
+SUPERVISOR_HANDOFF_PROMPT = (
+    _SUPERVISOR_FACTS
+    + """
+If the request is eligible, call submit_refund_request once, with the order id,
+the refund amount in USD, the customer's reason and a one-sentence summary. It
+only records the request: the Finance agent decides after you finish this turn,
+so then answer with one short line saying the request is with Finance. Never
+promise a refund before Finance decides. If the request is not eligible, reply
+to the customer directly.
+When you are given Finance's decision, write a short, friendly reply to the
+customer that states the item, the price in USD and the outcome: quote Finance's
+refund ID (R-...) if the refund was issued, or explain what happens next if it
+was not."""
+)
+
+#: Prompt-drift guard (runbook §6): sent once if the Return Policy agent said
+#: ELIGIBLE but the Supervisor finished its turn without contacting Finance.
+GUARD_REPROMPT = (
+    "Workflow check: the Return Policy agent found this request ELIGIBLE, but you "
+    "have not contacted the Finance agent. You cannot issue refunds. Call {tool} "
+    "now, as your instructions say, and then answer."
+)
+
+#: Handoff mode: the Supervisor's second message, carrying Finance's decision.
+HANDOFF_DECISION = (
+    "Finance's decision on the refund request you submitted: {result}\n"
+    "Now write the final reply to the customer."
+)
 
 
 def _agent(name: str, system_prompt: str, tools: list[object]) -> TemporalAgent:
@@ -178,6 +232,69 @@ def sub_agent_tools(record: Callable[[SubAgentRun], None]) -> list[AgentTool]:
     return [order_lookup_agent, return_policy_agent]
 
 
-def new_supervisor(tools: list[AgentTool]) -> TemporalAgent:
-    """The Support Supervisor, using its sub-agents (and, from v0.5, Finance) as tools."""
-    return _agent(SUPERVISOR_NAME, SUPERVISOR_PROMPT, list(tools))
+@dataclass(frozen=True)
+class RefundRequest:
+    """What the Supervisor asks Finance for (``ask_finance_agent`` / ``submit_refund_request``)."""
+
+    order_id: str
+    amount_usd: float
+    reason: str
+    summary: str
+
+
+def ask_finance_agent_tool(ask: Callable[[RefundRequest], Awaitable[str]]) -> AgentTool:
+    """``ask_finance_agent``: the A2A call to Finance as an in-workflow tool (Q19a).
+
+    A plain async Strands ``@tool``, **not** ``activity_as_tool``: the plugin
+    runs it on the Workflow event loop, so it can await the Workflow-only Nexus
+    client (``ask`` ends in ``FinancePeer.ask``) for as long as Finance takes.
+    """
+
+    @tool
+    async def ask_finance_agent(order_id: str, amount_usd: float, reason: str, summary: str) -> str:
+        """A2A: ask the Finance team's Finance Refund agent to approve and issue a refund.
+
+        Finance decides; this waits for its decision, which may take a long time
+        (for example, a human approval). Call it at most once per ticket.
+
+        Args:
+            order_id: The order number, digits only (for example "1042").
+            amount_usd: The refund amount in US dollars (the order price).
+            reason: Why the customer wants the refund (for example "damaged").
+            summary: One sentence for the Finance agent: what happened and what Support found.
+        """
+        return await ask(RefundRequest(order_id, amount_usd, reason, summary))
+
+    return ask_finance_agent
+
+
+def submit_refund_request_tool(capture: Callable[[RefundRequest], None]) -> AgentTool:
+    """``submit_refund_request``: handoff mode's unforced capture tool (ADR-0001 §6).
+
+    Records the request only; the Workflow sends it to Finance after the
+    Supervisor's turn ends. No Nexus call and no I/O here.
+    """
+
+    @tool
+    async def submit_refund_request(
+        order_id: str, amount_usd: float, reason: str, summary: str
+    ) -> str:
+        """Submit a refund request for the Finance team's Finance Refund agent to decide.
+
+        This only records the request; Finance decides after you finish this turn.
+
+        Args:
+            order_id: The order number, digits only (for example "1042").
+            amount_usd: The refund amount in US dollars (the order price).
+            reason: Why the customer wants the refund (for example "damaged").
+            summary: One sentence for the Finance agent: what happened and what Support found.
+        """
+        capture(RefundRequest(order_id, amount_usd, reason, summary))
+        return "Recorded. The Finance agent will decide once you finish this turn."
+
+    return submit_refund_request
+
+
+def new_supervisor(tools: list[AgentTool], system_prompt: str = SUPERVISOR_PROMPT) -> TemporalAgent:
+    """The Support Supervisor: its two sub-agents plus its Finance tool (v0.5)."""
+    return _agent(SUPERVISOR_NAME, system_prompt, list(tools))

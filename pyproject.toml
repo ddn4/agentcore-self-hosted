@@ -67,6 +67,7 @@ markers = [
     "integration: two-namespace dev server via WorkflowEnvironment.start_local",
     "bedrock: live Bedrock model call (needs RUN_BEDROCK_TESTS=1 and AWS credentials)",
     "cloud: needs the AWS demo environment",
+    "e2e: against an already running stack selected by TEMPORAL_PROFILE (needs RUN_E2E=1; make e2e)",
 ]
 
 [tool.ruff.lint.isort]

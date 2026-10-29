@@ -166,3 +166,27 @@ def nexus_operations(history: WorkflowHistory) -> list[NexusOperationRun]:
         )
         for event_id, (endpoint, service, operation, summary) in scheduled.items()
     ]
+
+
+# --- v0.5: one caller timeline (who was thinking, and when the A2A hop happened) ---
+
+
+def timeline(history: WorkflowHistory) -> list[str]:
+    """Activities and Nexus operations in the order they were scheduled.
+
+    ``invoke_model [<agent>]`` / ``<activity type>`` for Activities, and
+    ``nexus <Service>.<operation>`` for Nexus operations, so a test can assert
+    "discovery, then the sub-agents, then send_message, then the Supervisor's
+    last turn" (plan v0.5 acceptance).
+    """
+    out: list[str] = []
+    for event in history.events:
+        if event.event_type == EventType.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED:
+            attrs = event.activity_task_scheduled_event_attributes
+            summary = _summary(event.user_metadata.summary)
+            name = attrs.activity_type.name
+            out.append(f"{name} [{summary}]" if summary else name)
+        elif event.event_type == EventType.EVENT_TYPE_NEXUS_OPERATION_SCHEDULED:
+            attrs = event.nexus_operation_scheduled_event_attributes
+            out.append(f"nexus {attrs.service}.{attrs.operation}")
+    return out

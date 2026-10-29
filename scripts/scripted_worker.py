@@ -5,7 +5,8 @@
 Builds the Worker with ``support_agent.worker_factory`` exactly like
 ``support_agent.worker``, but the StrandsPlugin's ``"bedrock"`` key is bound to
 a ``demo_testing.ScriptedModel`` that plays the whole Support team (v0.3:
-Supervisor, Order Lookup agent, Return Policy agent; dispatched by system
+Supervisor, Order Lookup agent, Return Policy agent; v0.5: the Supervisor also
+calls Finance in tool or handoff mode; dispatched by system
 prompt, see ``demo_testing.support_script``) from the real tool results, and
 "thinks" for ``--delay`` seconds per model turn. Used by the verify scripts to
 kill -9 a real Worker process mid-``invoke_model`` without AWS. Test seam only:
@@ -28,6 +29,7 @@ PROMPTS = SupportPrompts(
     supervisor=agents.SUPERVISOR_PROMPT,
     order_lookup=agents.ORDER_LOOKUP_PROMPT,
     return_policy=agents.RETURN_POLICY_PROMPT,
+    supervisor_handoff=agents.SUPERVISOR_HANDOFF_PROMPT,
 )
 
 

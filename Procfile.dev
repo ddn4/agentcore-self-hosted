@@ -1,7 +1,12 @@
 # honcho -f Procfile.dev start   (make dev)
-# v0.4: dev server, payments-mock, Finance worker (real model: needs AWS), smoke caller worker.
-# The Support worker is not started here (make worker-support); offline Finance: make worker-finance-scripted.
+# v0.5: dev server, payments-mock, Finance worker and Support worker (real model: needs AWS),
+# smoke caller worker, and the finance-agent Nexus endpoint (applied once the server answers).
+# Then: make case-a / make case-b / make timeline. Offline: make worker-support-scripted and
+# make worker-finance-scripted instead of the two model workers.
 dev-server: scripts/dev-server.sh run
 payments-mock: uv run --frozen python -m payments_mock.server
 finance-worker: sleep 3 && uv run --frozen python -m finance_agent.worker
+support-worker: sleep 3 && uv run --frozen python -m support_agent.worker
 smoke-worker: sleep 3 && uv run --frozen python -m support_agent.smoke_worker
+# honcho stops everything when one process exits, so this one stays up after applying.
+nexus-endpoint: sleep 3 && until scripts/nexus-endpoint.sh apply; do sleep 1; done && exec sleep 2147483647
