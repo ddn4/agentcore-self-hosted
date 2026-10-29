@@ -54,3 +54,35 @@ this descope. Q16 is still asked of Temporal (`docs/ask-temporal.md`).
 - Local deviation recorded here: this repo has no GitHub remote yet, so the
   "register from `origin/main`" rule (plan §3.3) is checked against local `main`
   until a remote exists.
+
+## v0.4: the backing as built
+
+- Status line above stands; this section records how the decision was implemented
+  and checked at v0.4.
+- **Standalone-Activity backing: descoped (user confirmed).** Not built, not tested.
+  Q16's Activity half stays a question for Temporal (`docs/ask-temporal.md`).
+- **`send_message` is a `@nexus.workflow_run_operation`** that starts
+  `FinanceAgentTaskWorkflow` with ID `a2a-task-<context_id>` (samples-python
+  `hello_nexus`, `nexus_multiple_args`). `get_agent_card` is a
+  `@nexusrpc.handler.sync_operation` with no I/O (well under the 10 s limit).
+- **Conflict policy `USE_EXISTING`.** A second `send_message` for the same conversation
+  while the task is open joins that Workflow: the SDK sets
+  `on_conflict_options.attach_completion_callbacks`, so both callers receive the
+  same terminal task. Verified on the dev server: two concurrent operations, one
+  Workflow run (`tests/test_a2a_nexus.py`, verify step 11).
+- **Reuse policy: the default `ALLOW_DUPLICATE`.** After a task has closed, a
+  resend starts a new run of the same Workflow ID. No money moves twice:
+  `issue_refund` passes the task ID as the payments idempotency key, and payments
+  returns the original refund (`replayed: true`). We rejected
+  `REJECT_DUPLICATE` because the caller would get a Nexus error for an honest retry.
+- **Validation at the edge.** `send_message` refuses `role != "user"` or a
+  `context_id` that is not a short printable token, with `HandlerError(BAD_REQUEST)`
+  (non-retryable). Malformed refund data is *not* an edge error: the task ends
+  `failed` with a message, as A2A expects.
+- **Endpoint.** `scripts/nexus-endpoint.sh` (`make nexus-endpoint`) creates or
+  updates `finance-agent` → `agent-services`/`agent-services-tq` with
+  `--description-file .generated/finance-agent-card.md`, rendered from
+  `FINANCE_AGENT_CARD`. The smoke caller uses its own queue, `nexus-smoke-tq`.
+- **Data converter.** Finance's client carries the StrandsPlugin (pydantic
+  converter); the no-LLM smoke caller uses the SDK default. The contract round-trips
+  through all four pairings (`packages/finance-a2a-api/tests/test_roundtrip.py`).

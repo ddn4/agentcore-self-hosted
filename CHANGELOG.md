@@ -2,6 +2,32 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.4-finance-agent
+
+Another team's agent behind a published A2A contract, reached over Nexus (no LLM on the caller).
+
+- `finance_a2a_api`: A2A 0.3.0-shaped dataclasses (snake_case; A2A 1.0.0 deltas in its
+  README), `@nexusrpc.service FinanceAgentA2A` (`get_agent_card` sync, `send_message`
+  workflow-backed), `FINANCE_AGENT_CARD` + `render_markdown()`. Round-trips through the default
+  and pydantic converters, 7b.9 CLI JSON, schema-snapshot gate, Agent Card golden.
+- Finance (`agent-services`): `FinanceAgentA2AHandler` (`a2a-task-<context_id>`, `USE_EXISTING`),
+  `FinanceAgentTaskWorkflow` (A2A task states, `get_task` query, auto-approve only: over $100 or
+  HIGH risk -> `rejected` until v0.6), Finance Refund agent (`fraud_score`, `refund_history`),
+  approval rule in code, idempotent `issue_refund`; `make worker-finance[-scripted]`.
+- `payments-mock`: idempotent refund API (stdlib), `make payments-mock` on :8081.
+- Support: `A2ASmokeWorkflow` + `make worker-smoke` (`nexus-smoke-tq`); Nexus operation summaries.
+- `make nexus-endpoint` (endpoint description = Agent Card), `make smoke`, `make card`
+  (standalone Nexus Operation from the CLI), `make task-state`, `scripts/a2a_timeline.py`,
+  `make dev` runs payments-mock, Finance and smoke Workers.
+- Dev server and test fixture enable standalone Nexus operations
+  (`nexusoperation.enableStandalone=true`; off by default in CLI 1.9.1, contrary to the docs).
+- Contract module uses real annotations (string annotations broke decoding in the caller's sandbox).
+- Answered: A2A field names (pinned 0.3.0), Q16 CLI on 1.32.0, Q21 (yes), Nexus on time-skipping
+  (v1 yes, v2 no), 10 s sync limit, idempotency. ADR-0004 implementation section.
+- Tests: 172 in `make check` (62 at v0.3), incl. cross-namespace Nexus with the real endpoint
+  name; replay fixtures `smoke-1042`, `a2a-task-smoke-1042`. `scripts/verify/v0.4-finance-agent.sh`.
+- Live Bedrock still deferred (AWS SSO session expired; ledger 49 carried to v0.5).
+
 ## v0.3-sub-agents
 
 Support's own team of agents, used as tools, in-process.

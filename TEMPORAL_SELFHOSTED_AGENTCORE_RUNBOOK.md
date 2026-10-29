@@ -205,7 +205,7 @@
 | Response to `input-required` | Temporal signal `approve` / `reject` to the Finance Workflow (from the UI, the CLI or an approver app) |
 | **Artifact** | `refund_confirmation` (data part: refund ID, amount, approved_by) |
 
-⚠️ Verify: this is **A2A-shaped, not A2A wire-compatible**. Field names follow the A2A spec's concepts (Agent Card, Message/Part, Task/TaskState, Artifact). Check them against the spec version you show. To expose the Finance agent to non-Temporal A2A clients too, put a thin A2A JSON-RPC gateway in front that calls the same Nexus endpoint. That is out of scope for this demo.
+⚠️ Verify: this is **A2A-shaped, not A2A wire-compatible**. Field names follow the A2A spec's concepts (Agent Card, Message/Part, Task/TaskState, Artifact). Check them against the spec version you show. To expose the Finance agent to non-Temporal A2A clients too, put a thin A2A JSON-RPC gateway in front that calls the same Nexus endpoint. That is out of scope for this demo. *Resolved in v0.4: pinned to A2A 0.3.0 (snake_case), with the A2A 1.0.0 renames listed in `packages/finance-a2a-api/README.md`.*
 
 **How to make the A2A hop obvious in the demo:**
 - **Names:**
@@ -1684,7 +1684,7 @@ temporal operator nexus endpoint get --name finance-agent
 - Self-hosted endpoints have **no allowed-caller list**; that is a Cloud-only feature. Under option (c), any namespace in the cluster can call this endpoint.
 - You can also create and inspect endpoints in the Web UI under **Nexus**.
 
-**7b.9 Smoke-test the handler without AgentCore.** Do this before Phase 8, to isolate problems. Run a throwaway caller Worker locally, port-forwarded with the operator cert, on a **separate, unversioned** Task Queue in `agents`, for example `nexus-smoke-tq`. Start `SupportSupervisorWorkflow` on that queue. Do **not** poll `<TASK_QUEUE>`, because a non-serverless poller there would hide the WCI behaviour in Phase 8. Alternatively, call the endpoint as a Standalone Nexus Operation. That is pre-release, needs CLI ≥1.9.0, and ⚠️ needs server support you should verify. It also makes a nice "any A2A client can call Finance" moment:
+**7b.9 Smoke-test the handler without AgentCore.** Do this before Phase 8, to isolate problems. Run a throwaway caller Worker locally, port-forwarded with the operator cert, on a **separate, unversioned** Task Queue in `agents`, for example `nexus-smoke-tq`. Start `SupportSupervisorWorkflow` on that queue. Do **not** poll `<TASK_QUEUE>`, because a non-serverless poller there would hide the WCI behaviour in Phase 8. Alternatively, call the endpoint as a Standalone Nexus Operation. That is pre-release, needs CLI ≥1.9.0, and ⚠️ needs server support you should verify. It also makes a nice "any A2A client can call Finance" moment. *Resolved in v0.4 for server 1.32.0 (CLI 1.9.1): works, but only after starting the dev server with `--dynamic-config-value nexusoperation.enableStandalone=true` (off by default, contrary to the docs). v0.4 also ships the smoke Workflow, `A2ASmokeWorkflow` on `nexus-smoke-tq`.*
 ```bash
 temporal nexus operation execute --namespace agents --endpoint finance-agent \
   --service FinanceAgentA2A --operation get_agent_card --operation-id card-smoke --input '{}'
@@ -1988,12 +1988,12 @@ temporal nexus operation execute --namespace agents --endpoint finance-agent \
 13. Does `set-current-version` for AgentCore versions need `--allow-no-pollers`?
 14. Does self-hosted multi-cluster replication (XDC) work with Serverless Workers?
 15. **Nexus + Serverless Workers:** is there any known issue with a Serverless (WCI-managed) Worker as a **Nexus caller**? In particular, does a Workflow Task produced by a Nexus completion callback reliably trigger the WCI when nothing is polling?
-16. Does stock server **1.32.1** support Nexus operations backed by a standalone Activity (`activity.enableCallbacks`, `TemporalOperationHandler.start_activity`), or does that still need a pre-release build? And Standalone Nexus Operations from the CLI?
+16. Does stock server **1.32.1** support Nexus operations backed by a standalone Activity (`activity.enableCallbacks`, `TemporalOperationHandler.start_activity`), or does that still need a pre-release build? And Standalone Nexus Operations from the CLI? *CLI half resolved in v0.4 for 1.32.0: yes, with `nexusoperation.enableStandalone=true`; the Activity-backed variant is descoped (ADR-0004).*
 17. With option (b) (custom ClaimMapper plus the default Authorizer), which identity and namespace are checked when a caller Workflow dispatches to a Nexus endpoint that targets another namespace?
 18. Does the Python SDK reload file-based client certs after cert-manager rotates them, or must the EKS Worker restart?
 19. **Strands plugin and the A2A tool:** does `temporalio-strands-agents` run an `async` plain `@tool` on the Workflow event loop, so that it can `await` a Nexus operation for hours? Is there a planned `nexus_operation_as_tool` for Strands, like the one in the OpenAI Agents integration?
 20. **Strands plugin, agents as tools:** is calling a nested `TemporalAgent.invoke_async` from an in-workflow `@tool` supported? *Resolved in v0.3: yes (ADR-0003, `spikes/nested_agents.py`).*
-21. Can the caller attach a summary or label to a Nexus operation in Python, so that the Web UI shows "A2A → Finance Refund Agent" on the event?
+21. Can the caller attach a summary or label to a Nexus operation in Python, so that the Web UI shows "A2A → Finance Refund Agent" on the event? *Resolved in v0.4: yes, `execute_operation(..., summary=...)`.*
 
 **AWS**
 1. ~~What is the `agentcore.json` schema for VPC subnets and SGs?~~ **Resolved:** `networkMode: "VPC"` plus `networkConfig: {subnets, securityGroups, vpcId?}` (agentcore-cli `src/projectSchemas/runtime.ts`).

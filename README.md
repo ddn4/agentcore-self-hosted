@@ -34,6 +34,7 @@ what to look at and which unknowns it closed.
 | [`v0.1-scaffold`](docs/story/v0.1-scaffold.md) | A repo you can trust: uv workspace, two-namespace dev server, `make check`, Opus 5.5 ping | `make check dev-server bedrock-ping` | "One command gives you a two-namespace Temporal, and `make check` runs real Temporal tests with no cloud access." | — |
 | [`v0.2-durable-agent`](docs/story/v0.2-durable-agent.md) | Support Supervisor `TemporalAgent` with Activity tools; survives `kill -9` mid-thought | `make dev-server worker-support case-a` (offline: `worker-support-scripted`) | "Every model call and tool call is an Activity. I kill the process mid-thought, and it carries on from exactly where it stopped." | — |
 | [`v0.3-sub-agents`](docs/story/v0.3-sub-agents.md) | Order Lookup and Return Policy sub-agents as in-workflow tools; three agents attributed in one Workflow | `make dev-server worker-support case-a case-b sub-agents` (offline: `worker-support-scripted`, `spike-nested`) | "Support now has its own small team of agents, used as tools, in-process. Keep that in mind, because the next agent belongs to someone else." | — |
+| [`v0.4-finance-agent`](docs/story/v0.4-finance-agent.md) | A2A-shaped contract; Finance Refund agent in `agent-services` behind Nexus endpoint `finance-agent`; no-LLM smoke caller | `make dev-server-up payments-mock worker-finance-scripted worker-smoke nexus-endpoint smoke card task-state` (or `make dev`) | "The Finance team publishes exactly one thing, an A2A-shaped contract. No AI on the caller yet, just the hop. A Workflow in `agents` calls a named endpoint, and the server routes it into another namespace. Workers never talk to each other." | — |
 
 ## Layout
 
@@ -42,7 +43,7 @@ packages/finance-a2a-api   the Finance agent's published contract (only shared c
 packages/demo-testing      test-only: two-namespace dev server, ScriptedModel, history helpers
 services/support-agent     team Support -> namespace agents
 services/finance-agent     team Finance -> namespace agent-services
-services/payments-mock     idempotent refund API (v0.4)
+services/payments-mock     idempotent refund API (v0.4, :8081)
 config/temporal.toml       envconfig profiles (TEMPORAL_PROFILE=local)
 scripts/                   doctor, dev-server, bedrock_ping, scrub-check, redact, demo/, verify/<tag>.sh
 spikes/                    one file per verify item (Opus 5.5 params, structured output)
