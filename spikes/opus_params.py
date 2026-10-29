@@ -32,7 +32,7 @@ from temporalio.strands_agents.workflow import activity_as_tool
 
 from support_agent import config
 from support_agent.activities import get_return_policy, lookup_order
-from support_agent.workflows import SUPERVISOR_PROMPT
+from support_agent.agents import SUPERVISOR_PROMPT
 
 TICKET = "Customer ticket: Order #1042, my headphones arrived broken. I want my money back."
 TOOL_SPECS = [dict(activity_as_tool(fn).tool_spec) for fn in (lookup_order, get_return_policy)]

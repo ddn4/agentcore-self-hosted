@@ -26,7 +26,8 @@ PYTEST := $(UV) pytest
 .PHONY: help setup doctor fmt lint types test test-unit test-workflow test-integration \
         test-live infra-static scrub-check scrub-history check bedrock-ping dev-server \
         dev-server-up dev-server-down dev-server-status dev-server-reset dev hello-smoke \
-        verify clean worker-support worker-support-scripted case-a record-histories spikes
+        verify clean worker-support worker-support-scripted case-a case-b record-histories spikes \
+        spike-nested sub-agents
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -111,12 +112,22 @@ worker-support-scripted: ## Same Support Worker with a scripted model (offline c
 case-a: ## Case A ticket #1042 to the Support Supervisor; waits for the reply (WF=support-1042)
 	scripts/demo/case-a.sh $(or $(WF),support-1042)
 
+case-b: ## Case B ticket #2077 ($450): sub-agents say it needs escalation (WF=support-2077)
+	scripts/demo/case-b.sh $(or $(WF),support-2077)
+
+sub-agents: ## What each Support sub-agent answered in a run (WF=support-1042)
+	temporal workflow query --namespace agents --workflow-id $(or $(WF),support-1042) --type sub_agent_runs
+
 record-histories: ## Save a completed Workflow's history for the replay test (WF=support-1042)
 	$(UV) python scripts/record_history.py $(or $(WF),support-1042)
 
-spikes: ## Opus 5.5 spikes: wire params, effort, structured output (live Bedrock; costs tokens)
+spikes: ## Opus 5.5 spikes: wire params, effort, structured output, nested agents (live Bedrock; costs tokens)
 	RUN_BEDROCK_TESTS=1 $(UV) python spikes/opus_params.py
 	RUN_BEDROCK_TESTS=1 $(UV) python spikes/opus_structured_output.py
+	RUN_BEDROCK_TESTS=1 $(UV) python spikes/nested_agents.py --live
+
+spike-nested: ## Q20 spike offline: nested agents as tools vs Strands as_tool() (no AWS)
+	$(UV) python spikes/nested_agents.py
 
 verify: ## Run scripts/verify/$(TAG).sh, e.g. make verify TAG=v0.1-scaffold
 	scripts/verify/$(TAG).sh

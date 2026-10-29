@@ -1,6 +1,6 @@
 """Record a Workflow's event history as a replay-test fixture.
 
-    uv run python scripts/record_history.py support-1042 [--out DIR]
+    uv run python scripts/record_history.py support-1042 [--out DIR] [--name NAME]
 
 Fetches the history from the running server through the same envconfig
 connection the Support Worker uses, blanks client/Worker ``identity`` fields
@@ -45,6 +45,7 @@ async def main() -> int:
     parser = argparse.ArgumentParser(description="Record a Workflow history as a replay fixture")
     parser.add_argument("workflow_id")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--name", help="fixture name (default: the Workflow ID)")
     args = parser.parse_args()
 
     client = await config.connect(plugins=[config.build_strands_plugin()])
@@ -56,7 +57,7 @@ async def main() -> int:
     history = await handle.fetch_history()
     data = scrub(json.loads(history.to_json()))
     args.out.mkdir(parents=True, exist_ok=True)
-    path = args.out / f"{args.workflow_id}.json"
+    path = args.out / f"{args.name or args.workflow_id}.json"
     path.write_text(json.dumps(data, indent=2) + "\n")
     print(f"recorded {len(history.events)} events of {args.workflow_id} -> {path}")
     return 0

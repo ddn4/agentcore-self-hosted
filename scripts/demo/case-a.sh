@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Case A (v0.2): the Support Supervisor answers ticket #1042 (headphones, $40, damaged).
+# Case A: the Support Supervisor answers ticket #1042 (headphones, $40, damaged).
+# v0.3: it asks its Order Lookup and Return Policy sub-agents first (agents as tools).
 #   scripts/demo/case-a.sh [workflow-id]          (make case-a [WF=support-1042])
 # Starts SupportSupervisorWorkflow in namespace agents (or attaches to the open run
 # with the same ID: --id-conflict-policy UseExisting) and waits for its result.

@@ -4,42 +4,31 @@
 
 Builds the Worker with ``support_agent.worker_factory`` exactly like
 ``support_agent.worker``, but the StrandsPlugin's ``"bedrock"`` key is bound to
-a ``demo_testing.ScriptedModel`` that plays the Case A conversation (look up the
-order, read the policy, answer from the real tool results) and "thinks" for
-``--delay`` seconds per turn. Used by the v0.2 verify script to kill -9 a real
-Worker process mid-``invoke_model`` without AWS. Test seam only: the service
-itself has no scripted mode.
+a ``demo_testing.ScriptedModel`` that plays the whole Support team (v0.3:
+Supervisor, Order Lookup agent, Return Policy agent; dispatched by system
+prompt, see ``demo_testing.support_script``) from the real tool results, and
+"thinks" for ``--delay`` seconds per model turn. Used by the verify scripts to
+kill -9 a real Worker process mid-``invoke_model`` without AWS. Test seam only:
+the service itself has no scripted mode.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
-import re
 from concurrent.futures import ThreadPoolExecutor
 
-from demo_testing.scripted_model import ModelCall, ScriptedModel, ToolCall, Turn, scripted_plugin
-from support_agent import config
+from demo_testing.scripted_model import ScriptedModel, scripted_plugin
+from demo_testing.support_script import SupportPrompts, support_responder
+from support_agent import agents, config
 from support_agent.worker_factory import build_worker
 
-
-def case_a(call: ModelCall) -> Turn:
-    results = call.tool_results
-    if not results:
-        match = re.search(r"\d{3,}", call.last_user_text)
-        return ToolCall("lookup_order", {"order_id": match.group(0) if match else ""})
-    if len(results) == 1:
-        return ToolCall("get_return_policy", {})
-    order = json.loads(results[0])
-    eligible = order["days_since_delivery"] <= 30
-    return (
-        f"[scripted] Sorry your {order['item']} (${order['price_usd']:.2f}) arrived damaged. "
-        f"It was delivered {order['days_since_delivery']} days ago, so it is "
-        f"{'eligible' if eligible else 'not eligible'} for a refund"
-        f"{'; I have passed your request to the Finance team.' if eligible else '.'}"
-    )
+PROMPTS = SupportPrompts(
+    supervisor=agents.SUPERVISOR_PROMPT,
+    order_lookup=agents.ORDER_LOOKUP_PROMPT,
+    return_policy=agents.RETURN_POLICY_PROMPT,
+)
 
 
 async def main() -> None:
@@ -47,9 +36,8 @@ async def main() -> None:
     parser.add_argument("--delay", type=float, default=4.0, help="seconds per model turn")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    client = await config.connect(
-        plugins=[scripted_plugin(ScriptedModel(case_a, delay=args.delay))]
-    )
+    model = ScriptedModel(support_responder(PROMPTS), delay=args.delay)
+    client = await config.connect(plugins=[scripted_plugin(model)])
     logging.info(
         "scripted support worker: namespace=%s task_queue=%s model=scripted (key 'bedrock')",
         client.namespace,
