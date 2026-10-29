@@ -2,6 +2,28 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.2-durable-agent
+
+An LLM loop as a Workflow that survives a crash.
+
+- `SupportSupervisorWorkflow`: `TemporalAgent(model="bedrock")` with `lookup_order` and
+  `get_return_policy` as `activity_as_tool`; model Activity heartbeat 10 s, bounded retry,
+  UI summary; `transcript` query. Sync data Activities on a thread pool; mock orders
+  1042/2077/3301 and the return policy.
+- `worker_factory.build_worker()` + `make worker-support` (`support-dev-tq`).
+- `BEDROCK_EFFORT` → `output_config.effort` (not sent at the default `medium`), both services.
+- `demo_testing`: `ScriptedModel` under the `"bedrock"` key (text, tool calls, `Hang`,
+  responder functions, delay), history helpers, structured-output probe Workflow.
+- Tests: activities, scripted agent loop, pinned key, unknown model key, tool errors,
+  replay (committed history from a real `kill -9` run), crash safety across two Workers,
+  structured output's forced retry.
+- Spikes: `opus_params.py` (wire, 400s, effort field and latency) and
+  `opus_structured_output.py` (forced vs capture tool) through the plugin's own
+  `invoke_model` Activity. **Live run pending** (AWS SSO session expired).
+- Demo: `make case-a`, `make worker-support-scripted`, `make record-histories`, `make spikes`;
+  `scripts/verify/v0.2-durable-agent.sh` (`kill -9` a real Worker mid-`invoke_model`).
+- ADR-0001 amended: effort field; no `structured_output_model` on Opus 5.5 (capture tool).
+
 ## v0.1-scaffold
 
 A green, trustworthy repo before the first line of agent code.

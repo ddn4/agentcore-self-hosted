@@ -15,6 +15,18 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
 
 ## Reports (non-questions)
 
+- v0.2 (temporalio-strands-agents 0.1.0, strands-agents 1.62.0): **structured output
+  loses its provider fallback across the Activity boundary.** `TemporalAgent(
+  structured_output_model=X)` makes Strands retry with a forced `toolChoice` when the
+  model answers in text. Plain Strands then lets `BedrockModel` degrade forced → native
+  `outputConfig` → auto for models that refuse forced tool use (Opus 5.5, Sonnet 5.5,
+  Fable 5.1). The plugin's `_InvokeModelInput` does not carry `structured_output_model`
+  and `TemporalModel` has no `_supports_structured_output`, so the forced request is
+  sent as is and fails with a 400 on those models. Suggest forwarding
+  `structured_output_model` (by import path) to `invoke_model`, or documenting the
+  limitation. Workaround here: an unforced capture tool (ADR-0001 §6). Offline repro:
+  `services/support-agent/tests/test_structured_output_path.py`.
+
 - v0.1: the skill/docs examples use `ClientConfig.load_client_connect_config()` with
   `setdefault("target_host", ...)`; this repo does the same and adds a per-service
   namespace default. No issue to report.

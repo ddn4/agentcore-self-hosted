@@ -50,3 +50,14 @@ Python packages are locked in `uv.lock`; the table records the resolved versions
 | Default profile | `global.anthropic.claude-opus-5-5` (`BEDROCK_MODEL_ID`) |
 | US-only profile | `us.anthropic.claude-opus-5-5` (same code; IAM differs) |
 | Region | `us-east-1` (`AWS_REGION`) |
+| Effort | `BEDROCK_EFFORT` (`low`…`max`), default `medium` = model default, not sent (ADR-0001) |
+
+## Effort latency (v0.2)
+
+Per Supervisor turn (Case A first turn, tools attached), through the plugin's
+`invoke_model` Activity: `spikes/opus_params.py --turns 3`.
+
+| Effort | Latency per turn (s) | Output tokens | Measured |
+|---|---|---|---|
+| low | pending | pending | live run pending (AWS SSO session expired at v0.2) |
+| medium | pending | pending | live run pending |

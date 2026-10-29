@@ -32,15 +32,17 @@ what to look at and which unknowns it closed.
 |---|---|---|---|---|
 | [`v0.0-research`](TEMPORAL_SELFHOSTED_AGENTCORE_RUNBOOK.md) | The design and its unknowns | — | "Before any code we wrote down the design and the twenty-odd things we didn't know." | — |
 | [`v0.1-scaffold`](docs/story/v0.1-scaffold.md) | A repo you can trust: uv workspace, two-namespace dev server, `make check`, Opus 5.5 ping | `make check dev-server bedrock-ping` | "One command gives you a two-namespace Temporal, and `make check` runs real Temporal tests with no cloud access." | — |
+| [`v0.2-durable-agent`](docs/story/v0.2-durable-agent.md) | Support Supervisor `TemporalAgent` with Activity tools; survives `kill -9` mid-thought | `make dev-server worker-support case-a` (offline: `worker-support-scripted`) | "Every model call and tool call is an Activity. I kill the process mid-thought, and it carries on from exactly where it stopped." | — |
 
 ## Layout
 
 ```
 packages/finance-a2a-api   the Finance agent's published contract (only shared code)
-packages/demo-testing      test fixtures (two-namespace dev server; later ScriptedModel)
+packages/demo-testing      test-only: two-namespace dev server, ScriptedModel, history helpers
 services/support-agent     team Support -> namespace agents
 services/finance-agent     team Finance -> namespace agent-services
 services/payments-mock     idempotent refund API (v0.4)
 config/temporal.toml       envconfig profiles (TEMPORAL_PROFILE=local)
-scripts/                   doctor, dev-server, bedrock_ping, scrub-check, redact, verify/<tag>.sh
+scripts/                   doctor, dev-server, bedrock_ping, scrub-check, redact, demo/, verify/<tag>.sh
+spikes/                    one file per verify item (Opus 5.5 params, structured output)
 ```

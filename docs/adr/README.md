@@ -2,7 +2,7 @@
 
 | ADR | Title | Status | Tag |
 |---|---|---|---|
-| [0001](0001-model-pinning-and-effort.md) | Model pinning and effort | Accepted (effort field pending v0.2) | v0.1 |
+| [0001](0001-model-pinning-and-effort.md) | Model pinning and effort; structured output via capture tool | Accepted; amended v0.2 (live confirmation pending) | v0.1, v0.2 |
 | 0002 | HITL enforced in code, not Strands `interrupt()` | planned | v0.6 |
 | 0003 | A2A as a tool vs handoff; nested agents vs sequential steps | planned | v0.3/v0.5 |
 | [0004](0004-naming-build-id-nexus-backing.md) | Naming, content-hash Build ID, Nexus backing | Accepted | v0.1 |
