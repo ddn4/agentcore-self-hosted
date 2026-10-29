@@ -88,6 +88,18 @@ async def main() -> None:
     print("endpoint description == render_markdown(FINANCE_AGENT_CARD):", desc.splitlines()[0])
 asyncio.run(main())
 EOF
+# What the Web UI's Nexus page fetches: the UI server's own API (json/plain payload).
+"${UV[@]}" python - <<'EOF'
+import base64, json, os, urllib.request
+from finance_a2a_api import render_markdown
+port = os.environ.get("TEMPORAL_DEV_UI_PORT", "8233")
+with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/v1/nexus/endpoints", timeout=10) as r:
+    eps = json.load(r)["endpoints"]
+ep = next(e for e in eps if e["spec"]["name"] == "finance-agent")
+desc = json.loads(base64.b64decode(ep["spec"]["description"]["data"]))
+assert desc == render_markdown(), "Web UI API description != FINANCE_AGENT_CARD markdown"
+print(f"Web UI :{port} /api/v1/nexus/endpoints serves the Agent Card for finance-agent")
+EOF
 
 step "7. Q16: Standalone Nexus Operations from the CLI (no caller Workflow)"
 temporal nexus operation execute --namespace agents --endpoint finance-agent \
