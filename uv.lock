@@ -236,14 +236,18 @@ source = { editable = "packages/demo-testing" }
 dependencies = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "strands-agents" },
     { name = "temporalio" },
+    { name = "temporalio-strands-agents" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=1.0" },
+    { name = "strands-agents", specifier = ">=1.39.0" },
     { name = "temporalio", specifier = ">=1.34.0,<2" },
+    { name = "temporalio-strands-agents", specifier = ">=0.1.0" },
 ]
 
 [[package]]

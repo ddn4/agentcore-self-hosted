@@ -20,6 +20,7 @@ _ENV_KEYS = (
     "TEMPORAL_NAMESPACE",
     "TEMPORAL_TLS",
     "BEDROCK_MODEL_ID",
+    "BEDROCK_EFFORT",
     "AWS_REGION",
     "SUPPORT_TASK_QUEUE",
 )
@@ -85,3 +86,21 @@ def test_env_overrides_config_file(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = config.connect_config()
     assert cfg.get("target_host") == "10.0.0.1:7233"
     assert cfg.get("namespace") == "elsewhere"
+
+
+def test_default_effort_sends_no_extra_fields() -> None:
+    # medium is Opus 5.5's own default: the request stays minimal (ADR-0001).
+    assert config.effort() == "medium"
+    assert config.bedrock_model().get_config().get("additional_request_fields") is None
+
+
+def test_effort_goes_in_output_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BEDROCK_EFFORT", "low")
+    fields = config.bedrock_model().get_config().get("additional_request_fields")
+    assert fields == {"output_config": {"effort": "low"}}
+
+
+def test_unknown_effort_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BEDROCK_EFFORT", "turbo")
+    with pytest.raises(ValueError, match="BEDROCK_EFFORT"):
+        config.bedrock_model()

@@ -12,7 +12,7 @@ in the code defaults.
 from __future__ import annotations
 
 import os
-from typing import Final
+from typing import Any, Final
 
 from botocore.config import Config as BotocoreConfig
 from strands.models import BedrockModel
@@ -28,6 +28,9 @@ MODEL_KEY: Final[str] = "bedrock"
 DEFAULT_MODEL_ID: Final[str] = "global.anthropic.claude-opus-5-5"
 DEFAULT_AWS_REGION: Final[str] = "us-east-1"
 DEFAULT_ADDRESS: Final[str] = "127.0.0.1:7233"
+#: Opus 5.5 effort levels (ADR-0001). ``medium`` is the model's own default.
+EFFORT_LEVELS: Final[tuple[str, ...]] = ("low", "medium", "high", "xhigh", "max")
+DEFAULT_EFFORT: Final[str] = "medium"
 
 
 def task_queue() -> str:
@@ -43,17 +46,40 @@ def aws_region() -> str:
     return os.environ.get("AWS_REGION", DEFAULT_AWS_REGION)
 
 
+def effort() -> str:
+    """Effort level from ``BEDROCK_EFFORT`` (default ``medium``)."""
+    level = os.environ.get("BEDROCK_EFFORT", DEFAULT_EFFORT).strip().lower()
+    if level not in EFFORT_LEVELS:
+        raise ValueError(f"BEDROCK_EFFORT={level!r}; expected one of {EFFORT_LEVELS}")
+    return level
+
+
+def effort_fields(level: str) -> dict[str, Any] | None:
+    """Bedrock ``additionalModelRequestFields`` for an effort level (ADR-0001).
+
+    Opus 5.5 takes effort as ``output_config.effort`` in the Anthropic request
+    body, which Converse forwards from ``additionalModelRequestFields``. At the
+    model default (``medium``) nothing is sent, so the default request carries
+    only messages, system and tools.
+    """
+    if level == DEFAULT_EFFORT:
+        return None
+    return {"output_config": {"effort": level}}
+
+
 def bedrock_model() -> BedrockModel:
     """The pinned model (ADR-0001).
 
     Never pass temperature, top_p, top_k, a disabled-thinking setting or a forced
-    tool_choice: Opus 5.5 on Bedrock rejects them with a 400. Botocore retries
+    tool_choice: Opus 5.5 on Bedrock rejects them with a 400. Latency is traded
+    with effort only (``BEDROCK_EFFORT``). Botocore retries
     are disabled, as in the plugin's own default factory, because Temporal owns
     retries of the `invoke_model` Activity.
     """
     return BedrockModel(
         model_id=model_id(),
         region_name=aws_region(),
+        additional_request_fields=effort_fields(effort()),
         boto_client_config=BotocoreConfig(
             read_timeout=DEFAULT_READ_TIMEOUT,
             retries={"max_attempts": 0},

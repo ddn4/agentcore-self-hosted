@@ -1,40 +1,42 @@
-"""Worker entrypoint for team Support (caller) (v0.1: HelloWorkflow only).
+"""Local, unversioned Support Worker (``make worker-support``).
 
-Shape follows samples-python strands_plugin/hello_world/run_worker.py, with the
-connection loaded through envconfig (samples-python env_config) instead of a
-hard-coded address, and the model pinned in the StrandsPlugin.
+Polls ``SUPPORT_TASK_QUEUE`` (default ``support-dev-tq``) in namespace ``agents``
+until Ctrl-C. Kill it mid-run and start it again: the Workflow carries on from
+the last recorded Activity (the v0.2 crash-safety demo).
+
+Connection via envconfig (``TEMPORAL_CONFIG_FILE`` / ``TEMPORAL_PROFILE``), model
+pinned in the StrandsPlugin (ADR-0001). Shape follows samples-python
+``strands_plugin/hello_world/run_worker.py`` and the temporal-developer skill's
+``python.md`` worker (thread pool for sync Activities).
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
-
-from temporalio.client import Client
-from temporalio.worker import Worker
+from concurrent.futures import ThreadPoolExecutor
 
 from support_agent import config
-from support_agent.activities import say_hello
-from support_agent.workflows import HelloWorkflow
-
-
-def build_worker(client: Client) -> Worker:
-    return Worker(
-        client,
-        task_queue=config.task_queue(),
-        workflows=[HelloWorkflow],
-        activities=[say_hello],
-    )
+from support_agent.worker_factory import build_worker
 
 
 async def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
     client = await config.connect(plugins=[config.build_strands_plugin()])
     logging.info(
-        "worker: namespace=%s task_queue=%s model=%s",
+        "support worker: namespace=%s task_queue=%s model=%s (key %r) region=%s effort=%s",
         client.namespace,
         config.task_queue(),
         config.model_id(),
+        config.MODEL_KEY,
+        config.aws_region(),
+        config.effort(),
     )
-    await build_worker(client).run()
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        worker = build_worker(client, task_queue=config.task_queue(), activity_executor=executor)
+        await worker.run()
 
 
 if __name__ == "__main__":

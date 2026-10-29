@@ -1,10 +1,12 @@
 [project]
 name = "demo-testing"
 version = "0.1.0"
-description = "Test-only helpers: two-namespace dev-server fixtures (later: ScriptedModel, history assertions)"
+description = "Test-only helpers: two-namespace dev-server fixtures, ScriptedModel, history helpers"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "temporalio>=1.34.0,<2",
+    "temporalio-strands-agents>=0.1.0",
+    "strands-agents>=1.39.0",
     "pytest>=8.3",
     "pytest-asyncio>=1.0",
 ]

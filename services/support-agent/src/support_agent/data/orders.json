@@ -1,0 +1,32 @@
+{
+  "_comment": "Mock order data owned by team Support (plan section 3.3). delivered_days_ago is relative to the day lookup_order runs, so the demo never ages out of the 30-day window.",
+  "orders": {
+    "1042": {
+      "order_id": "1042",
+      "customer": "Alex Rivera",
+      "item": "Wireless headphones",
+      "category": "electronics",
+      "price_usd": 40.0,
+      "delivered_days_ago": 6,
+      "status": "delivered"
+    },
+    "2077": {
+      "order_id": "2077",
+      "customer": "Sam Okafor",
+      "item": "Laptop",
+      "category": "electronics",
+      "price_usd": 450.0,
+      "delivered_days_ago": 12,
+      "status": "delivered"
+    },
+    "3301": {
+      "order_id": "3301",
+      "customer": "Jordan Lee",
+      "item": "Desk lamp",
+      "category": "home",
+      "price_usd": 25.0,
+      "delivered_days_ago": 75,
+      "status": "delivered"
+    }
+  }
+}

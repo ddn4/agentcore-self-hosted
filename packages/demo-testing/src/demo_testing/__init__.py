@@ -1,8 +1,9 @@
 """Test-only helpers shared by every service's test suite.
 
-v0.1: the two-namespace dev-server fixture (see ``demo_testing.fixtures``).
-Later tags add the ScriptedModel (registered under the "bedrock" model key) and
-history assertions.
+- ``demo_testing.fixtures``: the two-namespace dev-server fixture (v0.1).
+- ``demo_testing.scripted_model``: ``ScriptedModel``, an offline Strands model
+  registered under the same ``"bedrock"`` key the services pin Opus 5.5 under (v0.2).
+- ``demo_testing.history``: event-history helpers for assertions (v0.2).
 """
 
 from typing import Final

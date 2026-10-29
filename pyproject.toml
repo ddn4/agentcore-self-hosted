@@ -49,7 +49,7 @@ pythonVersion = "3.12"
 venvPath = "."
 venv = ".venv"
 typeCheckingMode = "basic"
-include = ["packages", "services", "scripts", "tests"]
+include = ["packages", "services", "scripts", "spikes", "tests"]
 exclude = ["**/.venv", "**/__pycache__", "build", ".generated"]
 # finance_a2a_api is the only code shared between teams: it is held to strict.
 strict = ["packages/finance-a2a-api/src"]
