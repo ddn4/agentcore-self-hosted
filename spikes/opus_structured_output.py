@@ -28,7 +28,7 @@ import os
 import sys
 
 import boto3
-from _wire import WireTap, invoke_model, user
+from _wire import WireTap, aws_session_ok, invoke_model, user
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from pydantic import BaseModel, Field, ValidationError
@@ -64,6 +64,8 @@ def main() -> int:
     if os.environ.get("RUN_BEDROCK_TESTS") != "1":
         print("set RUN_BEDROCK_TESTS=1 (calls Bedrock, costs tokens)")
         return 2
+    if not aws_session_ok(config.aws_region()):
+        return 3
     ok = True
 
     print("== A. raw Converse, toolChoice forced to one tool")

@@ -26,7 +26,7 @@ import os
 import statistics
 import sys
 
-from _wire import WireTap, invoke_model, user, wire_problems
+from _wire import WireTap, aws_session_ok, invoke_model, user, wire_problems
 from strands.models import BedrockModel
 from temporalio.strands_agents.workflow import activity_as_tool
 
@@ -49,6 +49,8 @@ def main() -> int:
     if os.environ.get("RUN_BEDROCK_TESTS") != "1":
         print("set RUN_BEDROCK_TESTS=1 (calls Bedrock, costs tokens)")
         return 2
+    if not aws_session_ok(config.aws_region()):
+        return 3
     parser = argparse.ArgumentParser()
     parser.add_argument("--turns", type=int, default=3)
     args = parser.parse_args()

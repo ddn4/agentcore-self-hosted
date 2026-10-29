@@ -21,13 +21,24 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from botocore.exceptions import ClientError
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from strands.models import BedrockModel, Model
 from temporalio.strands_agents._model_activity import ModelActivity, _InvokeModelInput
 from temporalio.testing import ActivityEnvironment
 
 FORBIDDEN_INFERENCE = ("temperature", "topP", "topK")
 FORBIDDEN_FIELDS = ("temperature", "top_p", "top_k", "thinking")
+
+
+def aws_session_ok(region: str) -> bool:
+    """True if the default credential chain works (STS read-only call)."""
+    try:
+        boto3.client("sts", region_name=region).get_caller_identity()
+        return True
+    except (BotoCoreError, ClientError) as err:
+        print(f"AWS credentials unusable ({type(err).__name__}): run `aws sso login` and retry")
+        return False
 
 
 @dataclass
@@ -45,7 +56,7 @@ class WireTap:
 
     @property
     def last(self) -> dict[str, Any]:
-        return self.requests[-1]
+        return self.requests[-1] if self.requests else {}
 
 
 def wire_problems(body: dict[str, Any]) -> list[str]:
