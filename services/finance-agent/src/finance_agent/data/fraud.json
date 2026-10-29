@@ -1,0 +1,10 @@
+{
+  "_comment": "Mock fraud signals owned by team Finance. Support never sees this data (runbook 1.4). Keyed by order id; unknown orders score as an unknown customer.",
+  "orders": {
+    "1042": {"customer": "Alex Rivera", "score": 0.08, "signals": ["account age 4 years", "card verified", "delivery confirmed by carrier"]},
+    "2077": {"customer": "Sam Okafor", "score": 0.14, "signals": ["account age 2 years", "card verified", "high-value item"]},
+    "3301": {"customer": "Jordan Lee", "score": 0.71, "signals": ["3 refund requests in 60 days", "new shipping address", "report after the return window"]}
+  },
+  "unknown": {"score": 0.5, "signals": ["no order on record"]},
+  "high_risk_threshold": 0.6
+}

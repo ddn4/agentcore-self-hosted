@@ -1,4 +1,7 @@
 # honcho -f Procfile.dev start   (make dev)
-# Grows per tag: payments-mock, finance worker, smoke worker, support worker (v0.2-v0.6).
+# v0.4: dev server, payments-mock, Finance worker (real model: needs AWS), smoke caller worker.
+# The Support worker is not started here (make worker-support); offline Finance: make worker-finance-scripted.
 dev-server: scripts/dev-server.sh run
-support-worker: sleep 3 && uv run --frozen python -m support_agent.worker
+payments-mock: uv run --frozen python -m payments_mock.server
+finance-worker: sleep 3 && uv run --frozen python -m finance_agent.worker
+smoke-worker: sleep 3 && uv run --frozen python -m support_agent.smoke_worker

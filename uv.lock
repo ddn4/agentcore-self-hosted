@@ -234,6 +234,8 @@ name = "demo-testing"
 version = "0.1.0"
 source = { editable = "packages/demo-testing" }
 dependencies = [
+    { name = "finance-a2a-api" },
+    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "strands-agents" },
@@ -243,6 +245,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "finance-a2a-api", editable = "packages/finance-a2a-api" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=1.0" },
     { name = "strands-agents", specifier = ">=1.39.0" },
@@ -263,6 +267,12 @@ wheels = [
 name = "finance-a2a-api"
 version = "0.1.0"
 source = { editable = "packages/finance-a2a-api" }
+dependencies = [
+    { name = "nexus-rpc" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "nexus-rpc", specifier = ">=1.1.0,<2" }]
 
 [[package]]
 name = "finance-agent"

@@ -89,3 +89,80 @@ def attributed_activities(history: WorkflowHistory) -> list[str]:
 def count_events(history: WorkflowHistory, event_type: EventType.ValueType) -> int:
     """How many events of ``event_type`` the history holds (e.g. timers)."""
     return sum(1 for event in history.events if event.event_type == event_type)
+
+
+# --- v0.4: Nexus operations (the A2A hop) ---------------------------------------
+
+
+@dataclass(frozen=True)
+class NexusOperationRun:
+    """One Nexus operation a caller Workflow scheduled, and what became of it."""
+
+    endpoint: str
+    service: str
+    operation: str
+    summary: str
+    #: "completed", "failed", "canceled", "timed out" or "pending".
+    outcome: str
+    #: Async operations only: the handler Workflow the operation started.
+    started: bool
+    #: ``namespace/workflow_id`` of each Workflow the operation links to.
+    links: tuple[str, ...]
+
+
+_NEXUS_END = {
+    EventType.EVENT_TYPE_NEXUS_OPERATION_COMPLETED: (
+        "completed",
+        "nexus_operation_completed_event_attributes",
+    ),
+    EventType.EVENT_TYPE_NEXUS_OPERATION_FAILED: (
+        "failed",
+        "nexus_operation_failed_event_attributes",
+    ),
+    EventType.EVENT_TYPE_NEXUS_OPERATION_CANCELED: (
+        "canceled",
+        "nexus_operation_canceled_event_attributes",
+    ),
+    EventType.EVENT_TYPE_NEXUS_OPERATION_TIMED_OUT: (
+        "timed out",
+        "nexus_operation_timed_out_event_attributes",
+    ),
+}
+
+
+def nexus_operations(history: WorkflowHistory) -> list[NexusOperationRun]:
+    """Nexus operations in schedule order (caller side), with summary, outcome and links."""
+    scheduled: dict[int, tuple[str, str, str, str]] = {}
+    started: dict[int, tuple[str, ...]] = {}
+    outcome: dict[int, str] = {}
+    for event in history.events:
+        if event.event_type == EventType.EVENT_TYPE_NEXUS_OPERATION_SCHEDULED:
+            attrs = event.nexus_operation_scheduled_event_attributes
+            scheduled[event.event_id] = (
+                attrs.endpoint,
+                attrs.service,
+                attrs.operation,
+                _summary(event.user_metadata.summary),
+            )
+        elif event.event_type == EventType.EVENT_TYPE_NEXUS_OPERATION_STARTED:
+            sid = event.nexus_operation_started_event_attributes.scheduled_event_id
+            started[sid] = tuple(
+                f"{link.workflow_event.namespace}/{link.workflow_event.workflow_id}"
+                for link in event.links
+                if link.HasField("workflow_event")
+            )
+        elif event.event_type in _NEXUS_END:
+            label, field_name = _NEXUS_END[event.event_type]
+            outcome[getattr(event, field_name).scheduled_event_id] = label
+    return [
+        NexusOperationRun(
+            endpoint=endpoint,
+            service=service,
+            operation=operation,
+            summary=summary,
+            outcome=outcome.get(event_id, "pending"),
+            started=event_id in started,
+            links=started.get(event_id, ()),
+        )
+        for event_id, (endpoint, service, operation, summary) in scheduled.items()
+    ]

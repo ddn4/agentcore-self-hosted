@@ -34,8 +34,22 @@ DEFAULT_EFFORT: Final[str] = "medium"
 
 
 def task_queue() -> str:
-    """Task queue for this service's Worker."""
+    """Task queue for this service's Worker (the Nexus endpoint's target queue)."""
     return os.environ.get("FINANCE_TASK_QUEUE", "agent-services-tq")
+
+
+def payments_url() -> str:
+    """Base URL of the payments system (``make payments-mock`` locally; a Service on k8s)."""
+    return os.environ.get("PAYMENTS_URL", "http://127.0.0.1:8081").rstrip("/")
+
+
+def handled_by() -> str:
+    """Who issued a refund: the pod name on k8s (``POD_NAME``), else ``local-<pid>``.
+
+    Shown in the ``refund_confirmation`` artifact: it makes the EKS hop visible.
+    Never the host name (it would end up in committed history fixtures).
+    """
+    return os.environ.get("POD_NAME") or f"local-{os.getpid()}"
 
 
 def model_id() -> str:

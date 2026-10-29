@@ -1,6 +1,6 @@
 """Record a Workflow's event history as a replay-test fixture.
 
-    uv run python scripts/record_history.py support-1042 [--out DIR] [--name NAME]
+    uv run python scripts/record_history.py support-1042 [--out DIR] [--name NAME] [--namespace NS]
 
 Fetches the history from the running server through the same envconfig
 connection the Support Worker uses, blanks client/Worker ``identity`` fields
@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -46,8 +47,11 @@ async def main() -> int:
     parser.add_argument("workflow_id")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--name", help="fixture name (default: the Workflow ID)")
+    parser.add_argument("--namespace", help="namespace (default: the Support config's, agents)")
     args = parser.parse_args()
 
+    if args.namespace:
+        os.environ["TEMPORAL_NAMESPACE"] = args.namespace
     client = await config.connect(plugins=[config.build_strands_plugin()])
     handle = client.get_workflow_handle(args.workflow_id)
     desc = await handle.describe()

@@ -3,7 +3,7 @@ name = "finance-a2a-api"
 version = "0.1.0"
 description = "Finance agent's published A2A-shaped contract (the only code shared between teams)"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = ["nexus-rpc>=1.1.0,<2"]
 
 [build-system]
 requires = ["hatchling"]

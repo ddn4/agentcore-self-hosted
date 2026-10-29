@@ -27,7 +27,8 @@ PYTEST := $(UV) pytest
         test-live infra-static scrub-check scrub-history check bedrock-ping dev-server \
         dev-server-up dev-server-down dev-server-status dev-server-reset dev hello-smoke \
         verify clean worker-support worker-support-scripted case-a case-b record-histories spikes \
-        spike-nested sub-agents
+        spike-nested sub-agents worker-finance worker-finance-scripted worker-smoke payments-mock \
+        nexus-endpoint agent-card agent-card-golden smoke task-state card spike-nexus-ts
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -117,6 +118,42 @@ case-b: ## Case B ticket #2077 ($450): sub-agents say it needs escalation (WF=su
 
 sub-agents: ## What each Support sub-agent answered in a run (WF=support-1042)
 	temporal workflow query --namespace agents --workflow-id $(or $(WF),support-1042) --type sub_agent_runs
+
+worker-finance: ## Finance Worker + FinanceAgentA2A Nexus handler (agent-services, agent-services-tq)
+	$(UV) python -m finance_agent.worker
+
+worker-finance-scripted: ## Same Finance Worker with a scripted Finance agent (offline; no AWS)
+	$(UV) python scripts/scripted_finance_worker.py
+
+worker-smoke: ## No-LLM caller Worker: A2ASmokeWorkflow on nexus-smoke-tq (namespace agents)
+	$(UV) python -m support_agent.smoke_worker
+
+payments-mock: ## Mock payments system (idempotent refunds) on :8081
+	$(UV) python -m payments_mock.server
+
+agent-card: ## Render the Finance Agent Card to .generated/finance-agent-card.md
+	$(UV) python scripts/render-agent-card.py
+
+agent-card-golden: ## Refresh the committed Agent Card golden file after changing the card
+	$(UV) python scripts/render-agent-card.py --out packages/finance-a2a-api/tests/finance-agent-card.golden.md
+
+nexus-endpoint: ## Create/update Nexus endpoint finance-agent (description = Agent Card); idempotent
+	scripts/nexus-endpoint.sh apply
+
+smoke: ## A2A hop with no LLM: A2ASmokeWorkflow -> finance-agent (WF=smoke-1042 AMOUNT=40 ORDER=1042)
+	scripts/demo/smoke.sh $(or $(WF),smoke-1042) $(or $(AMOUNT),40) $(or $(ORDER),1042)
+
+card: ## Standalone Nexus Operation from the CLI: FinanceAgentA2A.get_agent_card (Q16)
+	temporal nexus operation execute --namespace agents --endpoint finance-agent \
+	  --service FinanceAgentA2A --operation get_agent_card \
+	  --operation-id card-$$(date +%s) --input '{}'
+
+task-state: ## The A2A task as Finance sees it: get_task query (WF=smoke-1042 -> a2a-task-smoke-1042)
+	temporal workflow query --namespace agent-services --workflow-id a2a-task-$(or $(WF),smoke-1042) \
+	  --type get_task
+
+spike-nexus-ts: ## Spike: the A2A hop under the time-skipping test servers (no AWS)
+	$(UV) python spikes/nexus_time_skipping.py
 
 record-histories: ## Save a completed Workflow's history for the replay test (WF=support-1042)
 	$(UV) python scripts/record_history.py $(or $(WF),support-1042)

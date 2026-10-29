@@ -16,8 +16,11 @@ PORT="${TEMPORAL_DEV_PORT:-7233}"
 UI_PORT="${TEMPORAL_DEV_UI_PORT:-8233}"
 NAMESPACES=(agents agent-services)
 
+# Standalone Nexus Operations (`temporal nexus operation ...`, Q16) are OFF in
+# CLI 1.9.1's dev server unless enabled explicitly (verified at v0.4).
 args=(server start-dev --ip "$IP" --port "$PORT" --ui-port "$UI_PORT"
-      --db-filename "$STATE_DIR/dev.db" --log-level warn)
+      --db-filename "$STATE_DIR/dev.db" --log-level warn
+      --dynamic-config-value nexusoperation.enableStandalone=true)
 for ns in "${NAMESPACES[@]}"; do args+=(--namespace "$ns"); done
 
 running() { [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; }

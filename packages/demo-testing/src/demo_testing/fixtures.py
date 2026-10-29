@@ -50,7 +50,14 @@ async def start_two_namespace_env() -> WorkflowEnvironment:
     """Start a dev server with namespaces ``agents`` (the client's) and ``agent-services``."""
     return await WorkflowEnvironment.start_local(
         namespace=AGENTS_NAMESPACE,
-        dev_server_extra_args=["--namespace", AGENT_SERVICES_NAMESPACE],
+        dev_server_extra_args=[
+            "--namespace",
+            AGENT_SERVICES_NAMESPACE,
+            # Same as scripts/dev-server.sh: Standalone Nexus Operations (Q16)
+            # are off by default in CLI 1.9.1's dev server.
+            "--dynamic-config-value",
+            "nexusoperation.enableStandalone=true",
+        ],
         **dev_server_kwargs(),
     )
 

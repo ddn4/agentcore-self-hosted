@@ -1,0 +1,149 @@
+{
+  "a2a_protocol_version": "0.3.0",
+  "task_states": [
+    "canceled",
+    "completed",
+    "failed",
+    "input-required",
+    "rejected",
+    "submitted",
+    "working"
+  ],
+  "types": {
+    "A2AMessage": {
+      "context_id": {
+        "required": true,
+        "type": "str"
+      },
+      "message_id": {
+        "required": true,
+        "type": "str"
+      },
+      "parts": {
+        "required": true,
+        "type": "list[Part]"
+      },
+      "role": {
+        "required": true,
+        "type": "Literal['user', 'agent']"
+      },
+      "task_id": {
+        "required": false,
+        "type": "str | None"
+      }
+    },
+    "A2ATask": {
+      "artifacts": {
+        "required": false,
+        "type": "list[Artifact]"
+      },
+      "context_id": {
+        "required": true,
+        "type": "str"
+      },
+      "id": {
+        "required": true,
+        "type": "str"
+      },
+      "status": {
+        "required": true,
+        "type": "TaskStatus"
+      }
+    },
+    "AgentCard": {
+      "default_input_modes": {
+        "required": false,
+        "type": "list[str]"
+      },
+      "default_output_modes": {
+        "required": false,
+        "type": "list[str]"
+      },
+      "description": {
+        "required": true,
+        "type": "str"
+      },
+      "name": {
+        "required": true,
+        "type": "str"
+      },
+      "protocol_version": {
+        "required": false,
+        "type": "str"
+      },
+      "skills": {
+        "required": true,
+        "type": "list[AgentSkill]"
+      },
+      "url": {
+        "required": false,
+        "type": "str"
+      },
+      "version": {
+        "required": true,
+        "type": "str"
+      }
+    },
+    "AgentCardRequest": {},
+    "AgentSkill": {
+      "description": {
+        "required": true,
+        "type": "str"
+      },
+      "id": {
+        "required": true,
+        "type": "str"
+      },
+      "name": {
+        "required": true,
+        "type": "str"
+      },
+      "tags": {
+        "required": false,
+        "type": "list[str]"
+      }
+    },
+    "Artifact": {
+      "artifact_id": {
+        "required": true,
+        "type": "str"
+      },
+      "name": {
+        "required": true,
+        "type": "str"
+      },
+      "parts": {
+        "required": true,
+        "type": "list[Part]"
+      }
+    },
+    "Part": {
+      "data": {
+        "required": false,
+        "type": "dict[str, Any] | None"
+      },
+      "kind": {
+        "required": true,
+        "type": "Literal['text', 'data']"
+      },
+      "text": {
+        "required": false,
+        "type": "str | None"
+      }
+    },
+    "TaskStatus": {
+      "message": {
+        "required": false,
+        "type": "A2AMessage | None"
+      },
+      "state": {
+        "required": true,
+        "type": "Literal['submitted', 'working', 'input-required', 'completed', 'rejected', 'failed', 'canceled']"
+      },
+      "timestamp": {
+        "required": false,
+        "type": "str | None"
+      }
+    }
+  }
+}

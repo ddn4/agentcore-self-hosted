@@ -1,0 +1,8 @@
+{
+  "_comment": "Mock refund history per order's customer, owned by team Finance.",
+  "orders": {
+    "1042": {"customer": "Alex Rivera", "refunds_last_12_months": 0, "total_refunded_usd": 0.0},
+    "2077": {"customer": "Sam Okafor", "refunds_last_12_months": 1, "total_refunded_usd": 18.5},
+    "3301": {"customer": "Jordan Lee", "refunds_last_12_months": 3, "total_refunded_usd": 212.0}
+  }
+}
