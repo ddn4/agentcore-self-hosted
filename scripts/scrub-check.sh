@@ -25,8 +25,17 @@ regex="$(IFS='|'; echo "${patterns[*]}")"
 # own patterns). Add paths here only with a reason.
 excludes=(':!uv.lock' ':!scripts/scrub-check.sh' ':!scripts/redact.sh')
 
+# Known-fake literals that are in already-committed history (never rewritten).
+# --history only: the tree scan must still reject them if they come back.
+#   AKIAOFFLINETEST00000  dummy credential in commit 08f8ba9 (test_wire_offline.py, v0.2);
+#                         not a real key (contains 0, outside AWS's base32 alphabet).
+history_allow=('AKIAOFFLINETEST00000')
+
 if [[ "$mode" == "--history" ]]; then
   hits="$(git log -p --all --no-color -- . "${excludes[@]}" | grep -nE -- "$regex" || true)"
+  for lit in "${history_allow[@]}"; do
+    hits="$(printf '%s\n' "$hits" | grep -vF -- "$lit" || true)"
+  done
 else
   hits="$(git grep -nIE -- "$regex" -- . "${excludes[@]}" || true)"
   # Untracked-but-not-ignored files would be committed next: scan them too.

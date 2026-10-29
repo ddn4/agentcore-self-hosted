@@ -34,7 +34,8 @@ class _Captured(Exception):
 def dummy_aws(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in ("AWS_PROFILE", "AWS_SESSION_TOKEN", "BEDROCK_MODEL_ID", "BEDROCK_EFFORT"):
         monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIAOFFLINETEST00000")
+    # Any string signs; keep it unlike a real key so scrub-check stays meaningful.
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "offline-test-dummy")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "offline-test-not-a-secret")
     monkeypatch.setenv("AWS_REGION", "us-east-1")
     monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
