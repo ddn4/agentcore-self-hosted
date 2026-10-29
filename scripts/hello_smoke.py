@@ -20,7 +20,8 @@ from support_agent import worker as support_worker
 
 
 async def run(name: str, config: ModuleType, worker_mod: ModuleType) -> str:
-    client = await config.connect()
+    # Same plugin as the Worker: pydantic data converter and the pinned model.
+    client = await config.connect(plugins=[config.build_strands_plugin()])
     workflow_id = f"hello-smoke-{name}-{uuid.uuid4().hex[:8]}"
     async with worker_mod.build_worker(client):
         result = await client.execute_workflow(

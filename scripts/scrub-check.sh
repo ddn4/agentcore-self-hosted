@@ -51,7 +51,14 @@ if command -v gitleaks >/dev/null 2>&1; then
   if [[ "$mode" == "--history" ]]; then
     gitleaks git --no-banner --redact . || status=1
   else
-    gitleaks dir --no-banner --redact . || status=1
+    # Scan only what git would commit (tracked + untracked-not-ignored), not
+    # .venv/.temporal/.certs: copy those files to a temp dir and scan that.
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    git ls-files -co --exclude-standard -z \
+      | while IFS= read -r -d '' f; do [[ -f "$f" ]] && printf '%s\0' "$f"; done \
+      | tar --null -T - -cf - | tar -xf - -C "$tmp"
+    gitleaks dir --no-banner --redact "$tmp" || status=1
   fi
 else
   echo "scrub-check: gitleaks not installed; grep scrub only (CI runs gitleaks)"

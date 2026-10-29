@@ -25,3 +25,6 @@ A green, trustworthy repo before the first line of agent code.
 - Docs: `versions.md`, `verify-ledger.md` (seeded from plan §6; 6 items resolved),
   `ask-temporal.md`, ADR-0001, ADR-0004 (Nexus Activity backing descoped, user-confirmed),
   ADR-0007, story `v0.1-scaffold.md`.
+- Verification pass: `test_plugin_worker.py` per service (HelloWorkflow on the Worker with the
+  pinned StrandsPlugin and pydantic converter); `hello_smoke.py` uses the plugin; gitleaks tree
+  scan limited to committable files.
