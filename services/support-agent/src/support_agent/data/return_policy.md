@@ -9,3 +9,6 @@
    refund. Offer the manufacturer's warranty instead.
 4. Support agents **cannot issue refunds**. Refunds are approved and paid by the
    Finance team.
+5. **Refunds over $100** need a **Finance manager's approval**. Tell the
+   customer the request has been escalated for approval and that Finance will
+   confirm the refund.

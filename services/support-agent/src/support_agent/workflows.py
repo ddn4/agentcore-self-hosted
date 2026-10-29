@@ -1,86 +1,55 @@
 """Workflows for team Support (caller), namespace ``agents``.
 
-``SupportSupervisorWorkflow`` (v0.2) is an ordinary Strands agent whose model
-calls and tool calls are all Temporal Activities:
+``SupportSupervisorWorkflow`` runs the Support Supervisor, a Strands agent whose
+model calls are Temporal Activities (the plugin's ``invoke_model``).
 
-- the model: ``TemporalAgent(model="bedrock", ...)`` runs each LLM turn as the
-  plugin's ``invoke_model`` Activity on the Worker, using the model the Worker
-  pinned under ``"bedrock"`` (Opus 5.5; ADR-0001);
-- the tools: ``activity_as_tool(lookup_order)`` and
-  ``activity_as_tool(get_return_policy)``.
+- v0.2: the Supervisor called the ``lookup_order`` and ``get_return_policy``
+  Activities directly (``activity_as_tool``).
+- v0.3 (this version): the Supervisor's tools are two Support-owned
+  **sub-agents**, the Order Lookup agent and the Return Policy agent
+  (``support_agent.agents``). Each is a ``TemporalAgent`` called from an
+  in-workflow Strands ``@tool``: a nested agent loop inside this one Workflow
+  (Q20). The history shows the Supervisor's ``invoke_model`` turns and, between
+  them, each sub-agent's own ``invoke_model`` turns and tool Activity,
+  labelled by the ``summary`` on every model Activity.
 
-If the Worker dies mid-turn, the in-flight Activity is retried on another Worker
-and everything already recorded (earlier model turns, tool results) is replayed
-from history, not re-executed.
+If the Worker dies mid-turn (the Supervisor's or a sub-agent's), the in-flight
+Activity is retried and everything already recorded is replayed from history,
+including the nested loops (``test_crash_safety.py``).
 
-Shape follows samples-python ``strands_plugin/tools/workflow.py`` (agent built in
-``__init__``, ``activity_as_tool`` with its own timeout, ``invoke_async`` in
-``run``) and ``bedrock_agentcore/strands_agent/workflows.py`` (system prompt,
-activities imported through the sandbox pass-through).
+**Incompatible with v0.2 histories** (the command sequence changed): open v0.2
+runs on an unversioned queue must finish or be terminated before this Worker
+takes the queue. From v0.7 Worker Versioning (PINNED) makes such changes safe;
+``test_replay.py`` keeps the v0.2 fixture to show the non-determinism error.
+
+Shape follows samples-python ``strands_plugin/tools/workflow.py`` (agent built
+in ``__init__``, plain ``@tool`` functions run in Workflow context,
+``invoke_async`` in ``run``), ``bedrock_agentcore/strands_agent/workflows.py``
+(prompt constants, pass-through Activity imports) and ``strands_plugin/
+human_in_the_loop`` (query over Workflow state).
 """
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import timedelta
 from typing import Any
 
 from temporalio import workflow
-from temporalio.common import RetryPolicy
-from temporalio.strands_agents import TemporalAgent
-from temporalio.strands_agents.workflow import activity_as_tool
+
+from support_agent.agents import SubAgentRun, new_supervisor, sub_agent_tools
 
 with workflow.unsafe.imports_passed_through():
-    from support_agent.activities import get_return_policy, lookup_order, say_hello
-
-#: Model key pinned by ``config.build_strands_plugin()`` (ADR-0001).
-MODEL_KEY = "bedrock"
-
-#: One LLM turn. Opus 5.5 at medium effort answers in seconds; the bound is
-#: generous because adaptive thinking can't be turned off on this model.
-MODEL_START_TO_CLOSE = timedelta(seconds=120)
-#: The plugin heartbeats at half this interval while the model streams, so a
-#: Worker that dies mid-turn is noticed within ~10 s instead of after 120 s.
-MODEL_HEARTBEAT = timedelta(seconds=10)
-#: Temporal owns retries (botocore retries are off in the model factory).
-#: Bounded, so a request the model rejects (HTTP 400) fails the Workflow
-#: instead of retrying forever.
-MODEL_RETRY = RetryPolicy(
-    initial_interval=timedelta(seconds=1),
-    backoff_coefficient=2.0,
-    maximum_interval=timedelta(seconds=20),
-    maximum_attempts=5,
-)
-TOOL_START_TO_CLOSE = timedelta(seconds=10)
-
-SUPERVISOR_PROMPT = """You are the Customer Support supervisor for an online store.
-Use lookup_order to find the customer's order and get_return_policy to decide
-whether the request is eligible for a refund. Do not guess facts you can look up.
-You CANNOT issue refunds yourself: if the request is eligible, tell the customer
-that their refund request is being passed to the Finance team for approval.
-Finish with a short, friendly reply to the customer that states the item, the
-price in USD and whether the request is eligible, and why."""
+    from support_agent.activities import say_hello
 
 
 @workflow.defn
 class SupportSupervisorWorkflow:
-    """Support Supervisor agent: answers one customer ticket."""
+    """Support Supervisor agent plus its sub-agents: answers one customer ticket."""
 
     def __init__(self) -> None:
-        self.supervisor = TemporalAgent(
-            model=MODEL_KEY,
-            system_prompt=SUPERVISOR_PROMPT,
-            tools=[
-                activity_as_tool(lookup_order, start_to_close_timeout=TOOL_START_TO_CLOSE),
-                activity_as_tool(get_return_policy, start_to_close_timeout=TOOL_START_TO_CLOSE),
-            ],
-            start_to_close_timeout=MODEL_START_TO_CLOSE,
-            heartbeat_timeout=MODEL_HEARTBEAT,
-            retry_policy=MODEL_RETRY,
-            # Shown on each invoke_model Activity in the Web UI (attribution).
-            summary="Support Supervisor",
-            # Strands prints streamed text to stdout by default: not in a Workflow.
-            callback_handler=None,
-        )
+        self._sub_agent_runs: list[SubAgentRun] = []
+        self.supervisor = new_supervisor(sub_agent_tools(self._sub_agent_runs.append))
 
     @workflow.run
     async def run(self, ticket: str) -> str:
@@ -90,8 +59,13 @@ class SupportSupervisorWorkflow:
 
     @workflow.query
     def transcript(self) -> list[dict[str, Any]]:
-        """The agent's conversation so far (user, assistant and tool messages)."""
+        """The Supervisor's conversation so far (user, assistant and tool messages)."""
         return [dict(message) for message in self.supervisor.messages]
+
+    @workflow.query
+    def sub_agent_runs(self) -> list[dict[str, str]]:
+        """Each finished sub-agent call: which agent, the question, its answer."""
+        return [asdict(run) for run in self._sub_agent_runs]
 
 
 @workflow.defn

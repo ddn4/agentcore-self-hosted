@@ -21,7 +21,7 @@ from temporalio.strands_agents.workflow import activity_as_tool
 
 from support_agent import config
 from support_agent.activities import get_return_policy, lookup_order
-from support_agent.workflows import SUPERVISOR_PROMPT
+from support_agent.agents import SUPERVISOR_PROMPT
 
 pytestmark = pytest.mark.unit
 
