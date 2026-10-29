@@ -26,7 +26,7 @@ PYTEST := $(UV) pytest
 .PHONY: help setup doctor fmt lint types test test-unit test-workflow test-integration \
         test-live infra-static scrub-check scrub-history check bedrock-ping dev-server \
         dev-server-up dev-server-down dev-server-status dev-server-reset dev hello-smoke \
-        verify clean
+        verify clean worker-support worker-support-scripted case-a record-histories spikes
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -101,6 +101,22 @@ dev: ## All local processes via honcho (Procfile.dev); Ctrl-C stops them
 
 hello-smoke: ## Run each service's HelloWorkflow on the running dev server via envconfig
 	$(UV) python scripts/hello_smoke.py
+
+worker-support: ## Support Worker (namespace agents, queue SUPPORT_TASK_QUEUE); Ctrl-C to stop
+	$(UV) python -m support_agent.worker
+
+worker-support-scripted: ## Same Support Worker with a scripted model (offline crash demo; no AWS)
+	$(UV) python scripts/scripted_worker.py
+
+case-a: ## Case A ticket #1042 to the Support Supervisor; waits for the reply (WF=support-1042)
+	scripts/demo/case-a.sh $(or $(WF),support-1042)
+
+record-histories: ## Save a completed Workflow's history for the replay test (WF=support-1042)
+	$(UV) python scripts/record_history.py $(or $(WF),support-1042)
+
+spikes: ## Opus 5.5 spikes: wire params, effort, structured output (live Bedrock; costs tokens)
+	RUN_BEDROCK_TESTS=1 $(UV) python spikes/opus_params.py
+	RUN_BEDROCK_TESTS=1 $(UV) python spikes/opus_structured_output.py
 
 verify: ## Run scripts/verify/$(TAG).sh, e.g. make verify TAG=v0.1-scaffold
 	scripts/verify/$(TAG).sh
