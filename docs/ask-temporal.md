@@ -15,6 +15,21 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
 
 ## Reports (non-questions)
 
+- v0.3 (temporalio-strands-agents 0.1.0, strands-agents 1.62.0): **Strands'
+  `Agent.as_tool()` writes durable timers when used inside a Workflow.** The adapter
+  forwards the parent's `cancel_signal` (a `threading.Event`). `Agent.stream_async`
+  mirrors it with `_link_cancel_signal`, which polls `asyncio.sleep(0.05)`, and in a
+  Workflow that is a timer. On the dev server we saw about one `TimerStarted`/`TimerFired`
+  pair (plus a Workflow Task) per second of sub-agent model time. On the time-skipping
+  test server the timers advance virtual time while the sub-agent's model Activity
+  runs. One run wrote 18 timers for a 1 s turn, and two runs hung. Nesting itself
+  works well with a hand-written `@tool` that awaits `TemporalAgent.invoke_async` (Q20,
+  ADR-0003). Suggest that the plugin neutralise the cancel watcher for `TemporalAgent`
+  (or provide a `TemporalAgent.as_tool`), or that the docs show the hand-written
+  pattern. Also worth documenting: one sub-agent instance cannot serve two tool calls
+  in the same turn (`ConcurrencyException`). Offline repro:
+  `services/support-agent/tests/test_agents_as_tools.py`, `make spike-nested`.
+
 - v0.2 (temporalio-strands-agents 0.1.0, strands-agents 1.62.0): **structured output
   loses its provider fallback across the Activity boundary.** `TemporalAgent(
   structured_output_model=X)` makes Strands retry with a forced `toolChoice` when the

@@ -2,6 +2,28 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.3-sub-agents
+
+Support's own team of agents, used as tools, in-process.
+
+- `support_agent/agents.py`: Order Lookup agent (`lookup_order`) and Return Policy agent
+  (`get_return_policy`) as `TemporalAgent`s, each built fresh inside a hand-written
+  in-workflow `@tool`; Supervisor (runbook 5.6 prompt minus Finance) uses only those two
+  tools. `summary` per agent attributes every `invoke_model` in the UI.
+- Workflow query `sub_agent_runs`; return policy rule 5 (over $100: Finance manager
+  approval), so Case B (2077) is escalated.
+- Q20 resolved (ADR-0003 part 1): nesting works; Strands `Agent.as_tool()` writes durable
+  timers in a Workflow (cancel-signal poll), one shared sub-agent refuses parallel calls.
+  Reported in `docs/ask-temporal.md`; runbook annotated.
+- `demo_testing`: per-system-prompt `support_responder`, Activity summaries in history
+  helpers, probe Workflows for `as_tool()` and a shared instance.
+- Tests: nested sequence/attribution, per-agent prompts and tools, Case B, parallel
+  sub-agent calls, failing sub-agent, crash inside a sub-agent turn, re-recorded
+  dev-server fixtures, v0.2 fixture asserted non-replayable, live `bedrock` tests.
+- `spikes/nested_agents.py` (`make spike-nested`), `make case-b`, `make sub-agents`,
+  `scripts/verify/v0.3-sub-agents.sh` (includes v0.2's carried live steps).
+- Live Bedrock still deferred (AWS SSO session expired; ledger 49 carried to v0.4).
+
 ## v0.2-durable-agent
 
 An LLM loop as a Workflow that survives a crash.

@@ -1297,7 +1297,7 @@ The code below is a design sketch, not a tested implementation. It follows the T
      - ⚠️ Verify that the plugin awaits `async` in-workflow tools on the Workflow event loop.
      - ⚠️ Verify that Strands applies no tool-execution timeout that would cut off a wait of several hours.
      - **Fallback (an explicit handoff).** Give the Supervisor a `structured_output_model=RefundRequest` and let it stop. Make the Nexus call in plain Workflow code. Then call `self.supervisor.invoke_async(...)` again with Finance's reply. The A2A hop is just as visible this way, arguably more so.
-   - **Agents as tools.** Calling another `TemporalAgent.invoke_async` from inside an in-workflow `@tool` is a nested agent loop. Each sub-agent's model calls show up as their own `invoke_model` Activities. ⚠️ Verify nesting with the plugin version you use. If it misbehaves, run each sub-agent as a separate step in `run()`.
+   - **Agents as tools.** Calling another `TemporalAgent.invoke_async` from inside an in-workflow `@tool` is a nested agent loop. Each sub-agent's model calls show up as their own `invoke_model` Activities. ⚠️ Verify nesting with the plugin version you use. If it misbehaves, run each sub-agent as a separate step in `run()`. *Resolved in v0.3 (ADR-0003): nesting works with a hand-written `@tool` that builds a fresh `TemporalAgent` per call. Avoid Strands' `Agent.as_tool()` in a Workflow, because its cancel-signal poll writes durable timers. Avoid one shared sub-agent instance, because parallel calls raise `ConcurrencyException`.*
    - **Session draining.** The debounce interceptor (5.2) watches Activities. While the Supervisor waits on Finance, no Activities run, so the AgentCore session drains after `AGENTCORE_DEBOUNCE_SECONDS`. That is the intended Case B behaviour (§1.3).
    - Add `nexus-rpc` and `temporalio-strands-agents` to the AgentCore `pyproject.toml`; the plugin needs `temporalio>=1.34.0`. ⚠️ Verify with `uv tree`.
 
@@ -1992,7 +1992,7 @@ temporal nexus operation execute --namespace agents --endpoint finance-agent \
 17. With option (b) (custom ClaimMapper plus the default Authorizer), which identity and namespace are checked when a caller Workflow dispatches to a Nexus endpoint that targets another namespace?
 18. Does the Python SDK reload file-based client certs after cert-manager rotates them, or must the EKS Worker restart?
 19. **Strands plugin and the A2A tool:** does `temporalio-strands-agents` run an `async` plain `@tool` on the Workflow event loop, so that it can `await` a Nexus operation for hours? Is there a planned `nexus_operation_as_tool` for Strands, like the one in the OpenAI Agents integration?
-20. **Strands plugin, agents as tools:** is calling a nested `TemporalAgent.invoke_async` from an in-workflow `@tool` supported?
+20. **Strands plugin, agents as tools:** is calling a nested `TemporalAgent.invoke_async` from an in-workflow `@tool` supported? *Resolved in v0.3: yes (ADR-0003, `spikes/nested_agents.py`).*
 21. Can the caller attach a summary or label to a Nexus operation in Python, so that the Web UI shows "A2A → Finance Refund Agent" on the event?
 
 **AWS**
