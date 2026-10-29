@@ -2,6 +2,29 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.5-a2a-over-nexus
+
+The Supervisor asks Finance itself: A2A over Nexus from inside the agent loop.
+
+- `support_agent/finance_peer.py`: Agent Card discovery (`get_agent_card`) before the first
+  Supervisor turn; `send_message` with a 25 h budget and operation summaries naming peer,
+  order, amount and mode; `NexusOperationError` reported to the Supervisor, not raised.
+- `ask_finance_agent`: async in-workflow `@tool` awaiting the Nexus operation (**Q19a: works**;
+  G1 not triggered). `SUPPORT_A2A_MODE=handoff`: unforced capture tool `submit_refund_request`,
+  Nexus call in `run()`, second Supervisor turn. The mode is a Workflow input.
+- Prompt-drift guard: one re-prompt if eligible and Finance not contacted. New `a2a` query.
+- Tests: 199 in `make check` (172 at v0.4). Time-skipping with a stub Finance behind the real
+  contract (`demo_testing.finance_stub`); two-namespace Supervisor → real Finance; crash after
+  Finance answered (no repeat); sync-tool probe; v0.5 replay fixtures; v0.3 fixtures kept as
+  negatives. `test_live_a2a.py` (`-m bedrock`, Case A ×5) and `tests/e2e/test_refund.py`
+  (`make e2e`, profile-driven).
+- Demo: `make case-a|case-b` honour `SUPPORT_A2A_MODE`; `make timeline`, `make a2a`,
+  `make task-state WF=support-…`, `make e2e`; `make dev` runs the Support Worker and applies
+  the endpoint. `scripts/verify/v0.5-a2a-over-nexus.sh`, `scripts/check_a2a_run.py`.
+- Found: a sync Strands `@tool` fails quietly inside a Workflow (`asyncio.to_thread`);
+  reported to Temporal. ADR-0003 part 2 accepted; ledger 15–17 resolved (17 live half pending).
+- Live Bedrock still deferred (AWS SSO session expired; ledger 49 carried to v0.6).
+
 ## v0.4-finance-agent
 
 Another team's agent behind a published A2A contract, reached over Nexus (no LLM on the caller).

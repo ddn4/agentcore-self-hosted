@@ -54,7 +54,16 @@ from support_agent import agents
 from support_agent.worker_factory import WORKFLOWS, build_worker
 from support_agent.workflows import SupportSupervisorWorkflow
 
-pytestmark = pytest.mark.workflow
+pytestmark = [
+    pytest.mark.workflow,
+    # max_cached_workflows=0 evicts the Workflow after every Workflow Task. From
+    # v0.5 a task often ends while the Supervisor is suspended *inside* Strands'
+    # agent loop (awaiting the Nexus operation in ask_finance_agent), so Strands'
+    # async generators are garbage-collected outside their event loop. Python
+    # reports that as an "unraisable" GeneratorExit. Harmless: the state is in
+    # history and the next task replays it (same note as test_crash_safety.py).
+    pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning"),
+]
 
 CASE_A_TICKET = "Order #1042, my headphones arrived broken. I want my money back."
 CASE_B_TICKET = "Order #2077: my laptop arrived with a cracked screen. I want a refund."

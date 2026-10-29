@@ -4,6 +4,9 @@
 exactly like samples-python ``strands_plugin/structured_output``, so a test can
 watch, through a ScriptedModel, what the plugin asks the Worker-side model to do
 when the model answers in text instead of calling the output tool.
+
+``SyncToolProbeWorkflow`` (v0.5) runs a *sync* Strands ``@tool`` in a Workflow,
+to show that it fails quietly (``test_tool_kinds.py``; ledger 53).
 """
 
 from __future__ import annotations
@@ -107,3 +110,27 @@ class SharedSubAgentProbeWorkflow:
     @workflow.run
     async def run(self, prompt: str) -> str:
         return str(await self.agent.invoke_async(prompt)).strip()
+
+
+# --- v0.5: a sync Strands @tool inside a Workflow -----------------------------------
+
+
+@tool
+def letter_counter(word: str, letter: str) -> int:
+    """Count how many times ``letter`` appears in ``word`` (a *sync* tool)."""
+    return word.count(letter)
+
+
+@workflow.defn
+class SyncToolProbeWorkflow:
+    """samples-python ``strands_plugin/tools``' sync ``letter_counter``, on our pinned key."""
+
+    @workflow.run
+    async def run(self) -> str:
+        agent = TemporalAgent(
+            model="bedrock",
+            tools=[letter_counter],
+            start_to_close_timeout=timedelta(seconds=10),
+            callback_handler=None,
+        )
+        return str(await agent.invoke_async("How many a's in banana?")).strip()
