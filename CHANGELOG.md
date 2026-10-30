@@ -2,6 +2,16 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.9.2-live-bedrock
+
+The live half of every laptop tag, on Opus 5.5 (closes ledger 49; also 7, 8, 10, 17). No
+Workflow code changed; Support's Build ID moves to `0015bea` (tests and fixtures are hashed).
+
+- Live replay fixtures `support-1042.json`, `support-2077-approved.json`.
+- `opus_params` checks the model ID in the URL; `nested_agents` exits 2 at HEAD instead of
+  hanging; `test_live_a2a` Case B approves through the stub Finance.
+- `docs/versions.md`: effort latency measured.
+
 ## v0.9.1-laptop-complete
 
 Acceptance of the laptop demo on a clean slate, from the README alone (offline: the AWS SSO

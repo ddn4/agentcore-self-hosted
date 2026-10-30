@@ -65,8 +65,8 @@ Per Supervisor turn (Case A first turn, tools attached), through the plugin's
 
 | Effort | Latency per turn (s) | Output tokens | Measured |
 |---|---|---|---|
-| low | pending | pending | live run pending (AWS SSO session expired at v0.2) |
-| medium | pending | pending | live run pending |
+| low | 3.20, 3.93, 2.94 (median 3.20) | 78, 78, 78 | 2026-10-30, us-east-1, `global.` profile (v0.9.2) |
+| medium | 3.81, 4.46, 3.69 (median 3.81) | 158, 136, 152 | 2026-10-30, us-east-1, `global.` profile (v0.9.2) |
 
 ## Protocols (v0.4)
 
