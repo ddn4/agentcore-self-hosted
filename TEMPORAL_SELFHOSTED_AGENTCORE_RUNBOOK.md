@@ -1026,7 +1026,7 @@ There are three **separate** roles. Do not merge them.
   - `bedrock-agentcore` (the sample pins ≥1.9.1)
   - `boto3`, for the Secrets Manager fetch
 
-  ⚠️ Verify: the minimum `temporalio` version for a plain Worker without Strands. **Use ≥1.34.0** to match the sample.
+  ⚠️ Verify: the minimum `temporalio` version for a plain Worker without Strands. **Use ≥1.34.0** to match the sample. *v0.7: this Worker needs 1.34.0 (plugin); the versioning APIs exist since Python SDK 1.11 (docs); the plain-Worker minimum is asked of Temporal (`docs/ask-temporal.md`).*
 - Worker versioning:
   `deployment_config=WorkerDeploymentConfig(version=WorkerDeploymentVersion(deployment_name, build_id), use_worker_versioning=True, default_versioning_behavior=VersioningBehavior.PINNED)`.
 - Entrypoint: `app = BedrockAgentCoreApp()`. In `@app.entrypoint`:
@@ -1374,7 +1374,7 @@ temporal --version                                 # ≥ 1.8.3
 temporal operator namespace describe --namespace agents   # must succeed
 temporal worker deployment --help                  # confirm create / create-version / set-current-version exist
 ```
-If `create` is absent, `create-version` may create the deployment implicitly (⚠️ Verify).
+If `create` is absent, `create-version` may create the deployment implicitly (⚠️ Verify). *Resolved in v0.7 (dev server 1.32.0): `create` exists and is required; `create-version` on an uncreated deployment fails. `create-version` also invokes the runtime once and fails if it cannot be reached.*
 
 **7.2 Register.**
 ```bash
@@ -1395,7 +1395,7 @@ temporal worker deployment set-current-version \
 ```
 - `<DEPLOYMENT_NAME>` and `<BUILD_ID>` **must equal** `TEMPORAL_DEPLOYMENT_NAME` and `TEMPORAL_BUILD_ID` in the Runtime env.
 - `create-version` invokes the Runtime and waits for the Worker to register. If it hangs or fails, go to §6.
-- The AgentCore docs use `set-current-version` without `--allow-no-pollers`. Temporal's Lambda samples pass it for the same no-long-lived-poller reason. It is UNVERIFIED whether AgentCore needs it.
+- The AgentCore docs use `set-current-version` without `--allow-no-pollers`. Temporal's Lambda samples pass it for the same no-long-lived-poller reason. It is UNVERIFIED whether AgentCore needs it. *v0.7 (dev server, informational): not needed for a version with a compute config, even with no Worker polling; definitive at v0.12.*
 - To change the endpoint, role or External ID later, run `temporal worker deployment update-version-compute-config` with the same `--aws-agentcore-*` flags.
 - Do not use `--aws-agentcore-skip-role-and-external-id`. It only works with `require_role_and_external_id: false`, which is not recommended.
 

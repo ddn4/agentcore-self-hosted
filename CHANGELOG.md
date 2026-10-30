@@ -2,6 +2,37 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.7-serverless-shape
+
+The Support Worker in AgentCore Runtime shape, on the laptop: built to die, pinned to its build.
+
+- `support_agent.agentcore_app`: `BedrockAgentCoreApp` entrypoint (single-start guard,
+  `add_async_task` -> `create_task` -> immediate ack, WCI payload checked against this
+  version, `complete_async_task` in `finally`); one Worker lifetime = mTLS (no-op locally) ->
+  connect with `TEMPORAL_CONNECT_TIMEOUT_SECONDS` -> versioned Worker on `support-tq`
+  (`support-supervisor:<BUILD_ID>`, PINNED, 120 s drain) -> `ActivityTracker` debounce
+  (`AGENTCORE_DEBOUNCE_SECONDS`, 20 s locally). `PingWorkflow`, `worker_versioned`, `mtls`.
+  Shape of samples-python `bedrock_agentcore/strands_agent`.
+- Content-hash Build ID (`scripts/build-id.sh`; refuses dirty inputs). CodeZip bundle
+  (`make agentcore-bundle`: flat, vendored contract, `requirements.txt` + generated
+  `pyproject.toml`, `BUILD_ID`, rendered `agentcore.json` with endpoint `b_<build7>`);
+  `make agentcore-bundle-test` (fresh 3.12 venv, serve, connect timeout, 43 MB arm64 zip).
+- **The dev server contains the WCI** (ledger 23). `make dev-server WCI=1` +
+  `scripts/agentcore_emulator.py` let the real WCI invoke the local Worker with no AWS
+  contact; `register-version.sh`, `wci-history.sh`, `serverless_report.py`.
+  `make invoke-local` is the plan's "I am the WCI" path.
+- Answers: 7.1 `create` is required; `create-version` invokes the runtime (ledger 20); Q13
+  informational: no `--allow-no-pollers` needed for a version with a compute config (21);
+  Q4/CodeZip local half (22); Q6 WCI IDs/namespace/activities locally (25); Q15 local first
+  look: a Nexus completion wakes the WCI (29).
+- Tests: 319 in `make check` (283 at v0.6): entrypoint contract with a fake app, debounce
+  with a fake clock, mTLS, PingWorkflow on a versioned Worker and the full entrypoint
+  lifecycle on `start_local`, Build ID stability in a throwaway clone, `agentcore.json`
+  rendering, emulator routes. CI builds and tests the bundle.
+- `scripts/verify/v0.7-serverless-shape.sh`: Case B across two Worker lifetimes, pinned to
+  one Build ID, invoked by hand and by the WCI.
+- Live Bedrock still deferred (AWS SSO session expired; ledger 49 carried to v0.8).
+
 ## v0.6-human-in-the-loop
 
 Finance's human approver, and a caller that can wait for it at no cost.

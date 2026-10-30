@@ -86,3 +86,27 @@ this descope. Q16 is still asked of Temporal (`docs/ask-temporal.md`).
 - **Data converter.** Finance's client carries the StrandsPlugin (pydantic
   converter); the no-LLM smoke caller uses the SDK default. The contract round-trips
   through all four pairings (`packages/finance-a2a-api/tests/test_roundtrip.py`).
+
+## v0.7: the Build ID and the serverless names as built
+
+- **`scripts/build-id.sh`** implements the decision exactly:
+  `{ git rev-parse HEAD:services/support-agent; git rev-parse HEAD:packages/finance-a2a-api;
+  uv export --package support-agent --frozen --no-dev --no-hashes | shasum; } | shasum | cut -c1-7`.
+  It hashes *committed* trees, so it refuses while `services/support-agent`,
+  `packages/finance-a2a-api` or `uv.lock` have uncommitted changes (a Build ID must name code
+  that exists in a commit). `tests/test_build_id.py` checks, in a throwaway clone: docs-only
+  and Finance-only commits keep the ID, a Support commit changes it, dirty refuses.
+- **The Build ID covers everything the bundle runs**, including the AgentCore templates in
+  `services/support-agent/agentcore/` (they define the runtime env). Tests under
+  `services/support-agent/tests/` are inside the hashed tree too: a test-only Support commit
+  changes the ID. Accepted: rare, and the bundle's provenance stays a single `git rev-parse`.
+- **Where it goes:** `TEMPORAL_BUILD_ID` (Make targets compute it in the recipe, not at
+  parse time), the bundle's `BUILD_ID` file (fallback for the runtime), `agentcore.json`
+  `envVars`, the AgentCore endpoint name `b_<build7>`, and `SUPPORT_GIT_SHA` beside it as
+  metadata. `support_agent.config.build_id()` has no default: a versioned Worker without one
+  refuses to start (as samples-python's AgentCore README warns).
+- **Versioned queue `support-tq`** is read from `TEMPORAL_TASK_QUEUE` (the runbook 5.4 env
+  name), never from `SUPPORT_TASK_QUEUE`, which `.env` points at the unversioned dev queue.
+- **Registration from `m/<tag>` branches / local `main`:** v0.7 registers only on the dev
+  server (`scripts/register-version.sh`); its `--cloud` flag enforces "HEAD is on `main`"
+  for v0.12+.

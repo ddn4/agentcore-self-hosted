@@ -68,3 +68,5 @@ Per Supervisor turn (Case A first turn, tools attached), through the plugin's
 |---|---|---|
 | A2A (shape only) | 0.3.0 | `finance_a2a_api` follows A2A 0.3.0 concepts in snake_case; A2A 1.0.0 deltas in `packages/finance-a2a-api/README.md` |
 | Nexus on the dev server | CLI 1.9.1 / server 1.32.0 | Standalone Nexus Operations need `--dynamic-config-value nexusoperation.enableStandalone=true` (set by `scripts/dev-server.sh`) |
+| WCI on the dev server (v0.7) | CLI 1.9.1 / server 1.32.0 | Present. `make dev-server WCI=1`: `workercontroller.enabled=true`, `compute_providers.enabled=["aws-agentcore"]`, `scaling_algorithms.enabled=["no-sync"]`, `compute_providers.aws.require_role_and_external_id=false`, `AWS_ENDPOINT_URL` → `scripts/agentcore_emulator.py` |
+| AgentCore runtime HTTP contract (v0.7) | `bedrock-agentcore` 1.25.1 | `/invocations`, `/ping` (`Healthy`/`HealthyBusy` from async tasks); CodeZip bundle 43 MB zipped for linux arm64 / CPython 3.12 |

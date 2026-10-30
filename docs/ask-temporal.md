@@ -5,13 +5,13 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
 
 | Q | Question | Status | Notes |
 |---|---|---|---|
-| Q15 | Does a Workflow Task produced by a Nexus completion callback reliably trigger the WCI when nothing is polling the caller's versioned task queue? | open: first answer v0.8, definitive v0.13 | report with WCI history and timeline |
+| Q15 | Does a Workflow Task produced by a Nexus completion callback reliably trigger the WCI when nothing is polling the caller's versioned task queue? | open: first AWS answer v0.8, definitive v0.13; **local first look (v0.7): yes** | v0.7 on the dev server with a local AgentCore API emulator: `task-add-signal` → `InvokeWorker` 0.22 s after the approval that completed Finance's task (story v0.7 step 10). Report with WCI history and timeline |
 | Q16 | Does stock server 1.32.1 support Nexus operations backed by a standalone Activity (`activity.enableCallbacks`, `TemporalOperationHandler.start_activity`)? Standalone Nexus Operations from the CLI? | ask (Activity half); CLI half answered for 1.32.0 at v0.4 | Activity-backed variant **descoped** (ADR-0004). CLI on 1.32.0: works once `nexusoperation.enableStandalone=true` is set (see the v0.4 report below); re-check 1.32.1 at v0.11 |
 | Q19 (1st half) | Does `temporalio-strands-agents` run an `async` plain `@tool` on the Workflow event loop, so it can `await` a Nexus operation? | **resolved v0.5: yes** (0.1.0 / strands-agents 1.62.0) | Strands awaits a coroutine tool directly (`strands/tools/decorator.py`); the Nexus operation is scheduled from inside the Supervisor's turn and the history replays (`test_workflow.py`, `tests/test_supervisor_a2a.py`, verify v0.5). Strands' tool executor has no timeout of its own (source read; the multi-hour wait is v0.6, Q19b). No question to send, but see the sync-tool report below |
 | Q19 (2nd half) | Is a `nexus_operation_as_tool` planned for the Strands plugin, like the OpenAI Agents integration's (`temporalio.openai_agents.workflow.nexus_operation_as_tool`)? | ask | Not in `temporalio-strands-agents` 0.1.0 (no Nexus code in `temporalio/strands_agents/`); the docs list it only for OpenAI Agents. The demo uses a hand-written async `@tool` (`support_agent/agents.py` + `finance_peer.py`, ~40 lines incl. the A2A message) |
-| Q4 | Minimum `temporalio` for a plain AgentCore Worker? | open | v0.1: `temporalio-strands-agents` 0.1.0 requires >= 1.34.0 |
+| Q4 | Minimum `temporalio` for a plain AgentCore Worker? | ask | v0.1: `temporalio-strands-agents` 0.1.0 requires >= 1.34.0. v0.7: the APIs used (`WorkerDeploymentConfig` with PINNED default) exist since Python SDK 1.11 per the docs; nothing in the SDK is AgentCore-specific. Is anything newer needed for WCI-invoked Workers? |
 | Q5 | Recommended pattern for self-hosted mTLS from AgentCore (envconfig + Secrets Manager)? | open | v0.9 / v0.12 |
-| Q13 | Does `set-current-version` for AgentCore versions need `--allow-no-pollers`? | open | v0.7 informational, v0.12 definitive |
+| Q13 | Does `set-current-version` for AgentCore versions need `--allow-no-pollers`? | v0.7 informational answer; v0.12 definitive | Dev server 1.32.0: **no**, for a version with a compute config (never polled, or after the Worker drained). Ask whether that is by design (a compute config counts as "can get pollers"), since the Lambda samples always pass the flag |
 | Q21 | Can a Python caller attach a summary to a Nexus operation for the Web UI? | **resolved v0.4: yes** | `execute_operation(..., summary=...)` (temporalio 1.35.0) sets `user_metadata.summary` on `NexusOperationScheduled`; no question to send |
 
 ## Reports (non-questions)
@@ -106,4 +106,24 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
   remaining run time** (`describe` shows `120s` for a 25 h budget on a Workflow started with
   `execution_timeout=120s`). Sensible, but not in the Nexus timeout docs; worth a line
   there, since a caller-side execution timeout then becomes the A2A budget.
-
+- v0.7 (CLI 1.9.1 / server 1.32.0): **the dev server contains the WCI, and its AWS SDK honours
+  `AWS_ENDPOINT_URL`**, so AgentCore Serverless Workers can be exercised end to end on a
+  laptop with a small stand-in for `GetAgentRuntimeEndpoint` and `InvokeAgentRuntime`
+  (`scripts/agentcore_emulator.py`), as the LocalStack guide does for Lambda. Worth a docs
+  page for AgentCore ("Test a Serverless Worker locally"). Two details we had to discover on
+  the wire: the Go SDK rejects numeric `createdAt`/`lastUpdatedAt` in the endpoint response
+  (must be ISO strings), and the invoke path is `/runtimes/<runtime id>/invocations?accountId=…&qualifier=…`.
+- v0.7: **`create-version` invokes the runtime** (WCI `InvokeWorkersToRegisterTaskQueues`) and
+  fails with only "something went wrong, please retry (<code>)" when the runtime cannot be
+  reached. A clearer error ("could not invoke the AgentCore endpoint: …") would help, and the
+  docs could say that `create-version` and `update-version-compute-config` start one session.
+  `create-version` on an uncreated deployment says "does your Worker Deployment have pollers?",
+  which reads oddly for a serverless version; `create` is required (runbook 7.1).
+- v0.7: **the WCI Workflow is not visible in visibility listings** (`temporal workflow list`
+  finds nothing) but `temporal workflow show -w temporal-sys-worker-controller-instance:<deployment>:<build>`
+  works in the deployment's namespace. Documenting the ID format and the Activity names
+  (`ValidateSpec`, `InvokeWorkersToRegisterTaskQueues`, `InvokeWorker`, signal
+  `task-add-signal`) would answer Q6 for self-hosters (our "Validate Connection").
+- v0.7: the WCI sometimes invokes again while a Worker of the version is still polling
+  (1.7 s after a conversation ended); the sample's single-start guard absorbs it. Is a
+  redundant invoke expected with `no-sync`?
