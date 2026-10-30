@@ -9,7 +9,12 @@ Build ID and, from v0.8, account and network IDs.
 
 Values come from the environment (runtime-injected values win, plan 3.2):
 
+- PROJECT_NAME: ``AGENTCORE_PROJECT_NAME`` (default ``AgentcoreDemo``; CLI stack
+  ``AgentCore-<project>-<target>``, runtime ``<project>_<runtime>``)
 - RUNTIME_NAME: ``AGENTCORE_RUNTIME_NAME`` (default ``support_supervisor``)
+- executionRoleArn: ``AGENTCORE_EXECUTION_ROLE_ARN`` (the ``30-agentcore-iam`` role; unset =
+  the CLI creates one). Never committed: the rendered file is gitignored.
+- IDLE_SESSION_TIMEOUT: ``AGENTCORE_IDLE_SESSION_TIMEOUT`` (default 900; CLI min 60)
 - NETWORK_MODE: ``AGENTCORE_NETWORK_MODE`` (default VPC; PUBLIC is the v0.8 probe, ADR-0005)
 - subnets / security groups: ``AGENTCORE_SUBNETS`` / ``AGENTCORE_SECURITY_GROUPS``
   (comma lists; placeholders until v0.12)
@@ -22,6 +27,8 @@ Values come from the environment (runtime-injected values win, plan 3.2):
 - AWS_REGION, BEDROCK_MODEL_ID, BEDROCK_EFFORT, SUPPORT_GIT_SHA (default ``git rev-parse HEAD``)
 
 In PUBLIC mode ``networkConfig`` is dropped (AgentCore rejects it there; runbook 5.4).
+``envVars`` with an empty value are dropped (v0.8 PUBLIC probe: ``TEMPORAL_MTLS_SECRET_ID=``
+means no mTLS secret, so ``support_agent.mtls`` stays a no-op).
 """
 
 from __future__ import annotations
@@ -63,7 +70,12 @@ def values(build_id: str) -> dict[str, str]:
     mode = env("AGENTCORE_NETWORK_MODE", "VPC").upper()
     if mode not in ("VPC", "PUBLIC"):
         raise SystemExit(f"AGENTCORE_NETWORK_MODE must be VPC or PUBLIC, got {mode!r}")
+    idle = int(env("AGENTCORE_IDLE_SESSION_TIMEOUT", "900"))
+    if not 60 <= idle <= 28800:
+        raise SystemExit(f"AGENTCORE_IDLE_SESSION_TIMEOUT must be 60..28800, got {idle}")
     return {
+        "PROJECT_NAME": env("AGENTCORE_PROJECT_NAME", "AgentcoreDemo"),
+        "IDLE_SESSION_TIMEOUT": str(idle),
         "RUNTIME_NAME": env("AGENTCORE_RUNTIME_NAME", "support_supervisor"),
         "NETWORK_MODE": mode,
         "SUBNETS_JSON": _list("AGENTCORE_SUBNETS", "<private-subnet-a>"),
@@ -93,6 +105,10 @@ def render_agentcore_json(build_id: str) -> dict[str, object]:
     runtime = doc["runtimes"][0]
     if vals["NETWORK_MODE"] == "PUBLIC":
         runtime.pop("networkConfig", None)
+    runtime["envVars"] = [e for e in runtime["envVars"] if e["value"] != ""]
+    role = os.environ.get("AGENTCORE_EXECUTION_ROLE_ARN", "").strip()
+    if role:
+        runtime["executionRoleArn"] = role
     return doc
 
 

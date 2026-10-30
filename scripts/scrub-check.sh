@@ -19,7 +19,22 @@ patterns=(
   'runtime/[A-Za-z][A-Za-z0-9_]{0,47}-[A-Za-z0-9]{10}([^A-Za-z0-9]|$)'            # AgentCore runtime IDs
   'aws_secret_access_key\s*=\s*[A-Za-z0-9/+=]{40}'                  # secret keys
 )
+# v0.8: personal data and network locations (the budget email, the laptop's public IP for
+# the EKS endpoint CIDR) must never be committed either. Matches on these lines are then
+# filtered by the allowlist below (documentation and test placeholders, private ranges).
+patterns+=(
+  '[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'   # email address
+  '(^|[^0-9.])([0-9]{1,3}\.){3}[0-9]{1,3}([^0-9.]|$)'                  # IPv4 address
+)
 regex="$(IFS='|'; echo "${patterns[*]}")"
+# Hits that are only allowlisted emails or private/loopback/documentation IPs are fine.
+allow_line() {
+  local line="$1" rest
+  rest="$(printf '%s' "$line" | sed -E \
+    -e 's/[A-Za-z0-9._%+-]+@(example\.(com|org|invalid)|anthropic\.com|users\.noreply\.github\.com)//g' \
+    -e 's/(^|[^0-9.])(127\.[0-9]+\.[0-9]+\.[0-9]+|0\.0\.0\.0|10\.[0-9]+\.[0-9]+\.[0-9]+|192\.168\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+|169\.254\.[0-9]+\.[0-9]+|255\.255\.[0-9]+\.[0-9]+)([^0-9.]|$)/\1\3/g')"
+  ! printf '%s' "$rest" | grep -qE -- "$regex"
+}
 
 # Files that legitimately contain digit runs (lockfile hashes, this script's
 # own patterns). Add paths here only with a reason.
@@ -32,7 +47,7 @@ excludes=(':!uv.lock' ':!scripts/scrub-check.sh' ':!scripts/redact.sh')
 history_allow=('AKIAOFFLINETEST00000')
 
 if [[ "$mode" == "--history" ]]; then
-  hits="$(git log -p --all --no-color -- . "${excludes[@]}" | grep -nE -- "$regex" || true)"
+  hits="$(git log -p --all --no-color --format=%B -- . "${excludes[@]}" | grep -nE -- "$regex" || true)"
   for lit in "${history_allow[@]}"; do
     hits="$(printf '%s\n' "$hits" | grep -vF -- "$lit" || true)"
   done
@@ -45,7 +60,7 @@ else
     [[ -n "$more" ]] && hits+=$'\n'"$more"
   done < <(git ls-files --others --exclude-standard -- . "${excludes[@]}")
 fi
-hits="$(printf '%s\n' "$hits" | sed '/^$/d')"
+hits="$(printf '%s\n' "$hits" | sed '/^$/d' | while IFS= read -r l; do allow_line "$l" || printf '%s\n' "$l"; done)"
 
 if [[ -n "$hits" ]]; then
   echo "scrub-check: FAILED. Possible account IDs, resource IDs or secrets:" >&2

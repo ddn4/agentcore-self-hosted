@@ -18,3 +18,13 @@ services/support-agent/agentcore/agentcore.json
 services/support-agent/agentcore/aws-targets.json
 node_modules/
 .tools/
+# v0.8: Terraform per stack (state local, lock files committed); never commit tfvars
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+crash.log
+.terraform.tfstate.lock.info
+# v0.8: AgentCore CLI project generated under build/ ; its config dir stays in .tools/
+.agentcore/
+tfplan
+*.tfplan

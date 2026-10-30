@@ -1,11 +1,10 @@
 {
-  "$$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
-  "name": "TemporalCustomerSupport",
-  "version": 1,
+  "name": "${PROJECT_NAME}",
+  "version": 2,
   "managedBy": "CDK",
   "tags": {
-    "agentcore:project-name": "TemporalCustomerSupport",
-    "project": "temporal-customer-support"
+    "agentcore:project-name": "${PROJECT_NAME}",
+    "Project": "agentcore-self-hosted"
   },
   "runtimes": [
     {
@@ -13,10 +12,11 @@
       "description": "Support Supervisor: scale-to-zero Temporal Worker (self-hosted Temporal, namespace agents)",
       "build": "CodeZip",
       "entrypoint": "agentcore_worker.py",
-      "codeLocation": ".",
+      "codeLocation": "app/support_supervisor",
       "runtimeVersion": "PYTHON_3_12",
       "protocol": "HTTP",
       "authorizerType": "AWS_IAM",
+      "instrumentation": { "enableOtel": false },
       "networkMode": "${NETWORK_MODE}",
       "networkConfig": {
         "subnets": ${SUBNETS_JSON},
@@ -28,7 +28,7 @@
           "description": "Build ID ${BUILD_ID}; invoked by the self-hosted Temporal WCI"
         }
       },
-      "lifecycleConfiguration": { "idleRuntimeSessionTimeout": 900, "maxLifetime": 28800 },
+      "lifecycleConfiguration": { "idleRuntimeSessionTimeout": ${IDLE_SESSION_TIMEOUT}, "maxLifetime": 28800 },
       "envVars": [
         {"name": "TEMPORAL_ADDRESS",                 "value": "${TEMPORAL_ADDRESS}"},
         {"name": "TEMPORAL_NAMESPACE",               "value": "agents"},
@@ -47,17 +47,5 @@
         {"name": "BEDROCK_EFFORT",                   "value": "${BEDROCK_EFFORT}"}
       ]
     }
-  ],
-  "memories": [],
-  "knowledgeBases": [],
-  "credentials": [],
-  "evaluators": [],
-  "onlineEvalConfigs": [],
-  "agentCoreGateways": [],
-  "policyEngines": [],
-  "configBundles": [],
-  "abTests": [],
-  "harnesses": [],
-  "datasets": [],
-  "payments": []
+  ]
 }

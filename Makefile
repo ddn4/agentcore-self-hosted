@@ -50,7 +50,10 @@ PYTEST := $(UV) pytest
         agentcore-ping agentcore-emulator agentcore-bundle agentcore-bundle-test \
         worker-support-versioned register-version wci-history case-b-serverless \
         case-a-serverless tools kind-up kind-temporal kind-images kind-workers kind-aws-creds \
-        certs-pull pf pf-stop kind-status kind-down cert-renew export-agentcore-cert kind-env env
+        certs-pull pf pf-stop kind-status kind-down cert-renew export-agentcore-cert kind-env env \
+        tools-agentcore tf-static tf-plan tf-apply tf-destroy tf-output guardrails external-id \
+        cfn-template aws-profile invoke-role invoke-role-delete agentcore-build agentcore-deploy \
+        agentcore-status agentcore-down agentcore-sessions register-version-aws
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -92,8 +95,11 @@ test-live: ## Live Bedrock tests (needs AWS credentials; costs tokens)
 infra-static: ## helm template + kustomize -> kubeconform -strict for everything in deploy/ (no cluster)
 	scripts/infra-static.sh
 
-tools: ## Project-local kubeconform in .tools/bin (pinned sha256; no brew)
+tools: ## Project-local kubeconform, terraform, tflint in .tools/bin (pinned sha256; no brew)
 	scripts/tools.sh
+
+tools-agentcore: tools ## + AgentCore CLI @aws/agentcore 1.0.1 in .tools/agentcore-cli (npm, exact version)
+	scripts/tools.sh agentcore
 
 scrub-check: ## No secrets, account IDs or AWS resource IDs in the tree (gitleaks if installed)
 	scripts/scrub-check.sh
@@ -259,6 +265,63 @@ case-b-serverless: ## Case B on the versioned queue support-tq (WF=support-2077-
 
 case-a-serverless: ## Case A on the versioned queue support-tq (WF=support-1042-sl)
 	SUPPORT_TASK_QUEUE=support-tq scripts/demo/case-a.sh $(or $(WF),support-1042-sl)
+
+# --- v0.8: first AWS contact (us-east-1, default SSO profile; go-ahead G5) -------------
+# Terraform per stack under infra/terraform (local state, gitignored). tf-plan writes a saved
+# plan; tf-apply applies exactly that plan. Inputs via TF_VAR_* (e.g. TF_VAR_budget_email,
+# TF_VAR_create_dev_wci_role=true) or a gitignored terraform.auto.tfvars.
+STACK ?=
+
+tf-static: ## terraform fmt -check, validate (-backend=false), tflint for every stack (no AWS)
+	scripts/tf.sh static
+
+tf-plan: ## terraform plan for STACK= (writes STACK/tfplan; review it)
+	scripts/tf.sh plan $(STACK)
+
+tf-apply: ## Apply the reviewed saved plan of STACK=
+	scripts/tf.sh apply $(STACK)
+
+tf-destroy: ## terraform destroy STACK=
+	scripts/tf.sh destroy $(STACK)
+
+tf-output: ## terraform output of STACK=
+	scripts/tf.sh output $(STACK)
+
+guardrails: ## Plan 00-guardrails (budget USD 200 80%/100% + AgentCore session alarm); then make tf-apply STACK=00-guardrails
+	scripts/tf.sh plan 00-guardrails
+
+external-id: ## Create the External ID secret temporal/agentcore-external-id if absent (never in TF state)
+	scripts/external-id.sh
+
+cfn-template: ## Download + sha256-check + vendor Temporal's self-hosted invocation-role template
+	scripts/cfn-template.sh
+
+aws-profile: ## Append [profile temporal-dev-wci] to ~/.aws/config (backup first; append-only)
+	scripts/aws-profile.sh
+
+invoke-role: ## CFN invocation-role stack for the dev WCI (needs the runtime deployed)
+	scripts/invoke-role.sh create --temporal-role-arn "$$(scripts/tf.sh output 30-agentcore-iam -raw dev_wci_role_arn)"
+
+invoke-role-delete: ## Delete the CFN invocation-role stack (Project tag checked)
+	scripts/invoke-role.sh delete
+
+agentcore-build: ## AgentCore CLI synth of the runtime (MODE=PUBLIC|VPC; local packaging check, no AWS)
+	scripts/agentcore-deploy.sh build
+
+agentcore-deploy: ## Bundle + agentcore deploy (MODE=PUBLIC is the v0.8 probe, ADR-0005)
+	MODE=$(or $(MODE),PUBLIC) scripts/agentcore-deploy.sh deploy
+
+agentcore-status: ## agentcore status --json (redacted)
+	scripts/agentcore-deploy.sh status
+
+agentcore-down: ## Remove the runtime and the CLI stack AgentCore-AgentcoreDemo-default
+	scripts/agentcore-deploy.sh down
+
+agentcore-sessions: ## New AgentCore sessions of our runtimes in the last 15 min (must be 0 after teardown)
+	scripts/agentcore-sessions.sh
+
+register-version-aws: ## register-version against the real AgentCore endpoint (role + External ID at run time)
+	scripts/register-version.sh --agentcore-auto
 
 # --- v0.9: the real server on kind, then mTLS (scripts/kind.sh) -------------------------
 # kubectl/helm/kind use .temporal/kubeconfig-agentcore-demo (never ~/.kube/config) and

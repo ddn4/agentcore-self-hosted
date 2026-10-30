@@ -1,0 +1,4 @@
+# Copy to terraform.auto.tfvars (gitignored) or export TF_VAR_budget_email instead.
+budget_email = "you@example.com"
+# budget_limit_usd          = 200
+# active_sessions_threshold = 10

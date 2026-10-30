@@ -2,7 +2,9 @@
 # First run 2026-10-30, after the GitHub remote was added.
 # v0.9: `make infra-static` (helm template + kustomize -> kubeconform) is part of make check;
 # kubeconform comes from `make tools` (pinned sha256), helm/kubectl from the runner image.
-# terraform validate (v0.10) joins it later.
+# v0.8: terraform fmt -check / validate (-backend=false) / tflint over infra/terraform
+# (`make tf-static`; terraform 1.17.0 and tflint v0.64.0 from `make tools`, pinned sha256).
+# No AWS credentials anywhere in CI: validate needs only the provider download.
 name: ci
 
 on:
@@ -55,7 +57,7 @@ jobs:
           DOCTOR_SKIP_AWS: "1"
         run: make doctor
 
-      - name: Tools (kubeconform)
+      - name: Tools (kubeconform, terraform, tflint)
         run: |
           make tools
           helm version --short
@@ -86,6 +88,10 @@ jobs:
 
       - name: make check
         run: make check
+
+      # v0.8: every Terraform stack, statically (no backend, no credentials).
+      - name: Terraform static (fmt, validate, tflint)
+        run: make tf-static
 
       # v0.7: the AgentCore CodeZip bundle imports and serves in a fresh 3.12 venv, and is
       # under 250 MB zipped for linux arm64 (needs PyPI, no AWS).

@@ -9,6 +9,9 @@
 #                     (scripts/agentcore_emulator.py; make dev-server WCI=1): the dev server's
 #                     own WCI invokes the local runtime. v0.7, no AWS.
 #   --agentcore ENDPOINT_ARN ROLE_ARN EXTERNAL_ID   real AgentCore (v0.8, v0.12+).
+#   --agentcore-auto  the same, with the endpoint from scripts/agentcore-deploy.sh endpoint-arn,
+#                     the role from scripts/invoke-role.sh arn and the External ID from
+#                     Secrets Manager (scripts/external-id.sh --value). make register-version-aws
 #   --cloud           with --agentcore: refuse unless HEAD is on main (plan 3.3 registration rule;
 #                     no remote yet, so local main).
 # Steps: worker deployment create (if absent) -> create-version (compute modes) ->
@@ -27,6 +30,12 @@ while [[ $# -gt 0 ]]; do
     --build-id) BUILD_ID="$2"; shift 2 ;;
     --poller|--local-wci) MODE="$1"; shift ;;
     --agentcore) MODE="$1"; ENDPOINT_ARN="$2"; ROLE_ARN="$3"; EXTERNAL_ID="$4"; shift 4 ;;
+    --agentcore-auto)
+      MODE=--agentcore
+      ENDPOINT_ARN="$(scripts/agentcore-deploy.sh endpoint-arn)"
+      ROLE_ARN="$(scripts/invoke-role.sh arn)"
+      EXTERNAL_ID="$(scripts/external-id.sh --value)"
+      shift ;;
     --cloud) CLOUD=1; shift ;;
     *) echo "usage: $0 [--build-id ID] --poller|--local-wci|--agentcore ENDPOINT ROLE EXTID [--cloud]" >&2; exit 2 ;;
   esac
@@ -36,7 +45,8 @@ BUILD_ID="${BUILD_ID:-$(scripts/build-id.sh)}"
 if [[ $CLOUD -eq 1 ]] && ! git merge-base --is-ancestor HEAD main; then
   echo "register-version: --cloud refuses: HEAD is not on main (plan 3.3)" >&2; exit 1
 fi
-run() { echo "+ $*"; "$@"; }
+# Echo each command with ARNs and the External ID masked (scripts/redact.sh), then run it.
+run() { echo "+ $*" | scripts/redact.sh; "$@"; }
 
 # A local endpoint ARN for the emulator: placeholder account, runtime support_supervisor_local,
 # endpoint b_<build7> (ADR-0004 naming). Built at run time so no 12-digit literal is committed.

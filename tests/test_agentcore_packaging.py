@@ -47,9 +47,12 @@ def test_vpc_render(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SUPPORT_GIT_SHA", "deadbeef")
     doc = render.render_agentcore_json("3f9c2a1")
     rt = doc["runtimes"][0]
+    assert doc["version"] == 2, "AgentCore CLI 1.0.x project format (version 1 = v0 compat mode)"
     assert rt["name"] == "support_supervisor"
     assert rt["build"] == "CodeZip" and rt["runtimeVersion"] == "PYTHON_3_12"
-    assert rt["entrypoint"] == "agentcore_worker.py" and rt["codeLocation"] == "."
+    assert (
+        rt["entrypoint"] == "agentcore_worker.py" and rt["codeLocation"] == "app/support_supervisor"
+    )
     assert rt["authorizerType"] == "AWS_IAM" and rt["networkMode"] == "VPC"
     assert set(rt["networkConfig"]) == {"subnets", "securityGroups"}
     assert list(rt["endpoints"]) == ["b_3f9c2a1"]
@@ -70,6 +73,31 @@ def test_public_render_drops_network_config(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("AGENTCORE_NETWORK_MODE", "PUBLIC")
     rt = render.render_agentcore_json("3f9c2a1")["runtimes"][0]
     assert rt["networkMode"] == "PUBLIC" and "networkConfig" not in rt
+
+
+def test_v08_probe_render(monkeypatch: pytest.MonkeyPatch) -> None:
+    """v0.8 PUBLIC probe: no mTLS secret, existing execution role, short idle timeout."""
+    monkeypatch.setenv("AGENTCORE_NETWORK_MODE", "PUBLIC")
+    monkeypatch.setenv("TEMPORAL_MTLS_SECRET_ID", "")
+    monkeypatch.setenv("AGENTCORE_TEMPORAL_ADDRESS", "127.0.0.1:7233")
+    monkeypatch.setenv("AGENTCORE_IDLE_SESSION_TIMEOUT", "120")
+    monkeypatch.setenv("AGENTCORE_EXECUTION_ROLE_ARN", "arn:aws:iam::<acct>:role/x")
+    doc = render.render_agentcore_json("3f9c2a1")
+    rt = doc["runtimes"][0]
+    assert doc["name"] == "AgentcoreDemo"
+    assert doc["tags"]["Project"] == "agentcore-self-hosted"
+    assert rt["executionRoleArn"].endswith(":role/x")
+    assert rt["lifecycleConfiguration"]["idleRuntimeSessionTimeout"] == 120
+    env = _env(doc)
+    assert "TEMPORAL_MTLS_SECRET_ID" not in env, "empty values are dropped"
+    assert env["TEMPORAL_ADDRESS"] == "127.0.0.1:7233"
+    assert env["TEMPORAL_CONNECT_TIMEOUT_SECONDS"] == "10"
+
+
+def test_idle_timeout_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENTCORE_IDLE_SESSION_TIMEOUT", "30")
+    with pytest.raises(SystemExit):
+        render.render_agentcore_json("3f9c2a1")
 
 
 @pytest.mark.parametrize("build_id", ["3f9c2a1", "0abcdef", "devtest"])

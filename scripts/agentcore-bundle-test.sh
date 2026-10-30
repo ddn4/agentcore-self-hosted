@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Packaging check for the CodeZip bundle (plan v0.7, section 5 "Packaging").
 #   scripts/agentcore-bundle-test.sh       (make agentcore-bundle-test; run make agentcore-bundle first)
-# 1. Fresh Python 3.12 venv, install requirements.txt only (no workspace), then from the
+# 1. Fresh Python 3.12 venv, install the bundle's pyproject.toml pins only (no workspace;
+#    exactly what AgentCore's CodeZip packaging installs, ledger 22), then from the
 #    bundle directory: import the entrypoint, the Workflows and the contract.
 # 2. Serve the entrypoint from that venv: /ping Healthy; /invocations acks at once; with an
 #    unreachable (blackholed) Temporal address the Worker gives up after TEMPORAL_CONNECT_TIMEOUT_SECONDS and /ping
@@ -18,10 +19,10 @@ DEPS=build/agentcore-arm64
 LIMIT_MB=250
 PORT="${BUNDLE_TEST_PORT:-18080}"
 
-echo "--- 1. fresh 3.12 venv + requirements.txt"
+echo "--- 1. fresh 3.12 venv + pyproject.toml dependencies"
 rm -rf "$VENV"
 uv venv --quiet --python 3.12 "$VENV"
-uv pip install --quiet --python "$VENV/bin/python" -r "$B/requirements.txt"
+uv pip install --quiet --python "$VENV/bin/python" -r "$B/pyproject.toml"
 PY="$PWD/$VENV/bin/python"
 "$PY" -c 'import sys; print("python", sys.version.split()[0], "| venv", sys.prefix)'
 (cd "$B" && exec env -i PATH="$PATH" HOME="$HOME" "$PY" - <<'PY'
@@ -65,7 +66,7 @@ grep -aq "could not connect to Temporal within 3s" "$log" || { echo "FAIL: no co
 echo "--- 3. size for AgentCore (linux arm64, CPython 3.12, wheels only)"
 rm -rf "$DEPS"
 uv pip install --quiet --target "$DEPS" --python-platform aarch64-manylinux_2_28 \
-  --python-version 3.12 --only-binary :all: -r "$B/requirements.txt"
+  --python-version 3.12 --only-binary :all: -r "$B/pyproject.toml"
 zipf=build/agentcore-codezip-test.zip; rm -f "$zipf"
 (cd "$B" && zip -qr "$OLDPWD/$zipf" . -x '*/__pycache__/*')
 (cd "$DEPS" && zip -qr "$OLDPWD/$zipf" . -x '*/__pycache__/*')
