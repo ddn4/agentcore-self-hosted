@@ -50,7 +50,7 @@ PYTEST := $(UV) pytest
         agentcore-ping agentcore-emulator agentcore-bundle agentcore-bundle-test \
         worker-support-versioned register-version wci-history case-b-serverless \
         case-a-serverless tools kind-up kind-temporal kind-images kind-workers kind-aws-creds \
-        certs-pull pf pf-stop kind-status kind-down cert-renew export-agentcore-cert kind-env
+        certs-pull pf pf-stop kind-status kind-down cert-renew export-agentcore-cert kind-env env
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -298,6 +298,11 @@ kind-down: ## Stop port-forwards and delete the kind cluster
 
 kind-env: ## Print the KUBECONFIG export for kubectl by hand
 	@echo "export KUBECONFIG=$(CURDIR)/.temporal/kubeconfig-agentcore-demo"
+
+# Make targets export these themselves; a bare `temporal ...` in your shell does not, and then
+# reads your own default config file and profile (macOS: ~/Library/Application Support/temporalio/temporal.toml; maybe Temporal Cloud).
+env: ## Print the envconfig exports for bare `temporal` commands (eval the output in your shell)
+	@echo "export TEMPORAL_CONFIG_FILE=$(TEMPORAL_CONFIG_FILE) TEMPORAL_PROFILE=$(TEMPORAL_PROFILE)"
 
 cert-renew: ## Re-issue a certificate now (NS=temporal CERT=temporal-frontend-tls)
 	scripts/cert-renew.sh $(or $(NS),temporal) $(or $(CERT),temporal-frontend-tls)

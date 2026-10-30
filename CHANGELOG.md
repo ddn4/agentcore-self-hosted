@@ -2,6 +2,17 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.9.1-laptop-complete
+
+Acceptance of the laptop demo on a clean slate, from the README alone (offline: the AWS SSO
+session was expired). No Temporal code changed; Build ID `32b04fb` unchanged.
+
+- README: "Run the demo on your laptop" (prerequisites, four scenarios with live and offline
+  variants, clean-up) and a v0.9.1 row in the story table.
+- `make env` for bare `temporal` commands (they ignored `config/temporal.toml` and failed on
+  the v0.7 and v0.9 story steps); v0.7 story: wait for `Healthy` before the WCI path.
+- Ledger: "Still open for the AWS tags" summary; item 49 records this run.
+
 ## v0.9-temporal-on-kind-mtls
 
 The real server on the laptop (chart temporal-1.7.0, server 1.32.1 on kind), then mTLS
