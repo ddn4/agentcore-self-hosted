@@ -7,7 +7,8 @@ calls here; the cross-namespace live run is ``scripts/verify/v0.5-a2a-over-nexus
 
 Plan v0.5 acceptance "in 5 live runs, Finance is called every time" (prompt
 drift, runbook §6): Case A in ``tool`` mode five times, recording whether the
-guard had to re-prompt. Plus Case B and Case A in ``handoff`` mode once each.
+guard had to re-prompt. Plus Case A in ``handoff`` mode once, and Case B
+approved by ``dana.finance`` (v0.6: the stub Finance waits for the approver).
 About 8 small model calls per run. Skipped unless ``RUN_BEDROCK_TESTS=1``.
 """
 
@@ -19,7 +20,8 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from temporalio.testing import WorkflowEnvironment
 
-from demo_testing.finance_stub import stub_finance
+from demo_testing.a2a_tasks import wait_for_a2a_task
+from demo_testing.finance_stub import StubDecision, stub_finance
 from demo_testing.history import timeline
 from demo_testing.scripted_model import client_with_plugin
 from support_agent import agents, config
@@ -34,7 +36,11 @@ SEND = "nexus FinanceAgentA2A.send_message"
 
 
 async def run_live(
-    env: WorkflowEnvironment, executor: ThreadPoolExecutor, ticket: str, mode: str
+    env: WorkflowEnvironment,
+    executor: ThreadPoolExecutor,
+    ticket: str,
+    mode: str,
+    approver: str | None = None,
 ) -> tuple[str, list[str], dict[str, object]]:
     client = client_with_plugin(env.client, config.build_strands_plugin())
     task_queue = f"support-live-{uuid.uuid4()}"
@@ -45,6 +51,13 @@ async def run_live(
         handle = await client.start_workflow(
             SupportSupervisorWorkflow.run, args=[ticket, mode], id=task_queue, task_queue=task_queue
         )
+        if approver is not None:
+            # v0.6: over the limit, the stub Finance waits for a human decision.
+            finance_task = f"a2a-task-{task_queue}"
+            await wait_for_a2a_task(env.client, finance_task, "input-required")
+            await env.client.get_workflow_handle(finance_task).signal(
+                "approve", StubDecision(approver)
+            )
         reply = await handle.result()
         steps = timeline(await handle.fetch_history())
         a2a = await handle.query(SupportSupervisorWorkflow.a2a)
@@ -72,10 +85,12 @@ async def test_live_case_a_handoff(
     assert "R-STUB-1042" in reply
 
 
-async def test_live_case_b_is_escalated(
+async def test_live_case_b_waits_for_the_approver(
     time_skipping_env: WorkflowEnvironment, activity_executor: ThreadPoolExecutor
 ) -> None:
-    reply, steps, _ = await run_live(time_skipping_env, activity_executor, CASE_B, "tool")
+    reply, steps, _ = await run_live(
+        time_skipping_env, activity_executor, CASE_B, "tool", approver="dana.finance"
+    )
     assert steps.count(SEND) == 1
     assert "450" in reply
-    assert "escalat" in reply.lower() or "approv" in reply.lower()
+    assert "R-STUB-2077" in reply
