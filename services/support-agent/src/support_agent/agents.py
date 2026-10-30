@@ -120,7 +120,8 @@ refund amount in USD, the customer's reason and a one-sentence summary, and wait
 for the Finance agent's decision. Never promise a refund before Finance decides.
 Finish with a short, friendly reply to the customer that states the item, the
 price in USD and the outcome: quote Finance's refund ID (R-...) if the refund was
-issued, or explain what happens next if it was not."""
+issued. If it was not, follow the "Next step" in Finance's answer: apologise, and
+say it has been escalated to the Finance team if Finance could not decide."""
 )
 
 #: Explicit-handoff fallback (runbook 5.6, ``SUPPORT_A2A_MODE=handoff``): the
@@ -139,8 +140,9 @@ promise a refund before Finance decides. If the request is not eligible, reply
 to the customer directly.
 When you are given Finance's decision, write a short, friendly reply to the
 customer that states the item, the price in USD and the outcome: quote Finance's
-refund ID (R-...) if the refund was issued, or explain what happens next if it
-was not."""
+refund ID (R-...) if the refund was issued. If it was not, follow the "Next
+step" in Finance's decision: apologise, and say it has been escalated to the
+Finance team if Finance could not decide."""
 )
 
 #: Prompt-drift guard (runbook §6): sent once if the Return Policy agent said
@@ -254,8 +256,8 @@ def ask_finance_agent_tool(ask: Callable[[RefundRequest], Awaitable[str]]) -> Ag
     async def ask_finance_agent(order_id: str, amount_usd: float, reason: str, summary: str) -> str:
         """A2A: ask the Finance team's Finance Refund agent to approve and issue a refund.
 
-        Finance decides; this waits for its decision, which may take a long time
-        (for example, a human approval). Call it at most once per ticket.
+        Finance decides; this waits for its decision, which may take hours (for
+        example, a human approval). Call it at most once per ticket.
 
         Args:
             order_id: The order number, digits only (for example "1042").

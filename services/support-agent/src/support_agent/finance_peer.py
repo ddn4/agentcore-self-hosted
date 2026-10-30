@@ -22,8 +22,18 @@ the Supervisor has captured the request (``handoff`` mode, the runbook fallback)
 A failed operation (``NexusOperationError``: Finance refused the request, the
 endpoint is misconfigured, or the 25 h budget ran out) is **not** raised to the
 Strands tool loop: the exchange records the error and the Supervisor is told to
-apologise and not promise a refund. v0.6 adds the human approval path and
-ADR-0009's timeout budget around it.
+apologise and not promise a refund.
+
+v0.6 (ADR-0009): Finance may now keep the task open for hours in
+``input-required`` while a human approver decides. The tool simply keeps
+awaiting (Q19b: Strands puts no timeout on a tool call). The budget for the
+whole task is the ``send_message`` ``schedule_to_close_timeout``, a Workflow
+input (``SUPPORT_NEXUS_SEND_TIMEOUT``, default 25 h): above Finance's published
+24 h approval limit, so a human who never answers comes back as an A2A
+``failed`` task (a clear answer from Finance) rather than a Nexus timeout. The
+terminal states each get explicit instructions for the Supervisor
+(:func:`tool_result`): ``rejected`` -> apologise, ``failed`` -> apologise and
+escalate, ``unreachable`` -> apologise, Finance will follow up.
 
 Shape follows samples-python ``hello_nexus/caller/workflows.py`` (Nexus client
 created in the Workflow, ``execute_operation`` awaited) and our own
@@ -41,6 +51,7 @@ from temporalio.exceptions import NexusOperationError
 
 with workflow.unsafe.imports_passed_through():
     from finance_a2a_api import (
+        APPROVAL_WAIT_LIMIT,
         ENDPOINT,
         A2ATask,
         AgentCard,
@@ -57,11 +68,10 @@ A2A_MODES: tuple[A2AMode, ...] = ("tool", "handoff")
 
 #: The discovery call is a sync operation: Finance must answer within 10 s.
 CARD_TIMEOUT = timedelta(seconds=30)
-#: One A2A task, end to end. Above Finance's 24 h approval wait, so the caller
-#: gets an A2A ``failed`` task rather than a Nexus timeout (plan §3.3, ADR-0009
-#: at v0.6; ``SUPPORT_NEXUS_SEND_TIMEOUT`` documents the value, but Workflow
-#: code can't read the environment, so it is a constant here).
-SEND_MESSAGE_TIMEOUT = timedelta(hours=25)
+#: One A2A task, end to end, when the starter passes no budget: Finance's published
+#: approval limit plus 1 h (plan §3.3, ADR-0009). The starter's
+#: ``SUPPORT_NEXUS_SEND_TIMEOUT`` arrives as a Workflow input and overrides it.
+SEND_MESSAGE_TIMEOUT = APPROVAL_WAIT_LIMIT + timedelta(hours=1)
 #: Prefix of every Nexus operation summary (Web UI label of the hop, Q21).
 HOP_LABEL = "A2A → Finance Refund Agent"
 #: ``state`` of an exchange whose Nexus operation itself failed (not an A2A state).
@@ -87,6 +97,24 @@ class A2AExchange:
     refund_id: str | None = None
 
 
+#: What the Supervisor must do with each terminal state other than ``completed``.
+NEXT_STEP = {
+    "rejected": (
+        "Finance rejected the refund, so no refund was issued. Apologise to the "
+        "customer, give Finance's reason, and do not promise a refund."
+    ),
+    "failed": (
+        "Finance could not reach a decision (for example, no approver decided in "
+        "time), so no refund was issued. Apologise and tell the customer that the "
+        "request has been escalated to the Finance team, who will follow up."
+    ),
+    "canceled": (
+        "Finance canceled the request, so no refund was issued. Apologise and tell "
+        "the customer that a member of the Finance team will follow up."
+    ),
+}
+
+
 def tool_result(exchange: A2AExchange) -> str:
     """What the Supervisor sees as the result of asking Finance."""
     if exchange.state == UNREACHABLE:
@@ -98,6 +126,8 @@ def tool_result(exchange: A2AExchange) -> str:
     text = f"Finance agent, A2A task {exchange.task_id}: state={exchange.state}. {exchange.reply}"
     if exchange.refund_id:
         text += f" refund_confirmation: refund_id={exchange.refund_id}."
+    if exchange.state in NEXT_STEP:
+        text += f" Next step: {NEXT_STEP[exchange.state]}"
     return text
 
 
@@ -113,8 +143,10 @@ def card_brief(card: AgentCard) -> str:
 class FinancePeer:
     """The Finance Refund agent as seen from the Support Supervisor Workflow."""
 
-    def __init__(self) -> None:
+    def __init__(self, send_timeout: timedelta = SEND_MESSAGE_TIMEOUT) -> None:
         self._client = workflow.create_nexus_client(service=FinanceAgentA2A, endpoint=ENDPOINT)
+        #: ``schedule_to_close_timeout`` of every ``send_message`` (ADR-0009).
+        self.send_timeout = send_timeout
         self.card: AgentCard | None = None
         self.exchanges: list[A2AExchange] = []
 
@@ -153,7 +185,7 @@ class FinancePeer:
             task: A2ATask = await self._client.execute_operation(  # ← the A2A hop
                 FinanceAgentA2A.send_message,
                 msg,
-                schedule_to_close_timeout=SEND_MESSAGE_TIMEOUT,
+                schedule_to_close_timeout=self.send_timeout,
                 summary=(
                     f"{HOP_LABEL}: send_message (refund order {order_id} "
                     f"${amount_usd:.2f}) via {via}"

@@ -30,6 +30,15 @@ model calls are Temporal Activities (the plugin's ``invoke_model``).
 Finance is **not** a child Workflow: it lives in another namespace, on another
 team's Worker; the server routes the call through the endpoint ``finance-agent``.
 
+- v0.6: Finance may answer ``input-required`` and wait hours for a human
+  approver. Nothing changes in this Workflow's shape: the ``send_message``
+  operation stays open (one pending Nexus operation in ``describe``) and the
+  Support Worker may be stopped meanwhile; the completion wakes the Workflow
+  when Finance decides. The third input ``nexus_send_timeout``
+  (``SUPPORT_NEXUS_SEND_TIMEOUT``, default 25h) is the budget for that wait
+  (ADR-0009). ``rejected``/``failed`` tasks and Nexus errors each come back to
+  the Supervisor with an explicit next step (apology, escalation).
+
 **Incompatible with v0.3 histories** (the command sequence changed: the first
 command is now a Nexus operation). Open v0.3 runs on the unversioned dev queue
 must finish or be terminated first; ``tests/histories/v0.3/`` keeps them to show
@@ -66,9 +75,17 @@ from support_agent.agents import (
     sub_agent_tools,
     submit_refund_request_tool,
 )
-from support_agent.finance_peer import A2A_MODES, FinancePeer, card_brief, tool_result
+from support_agent.durations import format_duration, parse_duration
+from support_agent.finance_peer import (
+    A2A_MODES,
+    SEND_MESSAGE_TIMEOUT,
+    FinancePeer,
+    card_brief,
+    tool_result,
+)
 
 with workflow.unsafe.imports_passed_through():
+    from finance_a2a_api import APPROVAL_WAIT_LIMIT
     from support_agent.activities import say_hello
 
 #: An answer from the Return Policy agent that makes a refund eligible: the verdict
@@ -87,12 +104,22 @@ class SupportSupervisorWorkflow:
     """Support Supervisor agent plus its sub-agents; asks Finance for refunds (A2A over Nexus)."""
 
     @workflow.init
-    def __init__(self, ticket: str, a2a_mode: str = "tool") -> None:
+    def __init__(self, ticket: str, a2a_mode: str = "tool", nexus_send_timeout: str = "") -> None:
         self._mode = a2a_mode
         self._sub_agent_runs: list[SubAgentRun] = []
         self._captured: list[RefundRequest] = []
         self._guard_reprompts = 0
-        self.finance = FinancePeer()
+        # Every input is a string, so a start with fewer inputs (v0.5 histories,
+        # `temporal workflow start` with two --input) still decodes correctly: the
+        # SDK drops type hints when the payload count differs from the parameters.
+        self._budget_error = ""
+        budget = SEND_MESSAGE_TIMEOUT
+        if nexus_send_timeout:
+            try:
+                budget = parse_duration(nexus_send_timeout)
+            except ValueError as err:
+                self._budget_error = str(err)
+        self.finance = FinancePeer(send_timeout=budget)
         tools = sub_agent_tools(self._sub_agent_runs.append)
         if a2a_mode == "handoff":
             tools.append(submit_refund_request_tool(self._captured.append))
@@ -112,12 +139,27 @@ class SupportSupervisorWorkflow:
         return tool_result(exchange)
 
     @workflow.run
-    async def run(self, ticket: str, a2a_mode: str = "tool") -> str:
+    async def run(self, ticket: str, a2a_mode: str = "tool", nexus_send_timeout: str = "") -> str:
         if a2a_mode not in A2A_MODES:
             raise ApplicationError(
                 f"a2a_mode must be one of {A2A_MODES}, got {a2a_mode!r}",
                 type="InvalidA2AMode",
                 non_retryable=True,
+            )
+        if self._budget_error:
+            raise ApplicationError(
+                f"nexus_send_timeout: {self._budget_error}",
+                type="InvalidNexusSendTimeout",
+                non_retryable=True,
+            )
+        budget = self.finance.send_timeout
+        if budget < APPROVAL_WAIT_LIMIT:
+            # Allowed (tests and demos shorten it), but then a slow approver shows up
+            # as a Nexus timeout instead of Finance's own "failed" answer (ADR-0009).
+            workflow.logger.warning(
+                "Nexus budget %s is below Finance's published approval limit %s",
+                format_duration(budget),
+                format_duration(APPROVAL_WAIT_LIMIT),
             )
         workflow.logger.info("Support ticket received (A2A mode %s): %s", a2a_mode, ticket)
         # A2A discovery first, so the hop is visible from the first step.
@@ -175,6 +217,7 @@ class SupportSupervisorWorkflow:
         """The A2A side: mode, Finance's Agent Card, each exchange, guard re-prompts."""
         return {
             "mode": self._mode,
+            "send_timeout": format_duration(self.finance.send_timeout),
             "agent_card": asdict(self.finance.card) if self.finance.card else None,
             "exchanges": [asdict(e) for e in self.finance.exchanges],
             "captured": [asdict(r) for r in self._captured],

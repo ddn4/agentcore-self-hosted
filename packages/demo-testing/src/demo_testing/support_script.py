@@ -1,5 +1,9 @@
 """A scripted Support team: answers each ``invoke_model`` by the caller's system prompt.
 
+v0.6: the reply follows Finance's terminal state: ``completed`` quotes the
+refund ID, ``rejected`` apologises, ``failed`` apologises and escalates, an
+unreachable Finance apologises (Finance will follow up).
+
 v0.5: the Supervisor part also talks to Finance. In ``tool`` mode it calls
 ``ask_finance_agent`` after an ELIGIBLE decision and quotes the refund ID from
 the Finance agent's answer; in ``handoff`` mode it calls the capture tool
@@ -118,6 +122,17 @@ def _final_reply(facts: str, finance: str) -> str:
         return (
             f"{SCRIPTED} {facts} It is eligible for a refund, and the Finance agent has "
             f"issued refund {refund.group(0)}."
+        )
+    if "state=rejected" in finance:
+        return (
+            f"{SCRIPTED} {facts} I'm sorry: the Finance team reviewed your request and "
+            f"did not approve the refund, so no refund was issued. Finance said: {finance}"
+        )
+    if "state=failed" in finance:
+        return (
+            f"{SCRIPTED} {facts} I'm sorry: Finance could not reach a decision on your "
+            "refund, so none was issued yet. I have escalated it to the Finance team, "
+            f"who will follow up. Finance said: {finance}"
         )
     if "could not process" in finance:
         return (

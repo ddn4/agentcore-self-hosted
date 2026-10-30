@@ -12,6 +12,7 @@ in the code defaults.
 from __future__ import annotations
 
 import os
+from datetime import timedelta
 from typing import Any, Final
 
 from botocore.config import Config as BotocoreConfig
@@ -20,6 +21,9 @@ from strands.models.bedrock import DEFAULT_READ_TIMEOUT
 from temporalio.client import Client, Plugin
 from temporalio.envconfig import ClientConfig, ClientConnectConfig
 from temporalio.strands_agents import StrandsPlugin
+
+from finance_a2a_api import APPROVAL_WAIT_LIMIT
+from support_agent.durations import format_duration, parse_duration
 
 #: Namespace this service's Workers poll.
 NAMESPACE: Final[str] = "agents"
@@ -36,6 +40,26 @@ DEFAULT_EFFORT: Final[str] = "medium"
 def task_queue() -> str:
     """Task queue for this service's Worker."""
     return os.environ.get("SUPPORT_TASK_QUEUE", "support-dev-tq")
+
+
+#: Headroom above Finance's published approval limit (ADR-0009): 24 h + 1 h = 25 h.
+NEXUS_BUDGET_HEADROOM: Final[timedelta] = timedelta(hours=1)
+#: Default caller budget for one A2A task (``SUPPORT_NEXUS_SEND_TIMEOUT``).
+DEFAULT_NEXUS_SEND_TIMEOUT: Final[str] = format_duration(
+    APPROVAL_WAIT_LIMIT + NEXUS_BUDGET_HEADROOM
+)
+
+
+def nexus_send_timeout() -> str:
+    """Support's ``send_message`` budget (``SUPPORT_NEXUS_SEND_TIMEOUT``, default 25h).
+
+    Text, because it is passed to ``SupportSupervisorWorkflow`` as its third input
+    (Workflow code can't read the environment; as an input it is in history). The
+    starter (``scripts/demo/case-a.sh``, the e2e test) reads it from here.
+    """
+    raw = os.environ.get("SUPPORT_NEXUS_SEND_TIMEOUT", "").strip() or DEFAULT_NEXUS_SEND_TIMEOUT
+    parse_duration(raw)  # fail fast on a typo
+    return raw
 
 
 def model_id() -> str:

@@ -1,7 +1,7 @@
 # honcho -f Procfile.dev start   (make dev)
 # v0.5: dev server, payments-mock, Finance worker and Support worker (real model: needs AWS),
 # smoke caller worker, and the finance-agent Nexus endpoint (applied once the server answers).
-# Then: make case-a / make case-b / make timeline. Offline: make worker-support-scripted and
+# Then: make case-a / make case-b (then make approve WF=support-2077) / make timeline. Offline: make worker-support-scripted and
 # make worker-finance-scripted instead of the two model workers.
 dev-server: scripts/dev-server.sh run
 payments-mock: uv run --frozen python -m payments_mock.server

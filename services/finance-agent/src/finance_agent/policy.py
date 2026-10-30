@@ -4,9 +4,10 @@ Pure functions, imported by Workflow code (deterministic, no I/O). The Finance
 Refund agent's model writes a risk assessment that must contain ``RISK=LOW`` or
 ``RISK=HIGH``; the decision to move money is this ``if``, not the model's.
 
-v0.4 is **auto-approve only**: a request that needs a human approver is
-answered with task state ``rejected``. v0.6 turns that branch into
-``input-required`` plus ``approve``/``reject`` signals.
+v0.4 answered a request that needs a human approver with task state
+``rejected``. From v0.6 that branch is ``input-required``: the task Workflow
+waits for an ``approve`` or ``reject`` signal carrying an
+:class:`ApproverDecision` (ADR-0002), for at most the approval timeout.
 """
 
 from __future__ import annotations
@@ -34,6 +35,19 @@ def decide(amount_usd: float, risk: Risk) -> Decision:
     if amount_usd > AUTO_APPROVE_LIMIT_USD or risk == "HIGH":
         return "needs_approver"
     return "auto_approve"
+
+
+@dataclass
+class ApproverDecision:
+    """Input of the ``approve`` and ``reject`` signals: who decided, and why.
+
+    One dataclass, not bare strings, so fields can be added later without
+    breaking senders (samples-python ``message_passing/introduction``
+    ``ApproveInput``). From the CLI: ``--input '{"approver": "dana.finance"}'``.
+    """
+
+    approver: str
+    comment: str = ""
 
 
 @dataclass(frozen=True)

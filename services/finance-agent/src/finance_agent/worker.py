@@ -34,19 +34,23 @@ def build_worker(
     *,
     task_queue: str | None = None,
     activity_executor: Executor | None = None,
+    approval_timeout: str | None = None,
     **worker_kwargs: object,
 ) -> Worker:
     """The Finance Worker: Workflows, Activities and the FinanceAgentA2A Nexus handler.
 
     ``activity_executor`` runs the synchronous Activities; the caller owns its
     lifetime (a default one is created for short-lived test Workers).
+    ``approval_timeout`` defaults to ``FINANCE_APPROVAL_TIMEOUT`` (``config``).
     """
     return Worker(
         client,
         task_queue=task_queue or config.task_queue(),
         workflows=WORKFLOWS,
         activities=ACTIVITIES,
-        nexus_service_handlers=[FinanceAgentA2AHandler()],
+        nexus_service_handlers=[
+            FinanceAgentA2AHandler(approval_timeout=approval_timeout or config.approval_timeout())
+        ],
         activity_executor=activity_executor or ThreadPoolExecutor(max_workers=8),
         **worker_kwargs,  # type: ignore[arg-type]
     )
@@ -59,7 +63,7 @@ async def main() -> None:
     client = await config.connect(plugins=[config.build_strands_plugin()])
     logging.info(
         "finance worker: namespace=%s task_queue=%s model=%s (key %r) region=%s effort=%s "
-        "payments=%s",
+        "payments=%s approval_timeout=%s",
         client.namespace,
         config.task_queue(),
         config.model_id(),
@@ -67,6 +71,7 @@ async def main() -> None:
         config.aws_region(),
         config.effort(),
         config.payments_url(),
+        config.approval_timeout(),
     )
     with ThreadPoolExecutor(max_workers=16) as executor:
         await build_worker(client, activity_executor=executor).run()

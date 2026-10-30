@@ -23,6 +23,7 @@ _ENV_KEYS = (
     "BEDROCK_EFFORT",
     "AWS_REGION",
     "SUPPORT_TASK_QUEUE",
+    "SUPPORT_NEXUS_SEND_TIMEOUT",
 )
 
 
@@ -104,3 +105,19 @@ def test_unknown_effort_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BEDROCK_EFFORT", "turbo")
     with pytest.raises(ValueError, match="BEDROCK_EFFORT"):
         config.bedrock_model()
+
+
+def test_nexus_send_timeout_defaults_to_finance_limit_plus_one_hour() -> None:
+    """ADR-0009: 25 h = Finance's published APPROVAL_WAIT_LIMIT (24 h) + 1 h."""
+    assert config.nexus_send_timeout() == "25h" == config.DEFAULT_NEXUS_SEND_TIMEOUT
+
+
+def test_nexus_send_timeout_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SUPPORT_NEXUS_SEND_TIMEOUT", "60s")
+    assert config.nexus_send_timeout() == "60s"
+
+
+def test_nexus_send_timeout_typo_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SUPPORT_NEXUS_SEND_TIMEOUT", "25 hours")
+    with pytest.raises(ValueError):
+        config.nexus_send_timeout()

@@ -33,6 +33,7 @@ from temporalio.client import Client, WorkflowExecutionStatus, WorkflowHistory
 from temporalio.worker import Worker
 
 from demo_testing import AGENT_SERVICES_NAMESPACE
+from demo_testing.a2a_tasks import wait_for_a2a_task
 from demo_testing.finance_script import finance_responder
 from demo_testing.history import nexus_operations
 from demo_testing.nexus import create_nexus_endpoint, delete_nexus_endpoint, endpoint_description
@@ -50,6 +51,7 @@ from finance_a2a_api import (
     status_text,
 )
 from finance_agent import agents
+from finance_agent.policy import ApproverDecision
 from finance_agent.worker import build_worker
 from finance_agent.workflows import FinanceAgentTaskWorkflow
 from payments_mock.server import PaymentsServer, serve_in_thread
@@ -192,11 +194,35 @@ async def test_smoke_1042_crosses_namespaces_and_completes(
     assert (await handle.query(FinanceAgentTaskWorkflow.get_task)) == task
 
 
-async def test_smoke_2077_is_rejected_by_the_limit(a2a: tuple[Client, Client]) -> None:
-    caller, _ = a2a
-    _, task = await run_smoke(caller, 450.0, "2077")
-    assert task.status.state == "rejected"
-    assert "needs a Finance approver" in status_text(task)
+@pytest.mark.parametrize("verdict", ["approve", "reject"])
+async def test_smoke_2077_waits_for_a_human_over_the_limit(
+    a2a: tuple[Client, Client], payments: tuple[PaymentsServer, str], verdict: str
+) -> None:
+    """v0.6, no LLM on the caller: $450 -> input-required -> approve | reject."""
+    caller, handler = a2a
+    wf_id = f"smoke-2077-{verdict}-{uuid.uuid4().hex[:8]}"
+    handle = await caller.start_workflow(
+        A2ASmokeWorkflow.run,
+        args=[450.0, "2077"],
+        id=wf_id,
+        task_queue=SMOKE_TQ,
+        execution_timeout=timedelta(seconds=60),
+    )
+    waiting = await wait_for_a2a_task(handler, f"a2a-task-{wf_id}", "input-required")
+    assert "needs a Finance approver" in status_text(waiting)
+    signal = (
+        FinanceAgentTaskWorkflow.approve
+        if verdict == "approve"
+        else FinanceAgentTaskWorkflow.reject
+    )
+    await handler.get_workflow_handle(waiting.id).signal(signal, ApproverDecision("dana.finance"))
+    task = await handle.result()
+    refunds = [r for r in payments[0].ledger.all() if r.idempotency_key == task.id]
+    if verdict == "approve":
+        assert task.status.state == "completed" and len(refunds) == 1
+        assert first_data(task.artifacts[0].parts)["approved_by"] == "dana.finance"  # type: ignore[index]
+    else:
+        assert task.status.state == "rejected" and refunds == []
 
 
 async def test_same_context_sent_twice_runs_one_task(

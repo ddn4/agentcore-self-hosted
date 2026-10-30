@@ -15,6 +15,7 @@ through a golden file.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Final
 
 from finance_a2a_api.a2a import AgentCard, AgentSkill
@@ -25,15 +26,21 @@ ENDPOINT: Final[str] = "finance-agent"
 SERVICE: Final[str] = "FinanceAgentA2A"
 #: Refunds up to this amount (inclusive) may be issued without a human approver.
 AUTO_APPROVE_LIMIT_USD: Final[float] = 100.0
+#: The longest Finance waits for a human approver before the task ends ``failed``
+#: (v0.6, ADR-0009). Published, so a caller can size its own Nexus timeout above it:
+#: Finance's ``FINANCE_APPROVAL_TIMEOUT`` may be shorter, never longer.
+APPROVAL_WAIT_LIMIT: Final[timedelta] = timedelta(hours=24)
 
 FINANCE_AGENT_CARD: Final[AgentCard] = AgentCard(
     name="Finance Refund Agent",
-    version="1.0.0",
+    version="1.1.0",
     description=(
         "Owned by Finance. Assesses refund requests (fraud risk, refund history, "
         "approval limits) and issues refunds through the payments system. Refunds "
         f"above ${AUTO_APPROVE_LIMIT_USD:.0f}, or at HIGH fraud risk, need a human "
-        "Finance approver."
+        "Finance approver: the task waits in state input-required for up to "
+        f"{APPROVAL_WAIT_LIMIT.total_seconds() / 3600:.0f} h, then ends failed if nobody "
+        "decided."
     ),
     skills=[
         AgentSkill(

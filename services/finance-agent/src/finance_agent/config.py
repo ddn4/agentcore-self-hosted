@@ -21,6 +21,9 @@ from temporalio.client import Client, Plugin
 from temporalio.envconfig import ClientConfig, ClientConnectConfig
 from temporalio.strands_agents import StrandsPlugin
 
+from finance_a2a_api import APPROVAL_WAIT_LIMIT
+from finance_agent.durations import format_duration, parse_duration
+
 #: Namespace this service's Workers poll.
 NAMESPACE: Final[str] = "agent-services"
 #: Model key every `TemporalAgent` in this service uses (`model="bedrock"`).
@@ -41,6 +44,27 @@ def task_queue() -> str:
 def payments_url() -> str:
     """Base URL of the payments system (``make payments-mock`` locally; a Service on k8s)."""
     return os.environ.get("PAYMENTS_URL", "http://127.0.0.1:8081").rstrip("/")
+
+
+def approval_timeout() -> str:
+    """How long a refund waits for a human approver (``FINANCE_APPROVAL_TIMEOUT``, default 24h).
+
+    Returned as text (``"24h"``): the Nexus handler passes it to the task Workflow as
+    an input, where it is parsed again, so the value is visible in history. Never
+    above the limit Finance publishes in its Agent Card (``APPROVAL_WAIT_LIMIT``),
+    because callers size their own Nexus timeout from that limit (ADR-0009).
+    """
+    raw = os.environ.get("FINANCE_APPROVAL_TIMEOUT", "").strip() or format_duration(
+        APPROVAL_WAIT_LIMIT
+    )
+    value = parse_duration(raw)
+    if value > APPROVAL_WAIT_LIMIT:
+        raise ValueError(
+            f"FINANCE_APPROVAL_TIMEOUT={raw} is above the published approval limit "
+            f"{format_duration(APPROVAL_WAIT_LIMIT)} (finance_a2a_api.APPROVAL_WAIT_LIMIT); "
+            "callers budget their Nexus timeout from that limit (ADR-0009)"
+        )
+    return raw
 
 
 def handled_by() -> str:

@@ -20,6 +20,13 @@ existing Workflow). After the task has closed, a resend starts a new run of the
 same Workflow ID (default ``ALLOW_DUPLICATE`` reuse); no money moves twice,
 because ``issue_refund`` uses the task ID as the payments idempotency key and
 payments answers with the original refund (``replayed: true``).
+
+**Approval timeout (v0.6, ADR-0009).** The handler passes the Finance Worker's
+``FINANCE_APPROVAL_TIMEOUT`` (text such as ``"24h"``) to the task Workflow in its
+memo (``approval_timeout``): handler code may read configuration, Workflow code
+may not, and the memo is in the task's start event, so it replays. (Why not a
+second input: see ``workflows.APPROVAL_TIMEOUT_MEMO``.) ``config.approval_timeout()``
+refuses values above the limit published in the Agent Card.
 """
 
 from __future__ import annotations
@@ -40,7 +47,11 @@ from finance_a2a_api import (
     FinanceAgentA2A,
     first_data,
 )
-from finance_agent.workflows import FinanceAgentTaskWorkflow
+from finance_agent.workflows import (
+    APPROVAL_TIMEOUT_MEMO,
+    DEFAULT_APPROVAL_TIMEOUT,
+    FinanceAgentTaskWorkflow,
+)
 
 TASK_ID_PREFIX = "a2a-task-"
 #: Context IDs become part of a Workflow ID: keep them short and printable.
@@ -54,6 +65,10 @@ def task_id(context_id: str) -> str:
 
 @service_handler(service=FinanceAgentA2A)
 class FinanceAgentA2AHandler:
+    def __init__(self, *, approval_timeout: str = DEFAULT_APPROVAL_TIMEOUT) -> None:
+        #: How long a task waits in ``input-required`` (a Workflow input, e.g. ``"24h"``).
+        self.approval_timeout = approval_timeout
+
     @sync_operation
     async def get_agent_card(
         self, ctx: StartOperationContext, input: AgentCardRequest
@@ -84,6 +99,7 @@ class FinanceAgentA2AHandler:
             input,
             id=task_id(input.context_id),
             id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+            memo={APPROVAL_TIMEOUT_MEMO: self.approval_timeout},
             static_summary=(
                 f"A2A task from Support ({input.context_id}): refund order "
                 f"{data.get('order_id', '?')} {shown}"

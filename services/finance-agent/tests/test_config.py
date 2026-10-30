@@ -23,6 +23,7 @@ _ENV_KEYS = (
     "BEDROCK_EFFORT",
     "AWS_REGION",
     "FINANCE_TASK_QUEUE",
+    "FINANCE_APPROVAL_TIMEOUT",
 )
 
 
@@ -104,3 +105,23 @@ def test_unknown_effort_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BEDROCK_EFFORT", "turbo")
     with pytest.raises(ValueError, match="BEDROCK_EFFORT"):
         config.bedrock_model()
+
+
+def test_approval_timeout_defaults_to_the_published_limit() -> None:
+    assert config.approval_timeout() == "24h"
+
+
+@pytest.mark.parametrize("value", ["5s", "30m", "1h30m", "24h"])
+def test_approval_timeout_from_env(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("FINANCE_APPROVAL_TIMEOUT", value)
+    assert config.approval_timeout() == value
+
+
+@pytest.mark.parametrize("value", ["25h", "2d", "soon", "0s", "-5m"])
+def test_approval_timeout_above_the_card_limit_or_invalid_is_refused(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """ADR-0009: callers size their Nexus timeout from APPROVAL_WAIT_LIMIT (24 h)."""
+    monkeypatch.setenv("FINANCE_APPROVAL_TIMEOUT", value)
+    with pytest.raises(ValueError):
+        config.approval_timeout()

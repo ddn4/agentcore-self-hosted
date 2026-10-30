@@ -15,24 +15,39 @@ code. The real Finance Worker, across two namespaces, is in
 Test shape follows samples-python tests/strands_plugin/tools_test.py (plugin
 appended to the client, ``max_cached_workflows=0`` so every Workflow Task
 replays from history) and tests/hello_nexus/hello_nexus_test.py (endpoint per test).
+
+v0.6: the stub Finance has the approval rule (input-required, approve/reject
+signals, approval timeout). **The v1 time-skipping server does not skip time
+while a caller has an async Nexus operation open** (ledger 56): its timers fire
+in real time. So the Supervisor-side approval tests use seconds, not hours; the
+24 h skip is tested on Finance's own Workflow (``test_task_workflow.py``) and the
+long real-time wait by ``scripts/verify/v0.6-human-in-the-loop.sh``.
 """
 
 from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
 import pytest
 from temporalio.api.enums.v1 import EventType
-from temporalio.client import Client, WorkflowFailureError, WorkflowHistory
+from temporalio.client import (
+    Client,
+    WorkflowExecutionStatus,
+    WorkflowFailureError,
+    WorkflowHistory,
+)
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Replayer
 
-from demo_testing.finance_stub import StubFinanceHandler, stub_finance
+from demo_testing.a2a_tasks import wait_for_a2a_task
+from demo_testing.finance_stub import StubDecision, StubFinanceHandler, stub_finance
 from demo_testing.history import (
     activity_runs,
     attributed_activities,
@@ -99,6 +114,20 @@ TOOL_MODE_TIMELINE = [CARD, *NESTED_SEQUENCE, SUPERVISOR, SEND, SUPERVISOR]
 HANDOFF_TIMELINE = [CARD, *NESTED_SEQUENCE, SUPERVISOR, SUPERVISOR, SEND, SUPERVISOR]
 
 
+#: Plays the Finance approver against the stub: (client, Finance task ID) -> None.
+Approver = Callable[[Client, str], Awaitable[None]]
+
+
+def approver(verdict: str, name: str = "dana.finance") -> Approver:
+    """Wait until the stub task is input-required, then signal ``approve``/``reject``."""
+
+    async def act(client: Client, task_id: str) -> None:
+        await wait_for_a2a_task(client, task_id, "input-required")
+        await client.get_workflow_handle(task_id).signal(verdict, StubDecision(name))
+
+    return act
+
+
 def team() -> ScriptedModel:
     return ScriptedModel(support_responder(PROMPTS))
 
@@ -123,27 +152,33 @@ async def run_ticket(
     mode: str = "tool",
     *,
     finance_fails: bool = False,
+    approval_timeout: timedelta = timedelta(hours=24),
+    nexus_send_timeout: str | None = None,
+    finance_approver: Approver | None = None,
 ) -> Run:
     client = client_with_plugin(env.client, scripted_plugin(model))
     task_queue = f"support-test-{uuid.uuid4()}"
     workflow_id = f"support-test-{uuid.uuid4()}"
+    args = [ticket, mode] if nexus_send_timeout is None else [ticket, mode, nexus_send_timeout]
     async with (
-        stub_finance(env.client, fail=finance_fails) as finance,
+        stub_finance(env.client, fail=finance_fails, approval_timeout=approval_timeout) as finance,
         build_worker(
             client, task_queue=task_queue, activity_executor=executor, max_cached_workflows=0
         ),
     ):
         handle = await client.start_workflow(
             SupportSupervisorWorkflow.run,
-            args=[ticket, mode],
+            args=args,
             id=workflow_id,
             task_queue=task_queue,
         )
+        if finance_approver is not None:
+            await finance_approver(env.client, f"a2a-task-{workflow_id}")
         result = await handle.result()
         history = await handle.fetch_history()
         runs = await handle.query(SupportSupervisorWorkflow.sub_agent_runs)
         a2a = await handle.query(SupportSupervisorWorkflow.a2a)
-    return Run(result, history, client, runs, a2a, finance, workflow_id)
+    return Run(result, history, client, runs, a2a, finance, workflow_id, {"model": model})
 
 
 async def test_case_a_tool_mode_asks_finance_from_inside_the_supervisor_turn(
@@ -217,7 +252,7 @@ async def test_supervisor_reads_the_discovered_agent_card(
     await run_ticket(time_skipping_env, model, activity_executor)
     first = next(c for c in model.calls if c.system_prompt == agents.SUPERVISOR_PROMPT)
     assert first.last_user_text.startswith(f"Customer ticket: {CASE_A_TICKET}\n\n")
-    assert "Peer agent discovered over A2A: Finance Refund Agent v1.0.0" in first.last_user_text
+    assert "Peer agent discovered over A2A: Finance Refund Agent v1.1.0" in first.last_user_text
     assert "refund:" in first.last_user_text  # the card's skill id and description
 
 
@@ -262,20 +297,99 @@ async def test_each_agent_sees_only_its_own_prompt_and_tools(
     assert "state=completed" in last_supervisor.tool_results[2]
 
 
-async def test_case_b_2077_finance_rejects_and_the_reply_says_escalated(
+@pytest.mark.parametrize("mode", ["tool", "handoff"])
+async def test_case_b_2077_waits_for_the_approver_then_quotes_the_refund(
+    time_skipping_env: WorkflowEnvironment, activity_executor: ThreadPoolExecutor, mode: str
+) -> None:
+    """v0.6: $450 -> Finance input-required -> approve -> the Supervisor quotes the refund."""
+    run = await run_ticket(
+        time_skipping_env,
+        team(),
+        activity_executor,
+        ticket=CASE_B_TICKET,
+        mode=mode,
+        finance_approver=approver("approve"),
+    )
+    assert "$450.00" in run.result and "R-STUB-2077" in run.result
+    assert "FINANCE_MANAGER_APPROVAL_REQUIRED" in run.runs[1]["answer"]
+    (exchange,) = run.a2a["exchanges"]
+    assert (exchange["state"], exchange["refund_id"]) == ("completed", "R-STUB-2077")
+    assert "approved by dana.finance" in exchange["reply"]
+    # Same shape as Case A: the long wait adds nothing to the Supervisor's history.
+    expected = TOOL_MODE_TIMELINE if mode == "tool" else HANDOFF_TIMELINE
+    assert timeline(run.history) == expected
+    assert count_events(run.history, EventType.EVENT_TYPE_TIMER_STARTED) == 0
+
+
+@pytest.mark.parametrize("mode", ["tool", "handoff"])
+async def test_case_b_rejected_by_the_approver_gets_an_apology(
+    time_skipping_env: WorkflowEnvironment, activity_executor: ThreadPoolExecutor, mode: str
+) -> None:
+    run = await run_ticket(
+        time_skipping_env,
+        team(),
+        activity_executor,
+        ticket=CASE_B_TICKET,
+        mode=mode,
+        finance_approver=approver("reject"),
+    )
+    (exchange,) = run.a2a["exchanges"]
+    assert exchange["state"] == "rejected" and exchange["refund_id"] is None
+    assert "sorry" in run.result.lower() and "no refund was issued" in run.result
+    assert "R-STUB" not in run.result
+    # The Supervisor was told what to do with a rejection.
+    calls = [c for c in run_supervisor_calls(run) if c.tool_results or c.last_user_text]
+    assert any("Next step: Finance rejected the refund" in str(c.messages) for c in calls)
+
+
+async def test_case_b_nobody_approves_finance_fails_and_the_reply_escalates(
     time_skipping_env: WorkflowEnvironment, activity_executor: ThreadPoolExecutor
 ) -> None:
-    """$450 is over Finance's auto-approval limit: Finance rejects (v0.6 adds approval)."""
-    for mode in ("tool", "handoff"):
-        run = await run_ticket(
-            time_skipping_env, team(), activity_executor, ticket=CASE_B_TICKET, mode=mode
-        )
-        assert "$450.00" in run.result
-        assert "escalated" in run.result and "Finance manager" in run.result
-        assert "FINANCE_MANAGER_APPROVAL_REQUIRED" in run.runs[1]["answer"]
-        (exchange,) = run.a2a["exchanges"]
-        assert exchange["state"] == "rejected" and exchange["refund_id"] is None
-        assert SEND in timeline(run.history)
+    """Finance's approval wait ends first (here 2 s): an A2A ``failed`` task, not an error."""
+    run = await run_ticket(
+        time_skipping_env,
+        team(),
+        activity_executor,
+        ticket=CASE_B_TICKET,
+        approval_timeout=timedelta(seconds=2),
+        nexus_send_timeout="60s",
+    )
+    (exchange,) = run.a2a["exchanges"]
+    assert exchange["state"] == "failed" and exchange["refund_id"] is None
+    assert "sorry" in run.result.lower() and "escalated" in run.result
+    (send,) = [o for o in nexus_operations(run.history) if o.operation == "send_message"]
+    assert send.outcome == "completed", "Finance answered: the operation itself succeeded"
+
+
+async def test_caller_budget_shorter_than_finance_wait_is_a_nexus_timeout(
+    time_skipping_env: WorkflowEnvironment, activity_executor: ThreadPoolExecutor
+) -> None:
+    """Why ADR-0009 puts the caller's budget above Finance's: the other order is worse.
+
+    A 2 s caller budget against Finance's 1 h wait: the operation times out on the
+    caller (NexusOperationError, caught: apology, Finance will follow up) while the
+    Finance task is left waiting for an approver nobody will act on for Support.
+    """
+    run = await run_ticket(
+        time_skipping_env,
+        team(),
+        activity_executor,
+        ticket=CASE_B_TICKET,
+        approval_timeout=timedelta(hours=1),
+        nexus_send_timeout="2s",
+    )
+    (exchange,) = run.a2a["exchanges"]
+    assert exchange["state"] == "unreachable" and exchange["refund_id"] is None
+    assert "TimeoutError" in exchange["reply"]
+    assert "could not process the refund" in run.result and "follow up" in run.result
+    (send,) = [o for o in nexus_operations(run.history) if o.operation == "send_message"]
+    assert send.outcome == "timed out"
+    # The handler Workflow is not canceled by the caller's timeout: it still waits
+    # (its Worker is gone after the test, so describe rather than query).
+    orphan = await time_skipping_env.client.get_workflow_handle(
+        f"a2a-task-{run.workflow_id}"
+    ).describe()
+    assert orphan.status == WorkflowExecutionStatus.RUNNING
 
 
 @pytest.mark.parametrize("mode", ["tool", "handoff"])
@@ -465,6 +579,30 @@ async def test_send_message_has_the_25h_caller_budget(
         if e.event_type == EventType.EVENT_TYPE_NEXUS_OPERATION_SCHEDULED
     }
     assert timeouts == {"get_agent_card": 30, "send_message": 25 * 3600}
+    assert run.a2a["send_timeout"] == "25h"
+
+
+async def test_send_message_budget_is_the_third_workflow_input(
+    time_skipping_env: WorkflowEnvironment, activity_executor: ThreadPoolExecutor
+) -> None:
+    """SUPPORT_NEXUS_SEND_TIMEOUT reaches Workflow code as an input (in history)."""
+    run = await run_ticket(time_skipping_env, team(), activity_executor, nexus_send_timeout="90m")
+    (send,) = [
+        e.nexus_operation_scheduled_event_attributes.schedule_to_close_timeout.ToSeconds()
+        for e in run.history.events
+        if e.event_type == EventType.EVENT_TYPE_NEXUS_OPERATION_SCHEDULED
+        and e.nexus_operation_scheduled_event_attributes.operation == "send_message"
+    ]
+    assert send == 90 * 60 and run.a2a["send_timeout"] == "90m"
+
+
+async def test_bad_send_message_budget_fails_the_workflow(
+    time_skipping_env: WorkflowEnvironment, activity_executor: ThreadPoolExecutor
+) -> None:
+    with pytest.raises(WorkflowFailureError) as err:
+        await run_ticket(time_skipping_env, team(), activity_executor, nexus_send_timeout="later")
+    assert isinstance(err.value.cause, ApplicationError)
+    assert err.value.cause.type == "InvalidNexusSendTimeout"
 
 
 async def test_unknown_model_key_fails_the_model_activity(
@@ -507,7 +645,15 @@ async def test_scripted_history_replays_deterministically(
     ticket: str,
     mode: str,
 ) -> None:
-    run = await run_ticket(time_skipping_env, team(), activity_executor, ticket=ticket, mode=mode)
+    # Case B: the approver approves (an approval wait in the middle of the run).
+    run = await run_ticket(
+        time_skipping_env,
+        team(),
+        activity_executor,
+        ticket=ticket,
+        mode=mode,
+        finance_approver=approver("approve") if ticket == CASE_B_TICKET else None,
+    )
     # Replay with the same plugin set the Worker had (sandbox passthroughs and
     # pydantic converter come from the plugin). No model and no Finance are
     # called on replay: the Nexus results come from history, like Activities.
@@ -545,3 +691,14 @@ async def test_transcript_query_shows_the_supervisor_conversation(
     ]
     assert tool_uses == ["order_lookup_agent", "return_policy_agent", "ask_finance_agent"]
     assert transcript[-1]["content"][0]["text"] == result
+
+
+def run_supervisor_calls(run: Run) -> list[ModelCall]:
+    """The Supervisor's model calls in a run (from the scripted model)."""
+    model = run.extra.get("model")
+    assert isinstance(model, ScriptedModel)
+    return [
+        c
+        for c in model.calls
+        if c.system_prompt in (PROMPTS.supervisor, PROMPTS.supervisor_handoff)
+    ]

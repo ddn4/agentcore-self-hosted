@@ -30,7 +30,7 @@ PYTEST := $(UV) pytest
         verify clean worker-support worker-support-scripted case-a case-b record-histories spikes \
         spike-nested sub-agents worker-finance worker-finance-scripted worker-smoke payments-mock \
         nexus-endpoint agent-card agent-card-golden smoke task-state card spike-nexus-ts \
-        timeline a2a e2e
+        timeline a2a e2e approve reject pending result approval-report
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -115,8 +115,24 @@ worker-support-scripted: ## Same Support Worker with a scripted model (offline c
 case-a: ## Case A #1042: Supervisor -> sub-agents -> Finance over Nexus (WF=support-1042 SUPPORT_A2A_MODE=tool|handoff)
 	scripts/demo/case-a.sh $(or $(WF),support-1042)
 
-case-b: ## Case B #2077 ($450): Finance rejects over its limit until v0.6; reply says escalated (WF=support-2077)
+case-b: ## Case B #2077 ($450): starts it; Finance waits in input-required for a human (WF=support-2077 CASE_B_WAIT=1)
 	scripts/demo/case-b.sh $(or $(WF),support-2077)
+
+approve: ## Finance approver approves a task in input-required (WF=support-2077 APPROVER=dana.finance COMMENT=)
+	scripts/demo/approve.sh $(or $(WF),support-2077) $(or $(APPROVER),dana.finance) "$(COMMENT)"
+
+reject: ## Finance approver rejects a task in input-required (WF=support-2077 APPROVER=dana.finance COMMENT=)
+	scripts/demo/reject.sh $(or $(WF),support-2077) $(or $(APPROVER),dana.finance) "$(COMMENT)"
+
+pending: ## Support's side while Finance waits: status and pending Nexus operations (WF=support-2077)
+	temporal workflow describe --namespace agents --workflow-id $(or $(WF),support-2077) -o json \
+	  | jq '{status: .workflowExecutionInfo.status, pendingNexusOperations: [(.pendingNexusOperations // [])[] | {endpoint, service, operation, state, scheduleToCloseTimeout, scheduledTime}]}'
+
+result: ## Wait for and print a Support conversation's reply (WF=support-2077)
+	temporal workflow result --namespace agents --workflow-id $(or $(WF),support-2077)
+
+approval-report: ## How long Support waited for Finance's approver, from both histories (WF=support-2077)
+	$(UV) python scripts/approval_report.py $(or $(WF),support-2077)
 
 sub-agents: ## What each Support sub-agent answered in a run (WF=support-1042)
 	temporal workflow query --namespace agents --workflow-id $(or $(WF),support-1042) --type sub_agent_runs

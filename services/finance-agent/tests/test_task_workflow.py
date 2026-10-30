@@ -1,5 +1,10 @@
 """FinanceAgentTaskWorkflow (the A2A task) with a scripted Finance Refund agent.
 
+v0.6 adds the human approval: ``input-required``, the ``approve``/``reject``
+signals and the approval timeout. The time-skipping server makes the 24 h wait
+take milliseconds (temporal-developer testing.md: time-skipping for durable
+timers); signals and queries follow testing.md "Testing Signals and Queries".
+
 The ``workflow`` layer of plan §5: time-skipping test server, no AWS, no Nexus
 (the Nexus hop is covered by ``tests/test_a2a_nexus.py`` on the dev server).
 The ScriptedModel sits under the same ``"bedrock"`` key Opus 5.5 is pinned to.
@@ -12,21 +17,31 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
-from temporalio.client import Client, WorkflowHistory
+from temporalio.api.enums.v1 import EventType
+from temporalio.client import Client, WorkflowHandle, WorkflowHistory
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Replayer
 
+from demo_testing.a2a_tasks import wait_for_task_state
 from demo_testing.finance_script import finance_responder
 from demo_testing.history import activity_types, attributed_activities
 from demo_testing.scripted_model import ScriptedModel, client_with_plugin, scripted_plugin
 from finance_a2a_api import A2AMessage, A2ATask, first_data, refund_request, status_text, text_part
 from finance_agent import agents
+from finance_agent.policy import ApproverDecision
 from finance_agent.worker import WORKFLOWS, build_worker
-from finance_agent.workflows import FinanceAgentTaskWorkflow
+from finance_agent.workflows import (
+    APPROVAL_TIMEOUT_MEMO,
+    APPROVAL_TIMER,
+    FinanceAgentTaskWorkflow,
+)
 from payments_mock.server import PaymentsServer
 
 pytestmark = pytest.mark.workflow
@@ -48,11 +63,35 @@ def message(order_id: str, amount: float, context_id: str | None = None) -> A2AM
     )
 
 
+Approver = Callable[[WorkflowHandle[Any, A2ATask]], Awaitable[None]]
+
+
+def approve_as(name: str, comment: str = "") -> Approver:
+    """Wait for input-required, then signal ``approve`` (what scripts/demo/approve.sh does)."""
+
+    async def act(handle: WorkflowHandle[Any, A2ATask]) -> None:
+        await wait_for_task_state(handle, "input-required")
+        await handle.signal(FinanceAgentTaskWorkflow.approve, ApproverDecision(name, comment))
+
+    return act
+
+
+def reject_as(name: str, comment: str = "") -> Approver:
+    async def act(handle: WorkflowHandle[Any, A2ATask]) -> None:
+        await wait_for_task_state(handle, "input-required")
+        await handle.signal(FinanceAgentTaskWorkflow.reject, ApproverDecision(name, comment))
+
+    return act
+
+
 async def run_task(
     env: WorkflowEnvironment,
     executor: ThreadPoolExecutor,
     msg: A2AMessage,
     model: ScriptedModel | None = None,
+    *,
+    approver: Approver | None = None,
+    approval_timeout: str = "24h",
 ) -> tuple[A2ATask, WorkflowHistory, ScriptedModel]:
     model = model or ScriptedModel(finance_responder(agents.FINANCE_PROMPT))
     client: Client = client_with_plugin(env.client, scripted_plugin(model))
@@ -63,9 +102,12 @@ async def run_task(
         handle = await client.start_workflow(
             FinanceAgentTaskWorkflow.run,
             msg,
+            memo={APPROVAL_TIMEOUT_MEMO: approval_timeout},
             id=f"a2a-task-{msg.context_id}",
             task_queue=task_queue,
         )
+        if approver is not None:
+            await approver(handle)
         task = await handle.result()
         # The query reads the same task object the Workflow returned.
         assert await handle.query(FinanceAgentTaskWorkflow.get_task) == task
@@ -108,17 +150,97 @@ async def test_small_low_risk_refund_completes(
     assert all(c.tool_choice is None for c in model.calls)  # never forced (Opus 5.5)
 
 
-async def test_over_limit_is_rejected_without_moving_money(
+def _approval_timers(history: WorkflowHistory) -> list[float]:
+    return [
+        e.timer_started_event_attributes.start_to_fire_timeout.ToTimedelta().total_seconds()
+        for e in history.events
+        if e.event_type == EventType.EVENT_TYPE_TIMER_STARTED
+        and APPROVAL_TIMER in str(e.user_metadata.summary.data)
+    ]
+
+
+async def test_over_limit_waits_for_approval_then_completes(
     time_skipping_env: WorkflowEnvironment,
     activity_executor: ThreadPoolExecutor,
     payments: PaymentsServer,
 ) -> None:
-    task, history, _ = await run_task(time_skipping_env, activity_executor, message("2077", 450.0))
+    """$450 -> input-required -> approve(dana.finance) -> completed, one refund."""
+    msg = message("2077", 450.0)
+    seen: list[A2ATask] = []
+
+    async def approve(handle: WorkflowHandle[Any, A2ATask]) -> None:
+        seen.append(await wait_for_task_state(handle, "input-required"))
+        assert payments.ledger.all() == [], "no money moves before the approver decides"
+        await handle.signal(
+            FinanceAgentTaskWorkflow.approve, ApproverDecision("dana.finance", "photos checked")
+        )
+
+    task, history, _ = await run_task(time_skipping_env, activity_executor, msg, approver=approve)
+
+    (waiting,) = seen
+    assert "needs a Finance approver" in status_text(waiting)
+    assert "over the $100 auto-approval limit" in status_text(waiting)
+    assert f"approve or reject signal on {waiting.id}" in status_text(waiting)
+    assert task.status.state == "completed"
+    (refund,) = payments.ledger.all()
+    assert refund.idempotency_key == task.id  # the A2A task ID is the payments key
+    confirmation = first_data(task.artifacts[0].parts)
+    assert confirmation is not None
+    assert confirmation["approved_by"] == "dana.finance"
+    assert confirmation["refund_id"] == refund.refund_id and confirmation["amount_usd"] == 450.0
+    assert "approved by Finance approver dana.finance" in status_text(task)
+    # One durable timer: the approval wait, labelled, 24 h.
+    assert _approval_timers(history) == [24 * 3600]
+    assert attributed_activities(history)[-1] == (
+        "issue_refund [Payments: refund order 2077 $450.00]"
+    )
+
+
+async def test_reject_ends_the_task_rejected_without_moving_money(
+    time_skipping_env: WorkflowEnvironment,
+    activity_executor: ThreadPoolExecutor,
+    payments: PaymentsServer,
+) -> None:
+    task, history, _ = await run_task(
+        time_skipping_env,
+        activity_executor,
+        message("2077", 450.0),
+        approver=reject_as("dana.finance", "duplicate claim"),
+    )
     assert task.status.state == "rejected"
-    assert "needs a Finance approver" in status_text(task) and "$450.00" in status_text(task)
+    assert "rejected by Finance approver dana.finance: duplicate claim" in status_text(task)
     assert task.artifacts == []
     assert "issue_refund" not in activity_types(history)
     assert payments.ledger.all() == []
+
+
+async def test_no_decision_within_the_timeout_fails_the_task(
+    time_skipping_env: WorkflowEnvironment,
+    activity_executor: ThreadPoolExecutor,
+    payments: PaymentsServer,
+) -> None:
+    """Nobody answers: after 24 h (skipped) the task ends failed, no refund."""
+    task, history, _ = await run_task(time_skipping_env, activity_executor, message("2077", 450.0))
+    assert task.status.state == "failed"
+    assert "No Finance approver decided within 24h" in status_text(task)
+    assert payments.ledger.all() == []
+    assert _approval_timers(history) == [24 * 3600]
+    fired = [e for e in history.events if e.event_type == EventType.EVENT_TYPE_TIMER_FIRED]
+    assert len(fired) == 1
+    started = history.events[0].event_time.ToDatetime()
+    assert history.events[-1].event_time.ToDatetime() - started >= timedelta(hours=24)
+
+
+async def test_approval_timeout_is_a_workflow_input(
+    time_skipping_env: WorkflowEnvironment,
+    activity_executor: ThreadPoolExecutor,
+    payments: PaymentsServer,
+) -> None:
+    task, history, _ = await run_task(
+        time_skipping_env, activity_executor, message("2077", 450.0), approval_timeout="5s"
+    )
+    assert task.status.state == "failed" and "within 5s" in status_text(task)
+    assert _approval_timers(history) == [5]
 
 
 @pytest.mark.parametrize(
@@ -132,11 +254,76 @@ async def test_risk_gate_is_enforced_in_code(
     override: str,
     reason: str,
 ) -> None:
+    """RISK=HIGH on $40 (under the limit) still needs a human: input-required."""
     model = ScriptedModel(finance_responder(agents.FINANCE_PROMPT, risk_override=override))
-    task, _, _ = await run_task(time_skipping_env, activity_executor, message("1042", 40.0), model)
-    assert task.status.state == "rejected", reason
-    assert "risk HIGH" in status_text(task)
+    seen: list[A2ATask] = []
+
+    async def look_then_reject(handle: WorkflowHandle[Any, A2ATask]) -> None:
+        seen.append(await wait_for_task_state(handle, "input-required"))
+        await handle.signal(FinanceAgentTaskWorkflow.reject, ApproverDecision("dana.finance"))
+
+    task, _, _ = await run_task(
+        time_skipping_env,
+        activity_executor,
+        message("1042", 40.0),
+        model,
+        approver=look_then_reject,
+    )
+    assert "risk HIGH" in status_text(seen[0]), reason
+    assert task.status.state == "rejected"
     assert payments.ledger.all() == []
+
+
+async def test_out_of_place_signals_are_ignored(
+    time_skipping_env: WorkflowEnvironment,
+    activity_executor: ThreadPoolExecutor,
+    payments: PaymentsServer,
+) -> None:
+    """A blank approver is ignored; the first real decision wins; later ones are ignored."""
+
+    async def noisy(handle: WorkflowHandle[Any, A2ATask]) -> None:
+        await wait_for_task_state(handle, "input-required")
+        await handle.signal(FinanceAgentTaskWorkflow.approve, ApproverDecision("  "))
+        await handle.signal(FinanceAgentTaskWorkflow.reject, ApproverDecision("dana.finance"))
+        await handle.signal(FinanceAgentTaskWorkflow.approve, ApproverDecision("eve"))
+
+    task, _, _ = await run_task(
+        time_skipping_env, activity_executor, message("2077", 450.0), approver=noisy
+    )
+    assert task.status.state == "rejected" and "dana.finance" in status_text(task)
+    assert payments.ledger.all() == []
+
+
+async def test_approve_before_input_required_does_not_preapprove(
+    time_skipping_env: WorkflowEnvironment,
+    activity_executor: ThreadPoolExecutor,
+    payments: PaymentsServer,
+) -> None:
+    """A signal that arrives while the agent is still assessing is ignored."""
+
+    async def early(handle: WorkflowHandle[Any, A2ATask]) -> None:
+        await handle.signal(FinanceAgentTaskWorkflow.approve, ApproverDecision("too.early"))
+
+    task, _, _ = await run_task(
+        time_skipping_env,
+        activity_executor,
+        message("2077", 450.0),
+        approver=early,
+        approval_timeout="1h",
+    )
+    assert task.status.state == "failed", "the early approval must not count"
+    assert payments.ledger.all() == []
+
+
+async def test_bad_approval_timeout_fails_the_task(
+    time_skipping_env: WorkflowEnvironment,
+    activity_executor: ThreadPoolExecutor,
+) -> None:
+    task, history, model = await run_task(
+        time_skipping_env, activity_executor, message("2077", 450.0), approval_timeout="soon"
+    )
+    assert task.status.state == "failed" and "misconfigured" in status_text(task)
+    assert model.calls == [] and activity_types(history) == []
 
 
 async def test_invalid_request_fails_before_any_model_call(

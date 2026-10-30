@@ -9,18 +9,22 @@ Return Policy agent's decision, then the Supervisor's last turn; the
 Finance side: that task ended in the expected A2A state and is not a child of
 the caller. Reply: quotes the refund ID when a refund was issued. Exits 1 on
 the first failed check. Honours TEMPORAL_PROFILE / TEMPORAL_CONFIG_FILE.
+
+v0.6: ``rejected`` replies must apologise, ``failed`` replies must apologise and
+escalate; ``--approver NAME`` checks the human named on the refund confirmation.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import sys
 
 from temporalio.client import Client
 
 from demo_testing.history import nexus_operations, timeline
-from finance_a2a_api import A2ATask
+from finance_a2a_api import A2ATask, first_data
 from support_agent import config
 
 CARD = "nexus FinanceAgentA2A.get_agent_card"
@@ -39,6 +43,7 @@ async def main() -> None:
     parser.add_argument("workflow_id")
     parser.add_argument("state", help="expected A2A task state (completed, rejected, ...)")
     parser.add_argument("--mode", choices=["tool", "handoff"], default="tool")
+    parser.add_argument("--approver", help="v0.6: expected approved_by on the refund")
     args = parser.parse_args()
 
     caller = await config.connect(plugins=[config.build_strands_plugin()])
@@ -82,6 +87,16 @@ async def main() -> None:
     if args.state == "completed":
         refund = exchange["refund_id"]
         check(bool(refund) and refund in reply, f"reply quotes Finance's refund ID {refund}")
+    sorry = re.search(r"sorry|apolog", reply, re.IGNORECASE) is not None
+    if args.state == "rejected":
+        check(sorry, "reply apologises (Finance rejected the refund)")
+    if args.state == "failed":
+        escalated = re.search(r"escalat", reply, re.IGNORECASE) is not None
+        check(sorry and escalated, "reply apologises and escalates (Finance could not decide)")
+    if args.approver:
+        data = first_data(task.artifacts[0].parts) if task.artifacts else None
+        approved_by = (data or {}).get("approved_by")
+        check(approved_by == args.approver, f"refund_confirmation approved_by={approved_by}")
     print("  ok   all checks passed")
 
 
