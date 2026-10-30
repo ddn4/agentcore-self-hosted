@@ -127,3 +127,17 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
 - v0.7: the WCI sometimes invokes again while a Worker of the version is still polling
   (1.7 s after a conversation ended); the sample's single-start guard absorbs it. Is a
   redundant invoke expected with `no-sync`?
+- v0.9 (chart temporal-1.7.0): **admintools, the namespace Job and the helm test present the
+  frontend server certificate as their client certificate** (`temporal.adminClient.tls.*`).
+  With `requireClientAuth` this forces `client auth` onto the frontend cert and puts the
+  frontend private key into the admintools pod. An `admintools.tls.secretName` (a dedicated
+  client cert) would avoid both. Also: `values.tls.yaml` says nothing about this, while
+  `ci/postgres-tls-values.yaml` silently issues the frontend cert with both EKUs.
+- v0.9: **`nexusoperation.enableStandalone` is still off by default on server 1.32.1**
+  (Helm), like on the dev server 1.32.0 (ledger 12). Same docs question as at v0.4.
+- v0.9: the chart's pods carry `app.kubernetes.io/version=1.32.0` (appVersion) when
+  `server.image.tag` is overridden to 1.32.1; deriving the label from the image tag would
+  make dashboards less confusing.
+- v0.9 (Python SDK): rotating a file-based client cert needs a new `Client` assigned to
+  `worker.client` (docs). An envconfig option to re-read `_PATH` files on reconnect would
+  fit cert-manager setups (we restart the Finance Deployment instead).

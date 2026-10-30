@@ -518,7 +518,7 @@ admintools:
   image:
     tag: "1.32.1"
 ```
-⚠️ Verify: chart 1.7.0 was not explicitly tested with 1.32.1. It is a patch release, so it is expected to work.
+⚠️ Verify: chart 1.7.0 was not explicitly tested with 1.32.1. It is a patch release, so it is expected to work. *Resolved in v0.9: works on kind (all pods 1.32.1); only the pod label `app.kubernetes.io/version` still shows 1.32.0. The chart package itself contains `values/values.postgresql.yaml`.*
 
 > Chart 1.x installs **no** databases, Elasticsearch, Prometheus or Grafana. Docs that mention "chart 0.73.x", `server.configMapsToMount` or `setConfigFilePath` refer to the old 0.x chart. Ignore them.
 
@@ -530,7 +530,7 @@ server:
   matching: { replicaCount: 3, resources: { requests: { cpu: "1", memory: 1Gi }, limits: { memory: 2Gi } } }
   worker:   { replicaCount: 2, resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 1Gi } } }
 ```
-⚠️ Verify: the per-service keys in chart 1.7.0's values.yaml (`replicaCount`, `resources`, and the PodDisruptionBudget key, if one exists). Otherwise create PodDisruptionBudgets with `minAvailable: 1` per service yourself. Size from your load test.
+⚠️ Verify: the per-service keys in chart 1.7.0's values.yaml (`replicaCount`, `resources`, and the PodDisruptionBudget key, if one exists). Otherwise create PodDisruptionBudgets with `minAvailable: 1` per service yourself. Size from your load test. *Resolved in v0.9: `replicaCount`, `resources`, `podDisruptionBudget` and `serviceAccount` exist per component under `server.<service>`.*
 
 **2.2 Persistence values** (in `values.postgresql.yaml`):
 
@@ -575,7 +575,7 @@ server:
             databaseName: temporal_visibility
             # ...same connection and tls fields...
 ```
-- The schema Job and admintools also need the RDS CA mounted. ⚠️ Verify: chart 1.7.0's keys for this. The schema Job may reuse `server.additionalVolumes`; check for `admintools.additionalVolumes` / `additionalVolumeMounts`, and confirm against `templates/server-job.yaml` and the admintools deployment template.
+- The schema Job and admintools also need the RDS CA mounted. ⚠️ Verify: chart 1.7.0's keys for this. The schema Job may reuse `server.additionalVolumes`; check for `admintools.additionalVolumes` / `additionalVolumeMounts`, and confirm against `templates/server-job.yaml` and the admintools deployment template. *Resolved in v0.9: the schema Job and the namespace Job mount `admintools.additionalVolumes` / `additionalVolumeMounts` (not `server.additionalVolumes`); set the RDS CA in both.*
 - **Default path: password auth.** Since 1.31 you can use `passwordCommand` for IAM database auth. The server image has **no** `aws` CLI: it is Alpine with only ca-certificates, tzdata and `temporal-server`. So IAM DB auth needs a helper binary or a custom image, plus `rds-db:connect` (see below).
 - **Optional OpenSearch visibility** (not the default):
   - Use the `elasticsearch` datastore shape with `aws-request-signing: {credentialProvider: aws-sdk-default, region: us-east-1}`.
@@ -757,6 +757,7 @@ The CA issuer fills in `ca.crt` in every Secret it writes, which is the layout t
    - **Operator:** CN `operator`, Secret `temporal-operator-tls` in the `temporal` namespace. Copy it to your workstation with `kubectl get secret … -o jsonpath` (7.0).
    - **EKS Nexus Worker:** CN `eks-nexus-worker`, in the `temporal-workers` namespace (7b.2). cert-manager renews it automatically. That is a nice contrast with the manual Secrets Manager rotation on the AgentCore side.
    - **AgentCore Worker:** CN `agentcore-worker`, Secret `agentcore-worker-tls` in the `temporal` namespace. Give it a longer `duration` (for example `4320h`), because its copy in Secrets Manager is refreshed by hand.
+   - *Resolved in v0.9: chart 1.7.0's admintools, namespace Job and helm test mount `temporal-frontend-tls` and present it as their **client** certificate, so with `requireClientAuth` the frontend certificate needs `usages: [server auth, client auth, ...]` (as in the chart's own CI values). See ADR-0007 v0.9.*
 5. **Export the AgentCore Worker cert to Secrets Manager** (the format 5.3 expects). cert-manager cannot mount into AgentCore.
    ```bash
    kubectl get secret agentcore-worker-tls -n temporal -o json | jq -r '.data["tls.crt"]' | base64 -d > worker.crt
@@ -769,7 +770,7 @@ The CA issuer fills in `ca.crt` in every Secret it writes, which is the layout t
 - **Trade-off you accept.** The root CA private key lives in the Kubernetes Secret `cert-manager/temporal-root-ca`. Anyone who can read Secrets in `cert-manager` can mint client certs that Temporal trusts. Under authorization option (c), such a cert gets full access. Restrict RBAC on that namespace, and turn on EKS envelope encryption of Secrets with KMS. For production, the hardening path is an offline root with an in-cluster intermediate, or ACM Private CA.
 - **Do not** generate the root with Terraform's `tls` provider, because that stores the private key in Terraform state.
 - **Disaster recovery.** If the cluster is deleted, the root goes with it. Back up the `temporal-root-ca` Secret, or accept that you will re-issue every cert and update the Secrets Manager copy.
-- ⚠️ Verify: whether the server hot-reloads rotated certs. Plan a rolling restart until you have confirmed it.
+- ⚠️ Verify: whether the server hot-reloads rotated certs. Plan a rolling restart until you have confirmed it. *Resolved in v0.9 (Q10): yes, with `server.config.tls.refreshInterval: 1m` a re-issued frontend cert was served within 16–112 s, no restart.*
 
 **2.7 Authorization — decide before Phase 7.** Without an Authorizer, the **noop** authorizer allows every call, including admin calls. The default ClaimMapper takes permissions **only from a JWT**. With `authorizer: default`, any caller that has only an mTLS cert gets `PermissionDenied`. That includes AgentCore Workers and CLI calls that carry no JWT. Choose one path:
 
@@ -936,7 +937,7 @@ server:
   kubectl get cm temporal-dynamic-config -n temporal -o yaml | grep -A3 workercontroller
   kubectl logs deploy/temporal-worker -n temporal | grep -i workercontroller
   ```
-  ⚠️ Verify: the exact log lines the WCI component prints at startup.
+  ⚠️ Verify: the exact log lines the WCI component prints at startup. *Resolved in v0.9: no dedicated line; the worker service logs `dynamic config changed for the key: workercontroller.enabled ... constraints: {{Namespace:agents}}` and starts a per-namespace system Worker on `temporal-sys-per-ns-tq`. A dynamic-config-only upgrade applied in 10–67 s with 0 restarts.*
 
 ---
 
@@ -1430,7 +1431,7 @@ spec:
   issuerRef: { name: temporal-ca, kind: ClusterIssuer, group: cert-manager.io }
 ```
 - The `CA` issuer writes the root into `ca.crt`, so `TEMPORAL_TLS_SERVER_CA_CERT_PATH=/etc/temporal/tls/ca.crt` trusts the frontend cert from 2.6.
-- **Rotation.** cert-manager rewrites the Secret, and the kubelet updates the mounted files. The Python SDK reads the cert at connect time. Restart the Deployment after renewal (for example with Reloader or a `kubectl rollout restart` CronJob), or reconnect in code. ⚠️ Verify whether the SDK reloads file-based certs.
+- **Rotation.** cert-manager rewrites the Secret, and the kubelet updates the mounted files. The Python SDK reads the cert at connect time. Restart the Deployment after renewal (for example with Reloader or a `kubectl rollout restart` CronJob), or reconnect in code. ⚠️ Verify whether the SDK reloads file-based certs. *Resolved in v0.9 (Q18): it does not; the files are read once at connect. Restart after renewal (the old cert stays valid until it expires).*
 
 **7b.3 ServiceAccount and IRSA.** The Finance agent calls Bedrock for its model turns, so it needs this. (A handler that only computes could skip IRSA and use a plain ServiceAccount.) Create the role `agent-services-worker` and give it an IRSA trust like 4.1, with `sub = system:serviceaccount:temporal-workers:agent-services-worker`. Scope its permissions to what the handler needs: `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` on the `global.anthropic.claude-opus-5-5` inference profile, and on the `anthropic.claude-opus-5-5` foundation model in every Region (see 3.2). **Do not** reuse `temporal-server-wci`.
 ```yaml
@@ -1632,7 +1633,7 @@ spec:
   minAvailable: 1
   selector: { matchLabels: { app: agent-services-worker } }
 ```
-- ⚠️ Verify the `TEMPORAL_TLS_*_PATH` env var names against the envconfig reference (`references/client-environment-configuration#tls-variables`).
+- ⚠️ Verify the `TEMPORAL_TLS_*_PATH` env var names against the envconfig reference (`references/client-environment-configuration#tls-variables`). *Resolved in v0.1/v0.9: correct; used by the Finance pods on kind.*
 
 **7b.6 NetworkPolicy.** This needs a CNI that enforces policies; on EKS, turn on the VPC CNI's network policy agent. It shows the in-cluster firewall model next to the security groups on the AgentCore side.
 ```yaml
@@ -1645,7 +1646,7 @@ spec:
   egress:
     - to:
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: temporal } }
-          podSelector: { matchLabels: { app.kubernetes.io/component: frontend } }   # ⚠️ Verify chart 1.7.0 labels
+          podSelector: { matchLabels: { app.kubernetes.io/component: frontend } }   # ⚠️ Verify chart 1.7.0 labels  (resolved v0.9: correct)
       ports: [{ protocol: TCP, port: 7233 }]
     - to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } } }]
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]

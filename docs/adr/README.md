@@ -8,6 +8,6 @@
 | [0004](0004-naming-build-id-nexus-backing.md) | Naming, content-hash Build ID, Nexus backing (workflow-backed, `USE_EXISTING`; Activity backing descoped) | Accepted; implemented v0.4 (backing) and v0.7 (Build ID) | v0.1, v0.4, v0.7 |
 | 0005 | AgentCore order: PUBLIC runtime is a v0.8 probe only | planned | v0.8 |
 | 0006 | Demo sizing deviations from the runbook | Accepted by the user; written at v0.10 | v0.10 |
-| [0007](0007-authorization-option-c.md) | Authorization option (c) as an accepted risk; External ID and CA out of Terraform state | Accepted | v0.1 (exercised v0.9) |
+| [0007](0007-authorization-option-c.md) | Authorization option (c) as an accepted risk; External ID and CA out of Terraform state | Accepted; v0.9 section: exercised on kind (one CA, distinct CNs, negatives, NetworkPolicy, chart mounts the frontend key into admintools) | v0.1, v0.9 |
 | 0008 | AgentCore runtime via the CLI, not Terraform | planned | v0.8/v0.12 |
 | [0009](0009-nexus-timeout-budget.md) | Nexus timeout budget (caller 25 h > Finance's published 24 h); how the values reach Workflow code | Accepted | v0.6 |

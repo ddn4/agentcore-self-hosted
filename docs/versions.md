@@ -11,8 +11,14 @@ Python packages are locked in `uv.lock`; the table records the resolved versions
 |---|---|---|---|
 | Temporal CLI | 1.9.1 | v0.1 | embeds server 1.32.0 and UI 2.54.1; `make dev-server`, `start_local(dev_server_existing_path=...)` |
 | Temporal dev server | 1.32.0 | v0.1 | from the CLI; the Helm/EKS server is 1.32.1 (v0.9+) |
-| Temporal server image | 1.32.1 | v0.9 | planned |
-| Temporal Helm chart | 1.7.0 | v0.9 | planned |
+| Temporal server image | 1.32.1 | v0.9 | `temporalio/server:1.32.1`, `temporalio/admin-tools:1.32.1` (arm64 manifests); the chart's appVersion is 1.32.0, so pods still carry the label `app.kubernetes.io/version=1.32.0` |
+| Temporal Helm chart | 1.7.0 | v0.9 | `--repo https://go.temporal.io/helm-charts`; the package itself contains `values/*.yaml` and `ci/*.yaml` |
+| Temporal UI image | 2.54.1 | v0.9 | chart default |
+| cert-manager | v1.21.3 | v0.9 | jetstack chart, `crds.enabled=true` |
+| kind node image | kindest/node:v1.37.0 | v0.9 | kind 0.33.0 default; arm64, containerd 2.3.4, kindnet (enforces NetworkPolicy) |
+| PostgreSQL (kind) | postgres:16 | v0.9 | in-cluster stand-in for RDS |
+| Python base image | python:3.12.12-slim-bookworm | v0.9 | Finance and payments-mock images; uv from `ghcr.io/astral-sh/uv:0.12.15` |
+| kubeconform | v0.7.0 | v0.9 | project-local (`make tools`, pinned sha256) |
 | uv | 0.12.15 | v0.1 | |
 | Python | 3.12.14 | v0.1 | uv-managed; matches AgentCore `PYTHON_3_12` |
 | Node.js | 24.16.0 | v0.1 | >= 20.12 required for `@aws/agentcore` (v0.8) |

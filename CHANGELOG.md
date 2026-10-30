@@ -2,6 +2,33 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.9-temporal-on-kind-mtls
+
+The real server on the laptop (chart temporal-1.7.0, server 1.32.1 on kind), then mTLS
+everywhere from a free cert-manager CA. v0.8-wci-handshake was skipped in this run (it needs
+AWS resources and go-ahead G5; its items move to v0.12/v0.13).
+
+- `deploy/`: kind cluster + in-cluster postgres:16; chart values `postgresql` / `base`
+  (1.32.1, namespaces from values, WCI constrained to `agents`) / `tls` / `kind` (4 shards);
+  cert-manager chain exactly as runbook 2.6 and one client cert per identity; Finance (2
+  pods) + payments-mock in `temporal-workers` with egress and frontend-ingress
+  NetworkPolicies; overlays `kind` (Bedrock via `aws-creds`) and `kind-scripted`.
+- Finance and payments-mock Dockerfiles (uv workspace, arm64); the Finance Worker now drains
+  on SIGTERM (it ignored it as PID 1).
+- `scripts/kind.sh` and Make targets `kind-up kind-temporal kind-workers kind-aws-creds
+  certs-pull pf kind-down cert-renew ...`; envconfig profiles `kind` (mTLS, Route 53
+  server name) and `kind-plaintext`; per-Worker client certs on `TEMPORAL_PROFILE=kind`.
+- Makefile: a profile from the environment beats `.env`; the dev server's
+  `TEMPORAL_TLS=false` / address no longer leak into other profiles.
+- `make infra-static` is real (helm template + kustomize -> kubeconform -strict) and part of
+  `make check` (330 tests, 319 at v0.7); CI installs kubeconform and builds the images.
+- Answers: chart keys and labels (ledger 30), WCI constraint + logs and dynamic config
+  reload without restarts (24, 31), arm64 (32), Q10 server cert hot-reload: yes; Q18 SDK
+  file certs: read once at connect (33), internode EKUs + frontend needs `client auth` for
+  the chart's own pods (34), kindnet enforces NetworkPolicy (36), Q16 on 1.32.1 (12).
+- G3 passed: Case B over mTLS with a Finance pod deleted mid-wait. G2 decision recorded.
+- Optional Secrets Manager path and live Bedrock not run (no AWS; ledger 35, 49).
+
 ## v0.7-serverless-shape
 
 The Support Worker in AgentCore Runtime shape, on the laptop: built to die, pinned to its build.
