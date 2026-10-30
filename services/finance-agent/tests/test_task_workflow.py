@@ -231,7 +231,7 @@ async def test_no_decision_within_the_timeout_fails_the_task(
     assert history.events[-1].event_time.ToDatetime() - started >= timedelta(hours=24)
 
 
-async def test_approval_timeout_is_a_workflow_input(
+async def test_approval_timeout_comes_from_the_memo(
     time_skipping_env: WorkflowEnvironment,
     activity_executor: ThreadPoolExecutor,
     payments: PaymentsServer,

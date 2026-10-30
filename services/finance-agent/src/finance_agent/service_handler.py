@@ -66,7 +66,7 @@ def task_id(context_id: str) -> str:
 @service_handler(service=FinanceAgentA2A)
 class FinanceAgentA2AHandler:
     def __init__(self, *, approval_timeout: str = DEFAULT_APPROVAL_TIMEOUT) -> None:
-        #: How long a task waits in ``input-required`` (a Workflow input, e.g. ``"24h"``).
+        #: How long a task waits in ``input-required`` (sent in the task's memo, e.g. ``"24h"``).
         self.approval_timeout = approval_timeout
 
     @sync_operation

@@ -49,8 +49,9 @@ def payments_url() -> str:
 def approval_timeout() -> str:
     """How long a refund waits for a human approver (``FINANCE_APPROVAL_TIMEOUT``, default 24h).
 
-    Returned as text (``"24h"``): the Nexus handler passes it to the task Workflow as
-    an input, where it is parsed again, so the value is visible in history. Never
+    Returned as text (``"24h"``): the Nexus handler passes it to the task Workflow in
+    its memo (``approval_timeout``), where it is parsed again, so the value is visible
+    in history (ADR-0009; why not a Workflow input: ledger item 58). Never
     above the limit Finance publishes in its Agent Card (``APPROVAL_WAIT_LIMIT``),
     because callers size their own Nexus timeout from that limit (ADR-0009).
     """
