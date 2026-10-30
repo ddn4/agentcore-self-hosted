@@ -1076,7 +1076,7 @@ There are three **separate** roles. Do not merge them.
   2. Update the secret with `aws secretsmanager put-secret-value`.
   3. New sessions pick up the new cert.
   4. Revoke or let the old cert expire only after `maxLifetime` has passed.
-- ⚠️ Verify: no documented Temporal pattern covers mTLS from AgentCore. A third-party source also says AgentCore cannot inject secrets as env vars natively.
+- ⚠️ Verify: no documented Temporal pattern covers mTLS from AgentCore. A third-party source also says AgentCore cannot inject secrets as env vars natively. *Resolved in v0.8 (AWS Q4): no native injection: CLI 1.0.1 `envVars` and Terraform `environment_variables` are plain strings; fetch at startup.*
 
 **5.4 Configure `agentcore/agentcore.json`.** This is the runtime definition, based on the sample and the AgentCore CLI schema (`src/projectSchemas/runtime.ts`). The runtime entry looks like this:
 ```json
@@ -1132,11 +1132,11 @@ aws bedrock-agentcore-control create-agent-runtime-endpoint --agent-runtime-id <
 CloudFormation and CDK alternatives:
 - `AWS::BedrockAgentCore::Runtime` (`NetworkConfiguration.NetworkMode` / `NetworkModeConfig`) and `AWS::BedrockAgentCore::RuntimeEndpoint`. ⚠️ Verify: the RuntimeEndpoint resource name.
 - CDK: `aws_cdk.aws_bedrockagentcore`.
-- ⚠️ Verify: Terraform resource names.
+- ⚠️ Verify: Terraform resource names. *Resolved in v0.8: `aws_bedrockagentcore_agent_runtime` and `aws_bedrockagentcore_agent_runtime_endpoint` (hashicorp/aws 6.71.0); ADR-0008 keeps the CLI.*
 
 **5.5 Deploy and record the ARNs** (AgentCore CLI 1.0.x; check `agentcore --version` and `agentcore <cmd> --help` first):
 ```bash
-agentcore build                                  # validates/builds (no `validate` command in 1.0.x)
+agentcore build                                  # validates/builds (no `validate` command in 1.0.x); v0.8: a CDK synth; deps from pyproject.toml
 agentcore deploy --target default
 agentcore status --target default --json         # Runtime ARN / ID
 aws bedrock-agentcore-control list-agent-runtime-endpoints --agent-runtime-id <RUNTIME_ID> \
@@ -1317,7 +1317,7 @@ aws secretsmanager create-secret --name temporal/agentcore-external-id --secret-
 curl -o temporal-self-hosted-serverless-worker-agentcore-role.yaml \
   https://docs.temporal.io/assets/files/temporal-self-hosted-serverless-worker-agentcore-role-d633a078183a821913145e7fb41bb8cb.yaml
 ```
-The hash in the file name can change. The older `/files/…` URL returns 404. **Do not** use the Cloud template or the sample's `mk-invoke-role.sh`, because both trust Temporal Cloud. Open the file and confirm the parameter names before you deploy. The expected parameters are `TemporalIamRoleArn`, `AssumeRoleExternalId`, `AgentRuntimeARNs` and `RoleName`, and the expected output is `RoleARN`.
+The hash in the file name can change. The older `/files/…` URL returns 404. **Do not** use the Cloud template or the sample's `mk-invoke-role.sh`, because both trust Temporal Cloud. Open the file and confirm the parameter names before you deploy. The expected parameters are `TemporalIamRoleArn`, `AssumeRoleExternalId`, `AgentRuntimeARNs` and `RoleName`, and the expected output is `RoleARN`. *Resolved in v0.8: confirmed (plus output `AgentRuntimeARNs`); vendored with sha256 `033ff21b…a1d4e3` by `make cfn-template`. `AssumeRoleExternalId` is not `NoEcho`.*
 
 **6.3 Create the stack.**
 ```bash

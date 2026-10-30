@@ -2,6 +2,30 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.8-wci-handshake
+
+First AWS contact (us-east-1, go-ahead G5). **Blocked at the IAM apply**: the reviewed
+`30-agentcore-iam` plan was refused by the session's permission policy, so no runtime, CFN
+stack or WCI handshake ran yet (story v0.8 "Resume"). Build ID `fd7af7a`.
+
+- Applied and kept: `00-guardrails` (budget USD 200/month at 80 % forecasted / 100 % actual,
+  SNS topic, alarm on `AWS/Bedrock-AgentCore` `ActiveSessionCount`), secret
+  `temporal/agentcore-external-id` (`make external-id`).
+- `infra/terraform/30-agentcore-iam` (execution role + `temporal-dev-wci`), written and planned.
+- Vendored, sha256-pinned invocation-role template (`make cfn-template`); `invoke-role.sh`,
+  `agentcore.sh` / `agentcore-deploy.sh` (CLI 1.0.1, existing execution role, PUBLIC probe),
+  `agentcore-sessions.sh`, `aws-profile.sh`, `tf.sh` (saved-plan apply, static checks),
+  `register-version.sh --agentcore-auto`, `verify/v0.8-wci-handshake.sh` (part 1, gate, part 2).
+- `make tools`: Terraform 1.17.0, tflint v0.64.0 (sha256); `make tools-agentcore`; CI runs
+  `make tf-static`.
+- CodeZip: the bundle ships only `pyproject.toml` (what AgentCore's CLI installs);
+  `agentcore.json.tmpl` in CLI 1.0.x format (`"version": 2`, OTel wrapper off).
+- `redact.sh` / `scrub-check.sh`: emails, public IPv4, External-ID-shaped hex.
+- ADR-0005 (PUBLIC runtime is a probe only), ADR-0008 (runtime via the CLI, IAM in Terraform).
+- Ledger: 26, 27, 45 resolved; 22 (packaging), 25 (CFN params), 44 (metric names) partly; 21
+  "not answered here"; 28, 29 and the real WCI handshake still open (61).
+- v0.7 deferred notes: `agentcore_worker.py` docstring, `connect_with_timeout` rationale.
+
 ## v0.9.2-live-bedrock
 
 The live half of every laptop tag, on Opus 5.5 (closes ledger 49; also 7, 8, 10, 17). No

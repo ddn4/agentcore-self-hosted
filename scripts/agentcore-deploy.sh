@@ -52,7 +52,7 @@ project() {
   if [[ ! -d "$P/agentcore/cdk/node_modules" ]]; then
     (cd "$P/agentcore/cdk" && npm install --no-fund --no-audit >/dev/null 2>&1)
   fi
-  rm -rf "$P/app/$RUNTIME"; mkdir -p "$P/app/$RUNTIME"
+  rm -rf "$P/app/$RUNTIME" "$P/agentcore/cdk/cdk.out"; mkdir -p "$P/app/$RUNTIME"
   (cd build/agentcore && tar --exclude ./agentcore -cf - .) | tar -xf - -C "$P/app/$RUNTIME"
   cp build/agentcore/agentcore/agentcore.json "$P/agentcore/agentcore.json"
   if [[ -f build/agentcore/agentcore/aws-targets.json ]]; then

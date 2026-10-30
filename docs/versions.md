@@ -28,8 +28,12 @@ Python packages are locked in `uv.lock`; the table records the resolved versions
 | kubectl | 1.37.0 | v0.1 (doctor) | used from v0.9 |
 | colima | 0.10.3 | v0.1 (doctor) | docker context `colima-agentcore` (6 CPU / 12 GB) |
 | gitleaks | not installed | — | `scrub-check` falls back to grep locally; CI runs gitleaks |
-| Terraform | not installed | — | >= 1.10, from v0.10 |
-| `@aws/agentcore` CLI | not installed | — | 1.0.x, from v0.8 |
+| Terraform | 1.17.0 | v0.8 | project-local (`make tools`, sha256 from `terraform_1.17.0_SHA256SUMS`); stacks require >= 1.10 |
+| Terraform AWS provider | 6.71.0 | v0.8 | `~> 6.70`; `.terraform.lock.hcl` committed per stack (darwin_arm64, linux_amd64) |
+| tflint | v0.64.0 | v0.8 | project-local (`make tools`, sha256 from the release `checksums.txt`); bundled `terraform` ruleset 0.15.0, preset `recommended` (no AWS plugin: it needs a GitHub download per run) |
+| `@aws/agentcore` CLI | 1.0.1 | v0.8 | `make tools-agentcore` → `.tools/agentcore-cli` (npm, exact version; Node >= 20.12); via `scripts/agentcore.sh` (telemetry off, Transaction Search off) |
+| `@aws/agentcore-cdk` / aws-cdk / aws-cdk-lib | 1.0.0 / 2.1126.0 / 2.269.0 | v0.8 | installed by the CLI's project template in `build/agentcore-project/agentcore/cdk` |
+| Self-hosted invocation-role CFN template | sha256 `033ff21ba09a56d31d611f661a65782837b0cfb30f74698bb84efd6999a1d4e3` | v0.8 | `deploy/agentcore/temporal-self-hosted-serverless-worker-agentcore-role.yaml` (`make cfn-template`; URL in `scripts/cfn-template.sh`) |
 
 ## Python packages (uv.lock at v0.1)
 
@@ -76,3 +80,4 @@ Per Supervisor turn (Case A first turn, tools attached), through the plugin's
 | Nexus on the dev server | CLI 1.9.1 / server 1.32.0 | Standalone Nexus Operations need `--dynamic-config-value nexusoperation.enableStandalone=true` (set by `scripts/dev-server.sh`) |
 | WCI on the dev server (v0.7) | CLI 1.9.1 / server 1.32.0 | Present. `make dev-server WCI=1`: `workercontroller.enabled=true`, `compute_providers.enabled=["aws-agentcore"]`, `scaling_algorithms.enabled=["no-sync"]`, `compute_providers.aws.require_role_and_external_id=false`, `AWS_ENDPOINT_URL` → `scripts/agentcore_emulator.py` |
 | AgentCore runtime HTTP contract (v0.7) | `bedrock-agentcore` 1.25.1 | `/invocations`, `/ping` (`Healthy`/`HealthyBusy` from async tasks); CodeZip bundle 43 MB zipped for linux arm64 / CPython 3.12 |
+| AgentCore CLI project (v0.8) | `agentcore.json` `"version": 2` | CodeZip deps from `pyproject.toml` (`uv pip install -r pyproject.toml --python-platform aarch64-manylinux2014 --only-binary :all:`); asset 42 MB; runtime `AgentcoreDemo_support_supervisor`, stack `AgentCore-AgentcoreDemo-default` |

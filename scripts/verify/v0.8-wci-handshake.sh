@@ -52,8 +52,8 @@ step "1. make check"
 if [[ "${VERIFY_SKIP_CHECK:-0}" == 1 ]]; then echo "SKIPPED (VERIFY_SKIP_CHECK=1)"; else make -s check | tail -1; fi
 
 step "2. tools (project-local, pinned sha256 / exact npm version)"
-$TF version | head -1
-.tools/bin/tflint --version | head -1
+$TF version | sed -n 1p
+.tools/bin/tflint --version | sed -n 1p
 echo "agentcore $(scripts/agentcore.sh --version | tail -1)"
 echo "temporal  $(temporal --version)"
 echo "aws       $(aws --version 2>&1 | cut -d' ' -f1)"
@@ -91,8 +91,8 @@ echo "not in any Terraform state file: ok"
 
 step "7. AWS Q6 / Q4: AgentCore in the Terraform AWS provider schema (informational; ADR-0008 keeps the CLI)"
 schema="$LOGS/aws-schema.json"
-(cd infra/terraform/30-agentcore-iam && TF_DATA_DIR="$PWD/../../../$LOGS/tfdata" "$PWD/../../../$TF" init -backend=false -lockfile=readonly >/dev/null \
-   && TF_DATA_DIR="$PWD/../../../$LOGS/tfdata" "$PWD/../../../$TF" providers schema -json) >"$schema"
+scripts/tf.sh init 30-agentcore-iam   # local backend; creates no state
+$TF -chdir=infra/terraform/30-agentcore-iam providers schema -json >"$schema"
 echo "provider: $(jq -r '.provider_schemas | keys[0]' "$schema") $(grep -A1 'hashicorp/aws' infra/terraform/30-agentcore-iam/.terraform.lock.hcl | awk -F'"' '/version/{print $2}')"
 jq -r '.provider_schemas[].resource_schemas | keys[] | select(startswith("aws_bedrockagentcore_"))' "$schema" | paste -sd' ' - | fold -s -w 110 | sed 's/^/  /'
 echo "aws_bedrockagentcore_agent_runtime.environment_variables: $(jq -c '.provider_schemas[].resource_schemas.aws_bedrockagentcore_agent_runtime.block.attributes.environment_variables.type' "$schema") (plain strings: no secret reference -> AWS Q4: fetch at startup)"
@@ -111,7 +111,8 @@ jq -r '.Resources[] | select(.Type=="AWS::BedrockAgentCore::Runtime") | .Propert
   | "runtime \(.AgentRuntimeName), \(.NetworkConfiguration.NetworkMode), \(.AgentRuntimeArtifact.CodeConfiguration.Runtime), entrypoint \(.AgentRuntimeArtifact.CodeConfiguration.EntryPoint|join(" ")), role \(if (.RoleArn|type)=="string" then "existing (executionRoleArn)" else "CREATED by the CLI" end), idle \(.LifecycleConfiguration.IdleRuntimeSessionTimeout)s, TEMPORAL_ADDRESS \(.EnvironmentVariables.TEMPORAL_ADDRESS), tags \(.Tags|tostring)"' "$synth"
 jq -r '.Resources[] | select(.Type=="AWS::BedrockAgentCore::RuntimeEndpoint") | .Properties | "endpoint \(.Name) -> version \(.AgentRuntimeVersion)"' "$synth"
 if jq -e '[.Resources[].Type] | index("AWS::IAM::Role")' "$synth" >/dev/null; then echo "FAIL: the CLI stack would create an IAM role"; exit 1; fi
-zip="$(ls build/agentcore-project/agentcore/cdk/cdk.out/asset.*.zip)"
+out=build/agentcore-project/agentcore/cdk/cdk.out
+zip="$out/$(jq -r '[.files[].source.path | select(endswith(".zip"))][0]' "$out/AgentCore-AgentcoreDemo.assets.json")"
 echo "CodeZip asset: $(( $(wc -c <"$zip") / 1048576 )) MB; dependency file in the bundle: $(cd build/agentcore && ls pyproject.toml requirements.txt 2>/dev/null | paste -sd' ' -); arm64 wheels: $(unzip -l "$zip" | grep -c 'aarch64-linux-gnu.so')"
 
 step "9. AgentCore sessions of ours (check of record; AWS Q8)"
@@ -205,7 +206,7 @@ LOG_GROUP="/aws/bedrock-agentcore/runtimes/${rid}-b_${BUILD_ID:0:7}"
 echo "AgentCore logs ($LOG_GROUP, matching lines):"
 aws logs filter-log-events --log-group-name "$LOG_GROUP" --start-time "$(( $(date -j -u -f %Y-%m-%dT%H:%M:%SZ "$T_PING" +%s) * 1000 ))" \
   --filter-pattern '?"AgentCore app" ?"worker starting" ?"could not connect" ?"async task released" ?"lifetime"' \
-  --query 'events[].message' --output text 2>&1 | tr '\t' '\n' | cut -c1-200 | head -30
+  --query 'events[].message' --output text 2>&1 | tr '\t' '\n' | cut -c1-200 | sed -n 1,30p
 temporal workflow terminate -n "$NS" -w ping-1 --reason "v0.8 probe done" >/dev/null
 T_TERM="$(now)"; echo "ping-1 terminated at $T_TERM"
 sleep 10
