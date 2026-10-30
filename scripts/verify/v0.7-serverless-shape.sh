@@ -82,8 +82,9 @@ echo "worker deployment subcommands: $(temporal worker deployment --help | awk '
 scripts/dev-server.sh stop >/dev/null 2>&1 || true
 rm -f .temporal/dev.db .temporal/dev.db-*
 WCI=1 scripts/dev-server.sh start
-"$PY" scripts/agentcore_emulator.py --log "$EMU_LOG" >"$LOGS/emulator.out" 2>&1 & pids+=("$!")
-sleep 1; head -1 "$LOGS/emulator.out"
+"$PY" scripts/agentcore_emulator.py --ack-only --log "$LOGS/probe-emulator.jsonl" >"$LOGS/probe-emulator.out" 2>&1 & emu_pid=$!; pids+=("$emu_pid")
+sleep 1; head -1 "$LOGS/probe-emulator.out"
+echo "(step 5 probes use the emulator in --ack-only mode: it acknowledges invocations itself)"
 
 step "5. 7.1: is 'worker deployment create' required? (throwaway deployments)"
 probe="probe-$(date +%s)"
@@ -97,14 +98,24 @@ echo "+ create, then create-version with the compute config:"
 temporal worker deployment create -n "$NS" --name "$probe-c" 2>&1 | sed 's/^/  /'
 temporal worker deployment create-version -n "$NS" --deployment-name "$probe-c" --build-id p1 \
   --aws-agentcore-endpoint-arn "$ARN" --aws-agentcore-skip-role-and-external-id 2>&1 | sed 's/^/  /'
-echo "  emulator saw: $(jq -r .op "$EMU_LOG" | sort | uniq -c | tr -s ' ' | tr '\n' ';') (validation calls; no runtime on :8080 yet)"
+echo "  emulator saw: $(jq -c '[.op, (.payload // "")]' "$LOGS/probe-emulator.jsonl" | tr '\n' ' ')"
+echo "  (create-version itself invokes the runtime once: GetAgentRuntimeEndpoint, then InvokeAgentRuntime)"
 echo "+ Q13: set-current-version with no Worker ever polling, compute config present, no --allow-no-pollers:"
 temporal worker deployment set-current-version -n "$NS" --deployment-name "$probe-c" --build-id p1 --yes 2>&1 | sed 's/^/  /' || true
 echo "+ Q13: a version with NO compute config that never had a poller (a Build ID nothing ran):"
 temporal worker deployment create -n "$NS" --name "$probe-d" >/dev/null
 temporal worker deployment set-current-version -n "$NS" --deployment-name "$probe-d" --build-id never-polled --yes 2>&1 | sed 's/^/  /' || true
 temporal worker deployment set-current-version -n "$NS" --deployment-name "$probe-d" --build-id never-polled --yes --allow-no-pollers 2>&1 | sed 's/^/  /' || true
-: >"$EMU_LOG"
+kill "$emu_pid" 2>/dev/null || true; wait "$emu_pid" 2>/dev/null || true
+echo "+ create-version when the runtime cannot be reached (emulator forwards to :8080, nothing there):"
+"$PY" scripts/agentcore_emulator.py --log "$LOGS/probe-emulator.jsonl" >>"$LOGS/probe-emulator.out" 2>&1 & emu_pid=$!; pids+=("$emu_pid")
+sleep 1
+temporal worker deployment create-version -n "$NS" --deployment-name "$probe-c" --build-id p2 \
+  --aws-agentcore-endpoint-arn "$ARN" --aws-agentcore-skip-role-and-external-id 2>&1 | sed 's/^/  /' || true
+echo "  emulator: $(tail -1 "$LOGS/probe-emulator.jsonl" | jq -c '{op, status, answer: .answer.message[0:60]}')"
+kill "$emu_pid" 2>/dev/null || true; wait "$emu_pid" 2>/dev/null || true
+"$PY" scripts/agentcore_emulator.py --log "$EMU_LOG" >"$LOGS/emulator.out" 2>&1 & pids+=("$!")
+sleep 1; head -1 "$LOGS/emulator.out"
 
 step "6. Finance side (scripted), Nexus endpoint; the AgentCore-shaped Support app (scripted model)"
 "$PY" -m payments_mock.server >"$LOGS/payments.log" 2>&1 & pids+=("$!")

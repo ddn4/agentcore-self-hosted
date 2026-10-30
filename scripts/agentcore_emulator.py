@@ -15,7 +15,7 @@ answers the two calls the WCI makes (observed on the wire, not guessed):
   (data plane ``InvokeAgentRuntime``, header
   ``X-Amzn-Bedrock-AgentCore-Runtime-Session-Id``, body ``{deploymentName, buildId}``):
   forwarded to the local runtime's ``/invocations`` (``make agentcore-local``, :8080),
-  whose answer is returned.
+  whose answer is returned (``--ack-only``: acknowledged without a runtime, for probes).
 
 Every call is appended as one JSON line to ``.temporal/agentcore-emulator.jsonl`` (time,
 operation, session ID, payload, the runtime's answer): the local equivalent of the
@@ -54,8 +54,14 @@ def _now() -> str:
     return dt.datetime.now(dt.UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+class _AckOnly(Exception):
+    pass
+
+
 class Emulator(http.server.BaseHTTPRequestHandler):
     runtime_url = "http://127.0.0.1:8080"
+    #: Acknowledge invocations without a runtime (probes of create-version/set-current-version).
+    ack_only = False
     log_path = Path(".temporal/agentcore-emulator.jsonl")
     region = "us-east-1"
 
@@ -128,9 +134,13 @@ class Emulator(http.server.BaseHTTPRequestHandler):
             method="POST",
         )
         try:
+            if self.ack_only:
+                raise _AckOnly
             with urllib.request.urlopen(request, timeout=30) as resp:
                 answer = json.loads(resp.read() or b"{}")
                 code = resp.status
+        except _AckOnly:
+            answer, code = {"message": "acknowledged by the emulator (--ack-only: no runtime)"}, 200
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as err:
             # Like an AgentCore runtime that fails to start: the WCI sees an error.
             answer, code = {"message": f"emulator: runtime unreachable: {err}"}, 502
@@ -157,7 +167,11 @@ def main() -> None:
         "--runtime-url", default=os.environ.get("AGENTCORE_URL", Emulator.runtime_url)
     )
     parser.add_argument("--log", type=Path, default=Emulator.log_path)
+    parser.add_argument(
+        "--ack-only", action="store_true", help="answer invocations without forwarding them"
+    )
     args = parser.parse_args()
+    Emulator.ack_only = args.ack_only
     Emulator.runtime_url = args.runtime_url.rstrip("/")
     Emulator.log_path = args.log
     server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Emulator)
