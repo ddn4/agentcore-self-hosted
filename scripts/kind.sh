@@ -131,6 +131,22 @@ cmd_workers() {
   k rollout restart deploy/agent-services-worker -n temporal-workers >/dev/null
   k rollout status deploy/payments-mock -n temporal-workers --timeout=180s
   k rollout status deploy/agent-services-worker -n temporal-workers --timeout=300s
+  # Pods of the first ReplicaSet may still be starting when the restart above lands (their
+  # Secret is issued a second after the apply) and then linger in Terminating while
+  # polling. Wait until only the current ReplicaSet's pods remain.
+  local want n
+  want="$(k get deploy/agent-services-worker -n temporal-workers -o jsonpath='{.spec.replicas}')"
+  for _ in $(seq 1 60); do
+    n="$(k get pods -n temporal-workers -l app=agent-services-worker --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+    [[ "$n" == "$want" ]] && break
+    sleep 1
+  done
+  if [[ "$n" != "$want" ]]; then
+    log "forcing out lingering Finance pods"
+    k get pods -n temporal-workers -l app=agent-services-worker -o json \
+      | jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name' \
+      | while read -r pod; do k delete pod -n temporal-workers "$pod" --grace-period=0 --force >/dev/null 2>&1 || true; done
+  fi
 }
 
 cmd_aws_creds() {

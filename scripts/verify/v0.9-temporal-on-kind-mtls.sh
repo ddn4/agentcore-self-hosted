@@ -156,11 +156,11 @@ cert_info() {  # cert_info NS SECRET
 for s in temporal-frontend-tls temporal-internode-tls temporal-web-client-tls temporal-operator-tls agentcore-worker-tls laptop-support-tls; do
   printf '  %-24s %s' "$s" "$(cert_info temporal "$s")"
 done
-printf '  %-24s %s' eks-nexus-worker-tls "$(cert_info temporal-workers eks-nexus-worker-tls)"
 
 step "B5. Finance (2 pods) + payments-mock in the cluster; laptop certs; port-forward; Nexus endpoint"
 FINANCE_MODEL=scripted scripts/kind.sh workers >"$LOGS/b-workers.log" 2>&1 || { tail -30 "$LOGS/b-workers.log"; exit 1; }
 k get pods -n temporal-workers -o wide | awk '{print "  " $1, $2, $3}'
+printf '  %-24s %s' eks-nexus-worker-tls "$(cert_info temporal-workers eks-nexus-worker-tls)"
 scripts/certs-pull.sh | sed 's/^/  /'
 scripts/kind.sh pf | sed 's/^/  /'
 make -s nexus-endpoint | tail -1
@@ -169,7 +169,10 @@ for _ in $(seq 1 30); do
   pollers="$(temporal task-queue describe -n agent-services --task-queue agent-services-tq -o json | jq -r '[.pollers[]?.identity] | unique | length')"
   [[ "$pollers" -ge 2 ]] && break; sleep 1
 done
-echo "agent-services-tq pollers (Finance pods, by service name over mTLS): $(temporal task-queue describe -n agent-services --task-queue agent-services-tq -o json | jq -r '[.pollers[]?.identity] | unique | join(", ")')"
+running="$(k get pods -n temporal-workers -l app=agent-services-worker -o jsonpath='{range .items[*]}1@{.metadata.name}{"\n"}{end}')"
+echo "agent-services-tq pollers that are running Finance pods (by service name over mTLS):"
+temporal task-queue describe -n agent-services --task-queue agent-services-tq -o json \
+  | jq -r '[.pollers[]?.identity] | unique | .[]' | grep -Fx -f <(printf '%s\n' "$running") | sed 's/^/  /'
 
 step "B6. mTLS negatives (CLI through the port-forward; the operator cert is the positive control)"
 F="$LOGS/foreign"; mkdir -p "$F"
