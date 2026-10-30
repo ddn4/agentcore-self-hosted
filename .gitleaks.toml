@@ -4,12 +4,17 @@
 # server-issued routing tokens, base64url JSON such as
 # {"t":1,"ns":"agent-services","wid":"a2a-task-support-1042"}: no credential, but
 # long and high-entropy, so the generic-api-key rule flags them.
+#
+# AKIAOFFLINETEST00000 is the dummy AWS key in commit 08f8ba9 (v0.2,
+# test_wire_offline.py; also named in scripts/scrub-check.sh). History is never
+# rewritten; scrub-check's grep still rejects it in the tree.
 [extend]
 useDefault = true
 
 [allowlist]
-description = "Nexus operation tokens in replay fixtures (base64url JSON, not secrets)"
+description = "Nexus operation tokens in replay fixtures; the v0.2 dummy AWS key"
 regexTarget = "line"
 regexes = [
   '''"(operationToken|nexus-operation-token)": "eyJ[A-Za-z0-9_-]+=*"''',
+  '''AKIAOFFLINETEST00000''',
 ]
