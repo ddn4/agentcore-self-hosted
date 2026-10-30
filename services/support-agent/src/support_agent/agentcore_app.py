@@ -154,7 +154,13 @@ def _ack(message: str, version: WorkerVersion, lifetime: int) -> dict[str, Any]:
 
 
 async def connect_with_timeout(plugins: Sequence[Plugin], seconds: float) -> Client:
-    """``config.connect`` bounded by ``TEMPORAL_CONNECT_TIMEOUT_SECONDS`` (fail fast)."""
+    """``config.connect`` bounded by ``TEMPORAL_CONNECT_TIMEOUT_SECONDS`` (fail fast).
+
+    ``asyncio.timeout`` bounds the *whole* connect: TCP, TLS handshake and the first RPC.
+    temporalio 1.35 also has ``connect_timeout`` on ``Client.connect`` / ``ConnectConfig``,
+    but it bounds only the TCP connection attempts (a TLS or first-RPC hang would still
+    hold the session) and does not exist on the 1.34 floor, so it is not used here.
+    """
     try:
         async with asyncio.timeout(seconds):
             return await config.connect(plugins=list(plugins))
