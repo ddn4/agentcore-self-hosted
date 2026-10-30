@@ -210,12 +210,11 @@ spike-nexus-wait: ## Spike: a 24 h approval wait behind Nexus on the time-skippi
 record-histories: ## Save a completed Workflow's history for the replay test (WF=support-1042)
 	$(UV) python scripts/record_history.py $(or $(WF),support-1042)
 
-spikes: ## Opus 5.5 spikes: wire params, effort, structured output, nested agents (live Bedrock; costs tokens)
+spikes: ## Opus 5.5 spikes: wire params, effort, structured output (live Bedrock; costs tokens)
 	RUN_BEDROCK_TESTS=1 $(UV) python spikes/opus_params.py
 	RUN_BEDROCK_TESTS=1 $(UV) python spikes/opus_structured_output.py
-	RUN_BEDROCK_TESTS=1 $(UV) python spikes/nested_agents.py --live
 
-spike-nested: ## Q20 spike offline: nested agents as tools vs Strands as_tool() (no AWS)
+spike-nested: ## Q20 spike (v0.3 checkout only; exits 2 from v0.5 on): nested agents vs as_tool()
 	$(UV) python spikes/nested_agents.py
 
 # --- v0.7: the serverless (AgentCore) shape --------------------------------------------

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import os
 import sys
 import uuid
@@ -136,6 +137,13 @@ async def main() -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--live", action="store_true", help="also run Cases A/B on Opus 5.5")
     args = parser.parse_args()
+    if "a2a_mode" in inspect.signature(SupportSupervisorWorkflow.run).parameters:
+        # From v0.5 the Supervisor always calls Finance over Nexus, and this spike's
+        # server has no `finance-agent` endpoint: the first Workflow task would fail
+        # forever. Q20 is answered (ledger 10); live sub-agent runs now come from
+        # scripts/verify/v0.5-a2a-over-nexus.sh and v0.6 without VERIFY_SKIP_BEDROCK.
+        print("nested_agents: v0.3 spike; run it from a v0.3-sub-agents checkout")
+        return 2
     ok = True
     env = await start_two_namespace_env()  # real time: see the note in run_probe
     try:

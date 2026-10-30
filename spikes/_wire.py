@@ -20,6 +20,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import unquote
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -44,6 +45,7 @@ def aws_session_ok(region: str) -> bool:
 @dataclass
 class WireTap:
     requests: list[dict[str, Any]] = field(default_factory=list)
+    urls: list[str] = field(default_factory=list)
 
     def attach(self, model: BedrockModel) -> BedrockModel:
         events = model.client.meta.events
@@ -53,10 +55,15 @@ class WireTap:
 
     def _capture(self, request: Any, **_: Any) -> None:
         self.requests.append(json.loads(request.body))
+        self.urls.append(unquote(request.url))
 
     @property
     def last(self) -> dict[str, Any]:
         return self.requests[-1] if self.requests else {}
+
+    @property
+    def last_url(self) -> str:
+        return self.urls[-1] if self.urls else ""
 
 
 def wire_problems(body: dict[str, Any]) -> list[str]:

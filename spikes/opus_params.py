@@ -74,13 +74,15 @@ def main() -> int:
         f"latency={turn.seconds:.2f}s usage={turn.usage} {turn.error}"
     )
     print(
-        f"   wire: modelId={body.get('modelId')!r} keys={sorted(body)} "
+        f"   wire: url_has_model={f'/model/{config.model_id()}/' in tap.last_url} "
+        f"keys={sorted(body)} "
         f"inferenceConfig={body.get('inferenceConfig')} "
         f"toolChoice={body.get('toolConfig', {}).get('toolChoice')} "
         f"additionalModelRequestFields={body.get('additionalModelRequestFields')}"
     )
     print(f"   forbidden on the wire: {problems or 'none'}")
-    ok &= turn.ok and not problems and body.get("modelId") == config.model_id()
+    # The model ID travels in the URL path (/model/<id>/converse-stream), not the body.
+    ok &= turn.ok and not problems and f"/model/{config.model_id()}/" in tap.last_url
     ok &= turn.stop_reason == "tool_use"
 
     print("== 2. rejections (expect 400, no tokens)")
