@@ -15,6 +15,9 @@ BEDROCK_EFFORT       ?= medium
 AWS_REGION           ?= us-east-1
 SUPPORT_TASK_QUEUE   ?= support-dev-tq
 SUPPORT_A2A_MODE     ?= tool
+# v0.7: WCI=1 makes `make dev-server` / `dev-server-up` enable the dev server's WCI (local
+# AgentCore emulator; WCI=aws for real AWS at v0.8). Build ID: TEMPORAL_BUILD_ID or build-id.sh.
+WCI                  ?= 0
 # Never touch the global docker context: every docker/kind call uses this one.
 DOCKER_CONTEXT       ?= colima-agentcore
 # .env may hold a relative path; make it absolute so tools run from any cwd agree.
@@ -31,7 +34,9 @@ PYTEST := $(UV) pytest
         spike-nested sub-agents worker-finance worker-finance-scripted worker-smoke payments-mock \
         nexus-endpoint agent-card agent-card-golden smoke task-state card spike-nexus-ts \
         timeline a2a e2e approve reject pending result approval-report \
-        spike-nexus-wait
+        spike-nexus-wait build-id agentcore-local agentcore-local-scripted invoke-local \
+        agentcore-ping agentcore-emulator agentcore-bundle agentcore-bundle-test \
+        worker-support-versioned register-version wci-history case-b-serverless
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -196,6 +201,46 @@ spikes: ## Opus 5.5 spikes: wire params, effort, structured output, nested agent
 
 spike-nested: ## Q20 spike offline: nested agents as tools vs Strands as_tool() (no AWS)
 	$(UV) python spikes/nested_agents.py
+
+# --- v0.7: the serverless (AgentCore) shape --------------------------------------------
+# The Build ID is computed in the recipe (not at parse time): build-id.sh refuses a dirty tree.
+BUILD_ID_SH = $${TEMPORAL_BUILD_ID:-$$(scripts/build-id.sh)}
+
+build-id: ## Support's content-hash Build ID (refuses uncommitted Support/contract changes)
+	@scripts/build-id.sh
+
+agentcore-local: ## Support Worker in AgentCore shape on :8080 (/invocations, /ping); real model
+	TEMPORAL_BUILD_ID="$(BUILD_ID_SH)" $(UV) python -m support_agent.agentcore_app
+
+agentcore-local-scripted: ## Same AgentCore app with a scripted model (offline; no AWS)
+	TEMPORAL_BUILD_ID="$(BUILD_ID_SH)" $(UV) python scripts/scripted_agentcore_app.py
+
+invoke-local: ## "I am the WCI": POST /invocations {deploymentName, buildId} to :8080, then /ping
+	scripts/invoke-local.sh
+
+agentcore-ping: ## /ping of the local AgentCore app (Healthy | HealthyBusy)
+	@curl -sS $${AGENTCORE_URL:-http://127.0.0.1:8080}/ping; echo
+
+agentcore-emulator: ## Local AgentCore API for the dev server's WCI (make dev-server WCI=1) -> :8080
+	$(UV) python scripts/agentcore_emulator.py
+
+agentcore-bundle: ## CodeZip code location in build/agentcore (flat; vendored contract; BUILD_ID)
+	scripts/agentcore-bundle.sh
+
+agentcore-bundle-test: ## Bundle imports and serves in a fresh 3.12 venv; arm64 zip < 250 MB
+	scripts/agentcore-bundle-test.sh
+
+worker-support-versioned: ## Long-lived versioned Support Worker (support-supervisor:<build>, support-tq)
+	TEMPORAL_BUILD_ID="$(BUILD_ID_SH)" $(UV) python -m support_agent.worker_versioned
+
+register-version: ## deployment create -> create-version -> set-current-version (MODE=--poller|--local-wci)
+	scripts/register-version.sh $(or $(MODE),--local-wci)
+
+wci-history: ## The dev server's WCI system Workflow for Support's version (BUILD=<build id>)
+	scripts/wci-history.sh $(BUILD)
+
+case-b-serverless: ## Case B on the versioned queue support-tq (WF=support-2077-sl)
+	SUPPORT_TASK_QUEUE=support-tq scripts/demo/case-b.sh $(or $(WF),support-2077-sl)
 
 verify: ## Run scripts/verify/$(TAG).sh, e.g. make verify TAG=v0.1-scaffold
 	scripts/verify/$(TAG).sh

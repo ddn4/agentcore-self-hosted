@@ -56,6 +56,11 @@ jobs:
       - name: make check
         run: make check
 
+      # v0.7: the AgentCore CodeZip bundle imports and serves in a fresh 3.12 venv, and is
+      # under 250 MB zipped for linux arm64 (needs PyPI, no AWS).
+      - name: AgentCore bundle
+        run: make agentcore-bundle agentcore-bundle-test
+
   gitleaks:
     runs-on: ubuntu-24.04
     steps:
