@@ -10,6 +10,7 @@ export TEMPORAL_PROFILE="${TEMPORAL_PROFILE:-local}"
 
 WF="${1:-support-1042}"
 TASK="$WF"; [[ "$TASK" == a2a-task-* ]] || TASK="a2a-task-$WF"
+# The CLI prints an empty list as null (a rejected task has no artifacts), hence `// []`.
 temporal workflow query --namespace agent-services --workflow-id "$TASK" --type get_task -o json \
   | jq '.queryResult[0] | {id, context_id, state: .status.state, message: .status.message.parts[0].text,
-         artifacts: [.artifacts[] | {name, data: .parts[0].data}]}'
+         artifacts: [(.artifacts // [])[] | {name, data: .parts[0].data}]}'

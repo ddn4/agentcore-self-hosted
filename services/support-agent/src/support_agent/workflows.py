@@ -71,8 +71,15 @@ from support_agent.finance_peer import A2A_MODES, FinancePeer, card_brief, tool_
 with workflow.unsafe.imports_passed_through():
     from support_agent.activities import say_hello
 
-#: An answer from the Return Policy agent that makes a refund eligible.
-_ELIGIBLE = re.compile(r"(?<![A-Z_])ELIGIBLE\b")
+#: An answer from the Return Policy agent that makes a refund eligible: the verdict
+#: word ELIGIBLE, but not NOT_ELIGIBLE, INELIGIBLE, "NOT ELIGIBLE" or "NOT-ELIGIBLE"
+#: (the prompt asks for NOT_ELIGIBLE; a live model may still write it another way).
+_ELIGIBLE = re.compile(r"(?<![A-Z_])(?<!NOT )(?<!NOT-)ELIGIBLE\b")
+
+
+def is_eligible(answer: str) -> bool:
+    """Whether a Return Policy agent answer says ELIGIBLE (drives the prompt-drift guard)."""
+    return _ELIGIBLE.search(answer) is not None
 
 
 @workflow.defn
@@ -146,7 +153,7 @@ class SupportSupervisorWorkflow:
 
     def _eligible(self) -> bool:
         return any(
-            run.agent == RETURN_POLICY_NAME and _ELIGIBLE.search(run.answer)
+            run.agent == RETURN_POLICY_NAME and is_eligible(run.answer)
             for run in self._sub_agent_runs
         )
 

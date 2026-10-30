@@ -23,6 +23,9 @@ The Supervisor asks Finance itself: A2A over Nexus from inside the agent loop.
   the endpoint. `scripts/verify/v0.5-a2a-over-nexus.sh`, `scripts/check_a2a_run.py`.
 - Found: a sync Strands `@tool` fails quietly inside a Workflow (`asyncio.to_thread`);
   reported to Temporal. ADR-0003 part 2 accepted; ledger 15–17 resolved (17 live half pending).
+- Verifier fixes: the drift guard no longer reads "NOT ELIGIBLE"/"NOT-ELIGIBLE" as eligible
+  (`is_eligible()`, unit-tested; 208 tests); `make task-state` works on a rejected task
+  (CLI prints empty artifacts as `null`).
 - Live Bedrock still deferred (AWS SSO session expired; ledger 49 carried to v0.6).
 
 ## v0.4-finance-agent

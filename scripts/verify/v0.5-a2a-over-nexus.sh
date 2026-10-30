@@ -142,6 +142,8 @@ step "8. Case B (scripted): \$450 is over Finance's auto-approval limit -> rejec
 wf="support-2077-scripted"
 run_case case-b "$wf" tool rejected
 record "$wf" support-2077-scripted
+echo "make task-state WF=$wf (rejected: no artifacts):"
+scripts/demo/task-state.sh "$wf" | jq -c '{id, state, artifacts: [.artifacts[].name]}'
 
 if [[ "${VERIFY_SKIP_BEDROCK:-0}" == "1" ]]; then
   step "9-10. live Opus 5.5 (Support and Finance): SKIPPED (VERIFY_SKIP_BEDROCK=1)"
