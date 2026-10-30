@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Final
 
 from botocore.config import Config as BotocoreConfig
@@ -38,8 +39,89 @@ DEFAULT_EFFORT: Final[str] = "medium"
 
 
 def task_queue() -> str:
-    """Task queue for this service's Worker."""
+    """Task queue for this service's local, unversioned Worker (``make worker-support``)."""
     return os.environ.get("SUPPORT_TASK_QUEUE", "support-dev-tq")
+
+
+# --- v0.7: the serverless (AgentCore) shape --------------------------------------------
+# Names follow the AgentCore runtime env of runbook 5.4 and samples-python
+# bedrock_agentcore/strands_agent (TEMPORAL_TASK_QUEUE / _DEPLOYMENT_NAME / _BUILD_ID).
+
+#: Worker Deployment of the Support Supervisor (plan 3.3, ADR-0004).
+DEPLOYMENT_NAME: Final[str] = "support-supervisor"
+#: Versioned task queue polled only by serverless-shape Workers (plan 3.3).
+VERSIONED_TASK_QUEUE: Final[str] = "support-tq"
+#: Debounce before an idle AgentCore-shaped Worker drains (plan 3.3: local 20 s).
+DEFAULT_DEBOUNCE_SECONDS: Final[float] = 20.0
+#: Fail fast when the Temporal frontend is unreachable (plan 3.2).
+DEFAULT_CONNECT_TIMEOUT_SECONDS: Final[float] = 10.0
+#: How long a drain waits for in-flight Activities (runbook 5.2; the sample's DRAIN).
+GRACEFUL_SHUTDOWN_TIMEOUT: Final[timedelta] = timedelta(seconds=120)
+
+
+class MissingBuildIdError(RuntimeError):
+    """A versioned Worker refuses to start without an explicit Build ID."""
+
+
+def versioned_task_queue() -> str:
+    """``TEMPORAL_TASK_QUEUE`` (default ``support-tq``).
+
+    Deliberately *not* ``SUPPORT_TASK_QUEUE``: ``.env`` sets that to the unversioned
+    dev queue, and a versioned Worker must never poll it.
+    """
+    return os.environ.get("TEMPORAL_TASK_QUEUE", "").strip() or VERSIONED_TASK_QUEUE
+
+
+def deployment_name() -> str:
+    """``TEMPORAL_DEPLOYMENT_NAME`` (default ``support-supervisor``)."""
+    return os.environ.get("TEMPORAL_DEPLOYMENT_NAME", "").strip() or DEPLOYMENT_NAME
+
+
+def build_id() -> str:
+    """``TEMPORAL_BUILD_ID``, else the ``BUILD_ID`` file next to the code (CodeZip bundle).
+
+    There is no default on purpose (as in samples-python's AgentCore README): a made-up
+    Build ID would register a version nothing routes to, and PINNED Workflows would
+    strand on it. Locally the Makefile passes ``scripts/build-id.sh``'s output.
+    """
+    value = os.environ.get("TEMPORAL_BUILD_ID", "").strip()
+    if value:
+        return value
+    for path in _build_id_files():
+        if path.is_file():
+            text = path.read_text().strip()
+            if text:
+                return text
+    raise MissingBuildIdError(
+        "TEMPORAL_BUILD_ID is not set and no BUILD_ID file was found; "
+        "run scripts/build-id.sh (make build-id) or set it in the runtime env"
+    )
+
+
+def _build_id_files() -> list[Path]:
+    here = Path(__file__).resolve().parent
+    # Bundle layout (make agentcore-bundle): <root>/BUILD_ID, <root>/support_agent/config.py
+    return [here.parent / "BUILD_ID", here / "BUILD_ID"]
+
+
+def _positive_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    value = float(raw)
+    if value <= 0:
+        raise ValueError(f"{name}={raw!r} must be positive")
+    return value
+
+
+def debounce_seconds() -> float:
+    """``AGENTCORE_DEBOUNCE_SECONDS`` (default 20 locally; runbook default 60, cloud 30)."""
+    return _positive_float("AGENTCORE_DEBOUNCE_SECONDS", DEFAULT_DEBOUNCE_SECONDS)
+
+
+def connect_timeout_seconds() -> float:
+    """``TEMPORAL_CONNECT_TIMEOUT_SECONDS`` (default 10)."""
+    return _positive_float("TEMPORAL_CONNECT_TIMEOUT_SECONDS", DEFAULT_CONNECT_TIMEOUT_SECONDS)
 
 
 #: Headroom above Finance's published approval limit (ADR-0009): 24 h + 1 h = 25 h.

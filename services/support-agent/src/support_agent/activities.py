@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
+import socket
 from importlib import resources
 from typing import Any
 
@@ -76,3 +78,12 @@ def get_return_policy() -> str:
         The full policy text, including the 30-day window and who may issue refunds.
     """
     return (_DATA / "return_policy.md").read_text(encoding="utf-8")
+
+
+@activity.defn
+async def ping(note: str) -> str:
+    """``PingWorkflow``'s one Activity: echo ``note`` with the process that ran it (v0.7).
+
+    String formatting only, nothing blocks, so an async Activity is safe here.
+    """
+    return f"pong {note} from pid {os.getpid()} on {socket.gethostname()}"

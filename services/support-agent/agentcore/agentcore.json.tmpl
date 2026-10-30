@@ -1,0 +1,63 @@
+{
+  "$$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "TemporalCustomerSupport",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:project-name": "TemporalCustomerSupport",
+    "project": "temporal-customer-support"
+  },
+  "runtimes": [
+    {
+      "name": "${RUNTIME_NAME}",
+      "description": "Support Supervisor: scale-to-zero Temporal Worker (self-hosted Temporal, namespace agents)",
+      "build": "CodeZip",
+      "entrypoint": "agentcore_worker.py",
+      "codeLocation": ".",
+      "runtimeVersion": "PYTHON_3_12",
+      "protocol": "HTTP",
+      "authorizerType": "AWS_IAM",
+      "networkMode": "${NETWORK_MODE}",
+      "networkConfig": {
+        "subnets": ${SUBNETS_JSON},
+        "securityGroups": ${SECURITY_GROUPS_JSON}
+      },
+      "endpoints": {
+        "${ENDPOINT_NAME}": {
+          "version": ${RUNTIME_VERSION},
+          "description": "Build ID ${BUILD_ID}; invoked by the self-hosted Temporal WCI"
+        }
+      },
+      "lifecycleConfiguration": { "idleRuntimeSessionTimeout": 900, "maxLifetime": 28800 },
+      "envVars": [
+        {"name": "TEMPORAL_ADDRESS",                 "value": "${TEMPORAL_ADDRESS}"},
+        {"name": "TEMPORAL_NAMESPACE",               "value": "agents"},
+        {"name": "TEMPORAL_TASK_QUEUE",              "value": "support-tq"},
+        {"name": "TEMPORAL_DEPLOYMENT_NAME",         "value": "support-supervisor"},
+        {"name": "TEMPORAL_BUILD_ID",                "value": "${BUILD_ID}"},
+        {"name": "SUPPORT_GIT_SHA",                  "value": "${SUPPORT_GIT_SHA}"},
+        {"name": "TEMPORAL_TLS",                     "value": "${TEMPORAL_TLS}"},
+        {"name": "TEMPORAL_TLS_SERVER_NAME",         "value": "${TEMPORAL_TLS_SERVER_NAME}"},
+        {"name": "TEMPORAL_MTLS_SECRET_ID",          "value": "${TEMPORAL_MTLS_SECRET_ID}"},
+        {"name": "TEMPORAL_CONNECT_TIMEOUT_SECONDS", "value": "10"},
+        {"name": "AGENTCORE_DEBOUNCE_SECONDS",       "value": "${AGENTCORE_DEBOUNCE_SECONDS}"},
+        {"name": "AGENTCORE_HOST",                   "value": "0.0.0.0"},
+        {"name": "AWS_REGION",                       "value": "${AWS_REGION}"},
+        {"name": "BEDROCK_MODEL_ID",                 "value": "${BEDROCK_MODEL_ID}"},
+        {"name": "BEDROCK_EFFORT",                   "value": "${BEDROCK_EFFORT}"}
+      ]
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [],
+  "datasets": [],
+  "payments": []
+}
