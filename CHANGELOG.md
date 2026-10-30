@@ -4,26 +4,31 @@ One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
 ## v0.8-wci-handshake
 
-First AWS contact (us-east-1, go-ahead G5). **Blocked at the IAM apply**: the reviewed
-`30-agentcore-iam` plan was refused by the session's permission policy, so no runtime, CFN
-stack or WCI handshake ran yet (story v0.8 "Resume"). Build ID `fd7af7a`.
+First AWS contact (us-east-1, go-ahead G5). The first attempt stopped at the IAM apply
+(permission policy); the resumed run did steps 2–9 the same day. Build ID `fd7af7a`.
 
 - Applied and kept: `00-guardrails` (budget USD 200/month at 80 % forecasted / 100 % actual,
   SNS topic, alarm on `AWS/Bedrock-AgentCore` `ActiveSessionCount`), secret
-  `temporal/agentcore-external-id` (`make external-id`).
-- `infra/terraform/30-agentcore-iam` (execution role + `temporal-dev-wci`), written and planned.
-- Vendored, sha256-pinned invocation-role template (`make cfn-template`); `invoke-role.sh`,
-  `agentcore.sh` / `agentcore-deploy.sh` (CLI 1.0.1, existing execution role, PUBLIC probe),
-  `agentcore-sessions.sh`, `aws-profile.sh`, `tf.sh` (saved-plan apply, static checks),
-  `register-version.sh --agentcore-auto`, `verify/v0.8-wci-handshake.sh` (part 1, gate, part 2).
-- `make tools`: Terraform 1.17.0, tflint v0.64.0 (sha256); `make tools-agentcore`; CI runs
-  `make tf-static`.
-- CodeZip: the bundle ships only `pyproject.toml` (what AgentCore's CLI installs);
-  `agentcore.json.tmpl` in CLI 1.0.x format (`"version": 2`, OTel wrapper off).
-- `redact.sh` / `scrub-check.sh`: emails, public IPv4, External-ID-shaped hex.
-- ADR-0005 (PUBLIC runtime is a probe only), ADR-0008 (runtime via the CLI, IAM in Terraform).
-- Ledger: 26, 27, 45 resolved; 22 (packaging), 25 (CFN params), 44 (metric names) partly; 21
-  "not answered here"; 28, 29 and the real WCI handshake still open (61).
+  `temporal/agentcore-external-id`, `30-agentcore-iam` (execution role + `temporal-dev-wci`).
+- Created and deleted the same day: PUBLIC probe runtime `AgentcoreDemo_default_support_supervisor`
+  (CLI stack `AgentCore-AgentcoreDemo-default`), invocation-role stack `temporal-agentcore-worker`.
+- Real WCI handshake from the dev server: AssumeRole with External ID per invoke,
+  `GetAgentRuntimeEndpoint` in `ValidateSpec`, `InvokeAgentRuntime` → 14 sessions, each
+  fails fast to `127.0.0.1` and releases; wrong External ID → AccessDenied.
+- Q15 first AWS look: yes (invoke 4 ms after `NexusOperationCompleted`). Q9 partly (UI 2.54.1
+  has no AgentCore renderer). Q13 not answered here.
+- Finding: the WCI re-invokes every ~60–68 s (`PullStats`) while it sees a backlog, also for
+  4.5 min after the Workflow was terminated (asked of Temporal).
+- `scripts/agentcore-deploy.sh`: runtime name `<project>_<target>_<runtime>`; `down` checks the
+  CLI stack's `agentcore:project-name` tag and deletes the runtime's leftover log groups.
+- `scripts/verify/v0.8-wci-handshake.sh`: no AWS mutations inside; gate 2 on the make-created
+  resources; part 3 (`VERIFY_PART=3`) checks the teardown; millisecond `--since` timestamps;
+  UI bundle crawl for Q9; `delete-version` retry.
+- `redact.sh`: runtime IDs in log-group names, Secrets Manager ARN suffixes.
+- Tooling from the first attempt: Terraform 1.17.0, tflint v0.64.0 (sha256), AgentCore CLI
+  1.0.1, `tf.sh` (saved-plan apply), CI `make tf-static`; CodeZip ships only `pyproject.toml`.
+- ADR-0005 (outcome), ADR-0008 (live CLI facts); ledger 22, 25, 44, 45, 61 resolved, 29 first
+  look yes, 28 partly, 21 not answered here; `docs/ask-temporal.md` v0.8 questions.
 - v0.7 deferred notes: `agentcore_worker.py` docstring, `connect_with_timeout` rationale.
 
 ## v0.9.2-live-bedrock

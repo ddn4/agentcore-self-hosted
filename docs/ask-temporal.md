@@ -141,3 +141,19 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
 - v0.9 (Python SDK): rotating a file-based client cert needs a new `Client` assigned to
   `worker.client` (docs). An envconfig option to re-read `_PATH` files on reconnect would
   fit cert-manager setups (we restart the Finance Deployment instead).
+- v0.8 (dev server 1.32.0 WCI, real AgentCore): **invokes continue after the only pending
+  Workflow is terminated.** ping-1 waited with no reachable Worker; the WCI invoked once at
+  `task-add-signal`, then (≈5 min later) ran `PullStats` every 60–68 s and invoked after
+  each one; after `terminate ping-1` it invoked 5 more times over 4.5 min, then stopped on
+  its own. Is this the terminated Workflow's task staying in matching's backlog until a poller
+  takes it? For a scale-to-zero Worker that cannot connect, each of these is a paid session.
+  Also: what is the documented re-invoke cadence while a backlog persists, and the delay
+  before the first re-invoke?
+- v0.8: the WCI does a fresh `sts:AssumeRole` (with the External ID) for **every**
+  `InvokeWorker` (CloudTrail), and `GetAgentRuntimeEndpoint` only in `ValidateSpec`.
+  Caching the role credentials for their hour would cut STS calls; is that intended?
+- v0.8: UI 2.54.1 has compute-config renderers for `aws-lambda` and `gcp-cloud-run` only
+  (no `aws-agentcore` in the bundle). Is AgentCore detail rendering planned (Q9)?
+- v0.8: `delete-version` right after the last Worker stops is refused ("cannot be deleted
+  since it has active pollers") for a few minutes; `--skip-drainage` does not cover it.
+  Worth a line in the delete-version docs.
