@@ -6,15 +6,22 @@
 # Part 1 (steps 1-9) is static or read-only AWS: tools, Terraform static checks, the vendored
 # CFN template, the guardrails, the External ID secret (presence only), the provider schema
 # (AWS Q4/Q6), the AgentCore CLI's synth of the PUBLIC probe (CodeZip, existing role), the
-# session check. Then a GATE: the 30-agentcore-iam roles must exist (exit 3 "BLOCKED" if not).
-# Part 2 (steps 10-17) creates and then DELETES the throwaway resources the same day:
-# PUBLIC runtime (AgentCore CLI stack), CFN invocation-role stack; it runs the dev server with
-# the WCI as temporal-dev-wci, registration with a local versioned Worker, the wrong-External-ID
-# negative test, the ping-1 invocation probe, the Q15 probe, and the teardown (step 17).
+# session check. Then GATE 1: the 30-agentcore-iam roles must exist (exit 3 "BLOCKED" if not).
+# This script never creates or deletes AWS resources: every mutation is a make target the
+# operator runs (and reviews) by hand, in this order:
+#   make tf-plan STACK=30-agentcore-iam; make tf-apply STACK=30-agentcore-iam   (create_dev_wci_role=true in terraform.auto.tfvars)
+#   make aws-profile; make agentcore-deploy MODE=PUBLIC; make invoke-role
+# GATE 2: the PUBLIC runtime and the invocation-role stack must exist (exit 3 if not).
+# Part 2 (steps 10-17) is the live probe on those throwaway resources: the dev server with the
+# WCI as temporal-dev-wci, registration with a local versioned Worker, the wrong-External-ID
+# negative test, the ping-1 invocation probe, the Q15 probe, and the Temporal side of the
+# teardown (version back to unversioned, deleted; dev server stopped). Then, the same day:
+#   make agentcore-down; make invoke-role-delete; VERIFY_PART=3 scripts/verify/v0.8-wci-handshake.sh
+# Part 3 (VERIFY_PART=3, step 18) checks the teardown: runtime, CLI stack and invocation-role
+# stack gone, sessions of ours 0, and lists what is kept (Project tag).
 #   VERIFY_SKIP_CHECK=1       skip step 1 (make check)
-#   VERIFY_PART=1             stop after the gate (no resources created)
+#   VERIFY_PART=1|2|3         1: stop after gate 1; 2 (default): parts 1+2; 3: teardown check only
 #   VERIFY_WATCH_SECONDS=300  how long steps 15/16 watch the WCI (plan: 5 min)
-#   VERIFY_KEEP=1             skip the teardown (NOT for normal runs: same-day teardown is the rule)
 # Needs a committed tree (scripts/build-id.sh) and `make tools tools-agentcore`.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -30,7 +37,8 @@ rm -rf "$LOGS"; mkdir -p "$LOGS"
 NS=agents DEP=support-supervisor TQ=support-tq
 WATCH="${VERIFY_WATCH_SECONDS:-300}"
 step() { printf '\n=== %s  (%s)\n' "$*" "$(date -u +%H:%M:%SZ)"; }
-now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+# Milliseconds: WCI event times carry fractions, and "…:21Z" sorts after "…:21.79Z".
+now() { date -u +%Y-%m-%dT%H:%M:%S.000Z; }
 # macOS has no timeout(1): run "$@", kill it after $1 seconds.
 with_timeout() {
   local secs="$1"; shift
@@ -47,6 +55,38 @@ cleanup() {
   scripts/dev-server.sh stop >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+
+teardown_check() {
+  step "18. Same-day teardown check (after make agentcore-down and make invoke-role-delete)"
+  local fail=0
+  if scripts/agentcore-deploy.sh runtime-arn >/dev/null 2>&1; then echo "FAIL: runtime still exists (make agentcore-down)"; fail=1
+  else echo "runtime of ours: gone"; fi
+  for s in AgentCore-AgentcoreDemo-default temporal-agentcore-worker; do
+    if aws cloudformation describe-stacks --stack-name "$s" >/dev/null 2>&1; then echo "FAIL: stack $s still exists"; fail=1
+    else echo "stack $s: gone"; fi
+  done
+  lgs="$(aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/runtimes/AgentcoreDemo_ --query 'length(logGroups)' --output text)"
+  if [[ "$lgs" != 0 ]]; then echo "FAIL: $lgs log group(s) of our runtime left (make agentcore-down deletes them)"; fail=1
+  else echo "log groups of our runtime: gone"; fi
+  if aws iam get-role --role-name Temporal-AgentCore-Worker >/dev/null 2>&1; then echo "FAIL: role Temporal-AgentCore-Worker still exists"; fail=1
+  else echo "role Temporal-AgentCore-Worker: gone"; fi
+  echo "waiting for the probe's sessions to idle out (120 s) and the metric to settle"
+  local ok=0
+  for _ in $(seq 1 20); do
+    if scripts/agentcore-sessions.sh --window 5 >"$LOGS/sessions.txt" 2>&1; then ok=1; break; fi; sleep 30
+  done
+  cat "$LOGS/sessions.txt"
+  [[ $ok -eq 1 ]] || { echo "FAIL: sessions of ours still starting"; fail=1; }
+  echo "kept (Project=agentcore-self-hosted):"
+  aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=agentcore-self-hosted \
+    --query 'ResourceTagMappingList[].ResourceARN' --output text | tr '\t' '\n' | sed 's/^/  /'
+  for r in agentcore-demo-support-exec temporal-dev-wci; do
+    aws iam get-role --role-name "$r" --query 'Role.RoleName' --output text | sed 's/^/  iam role (tag API does not list IAM): /'
+  done
+  [[ $fail -eq 0 ]] || exit 1
+  printf '\nVERIFY PART 3 (TEARDOWN) OK\n'
+}
+if [[ "${VERIFY_PART:-2}" == 3 ]]; then teardown_check; exit 0; fi
 
 step "1. make check"
 if [[ "${VERIFY_SKIP_CHECK:-0}" == 1 ]]; then echo "SKIPPED (VERIFY_SKIP_CHECK=1)"; else make -s check | tail -1; fi
@@ -105,18 +145,19 @@ MODE=PUBLIC AGENTCORE_EXECUTION_ROLE_ARN="$role_stub" bash -c '
   export AGENTCORE_NETWORK_MODE=PUBLIC AGENTCORE_TEMPORAL_ADDRESS=127.0.0.1:7233 AGENTCORE_TEMPORAL_TLS=false \
          TEMPORAL_MTLS_SECRET_ID= AGENTCORE_IDLE_SESSION_TIMEOUT=120
   scripts/agentcore-bundle.sh | tail -1 && scripts/agentcore-deploy.sh build | tail -1'
-synth=build/agentcore-project/agentcore/cdk/cdk.out/AgentCore-AgentcoreDemo.template.json
+# The stack is AgentCore-<project> before the first deploy, AgentCore-<project>-<target> once aws-targets.json exists.
+synth="$(ls build/agentcore-project/agentcore/cdk/cdk.out/AgentCore-AgentcoreDemo*.template.json | head -1)"
 echo "resources: $(jq -r '[.Resources[].Type] | join(", ")' "$synth")"
 jq -r '.Resources[] | select(.Type=="AWS::BedrockAgentCore::Runtime") | .Properties
   | "runtime \(.AgentRuntimeName), \(.NetworkConfiguration.NetworkMode), \(.AgentRuntimeArtifact.CodeConfiguration.Runtime), entrypoint \(.AgentRuntimeArtifact.CodeConfiguration.EntryPoint|join(" ")), role \(if (.RoleArn|type)=="string" then "existing (executionRoleArn)" else "CREATED by the CLI" end), idle \(.LifecycleConfiguration.IdleRuntimeSessionTimeout)s, TEMPORAL_ADDRESS \(.EnvironmentVariables.TEMPORAL_ADDRESS), tags \(.Tags|tostring)"' "$synth"
 jq -r '.Resources[] | select(.Type=="AWS::BedrockAgentCore::RuntimeEndpoint") | .Properties | "endpoint \(.Name) -> version \(.AgentRuntimeVersion)"' "$synth"
 if jq -e '[.Resources[].Type] | index("AWS::IAM::Role")' "$synth" >/dev/null; then echo "FAIL: the CLI stack would create an IAM role"; exit 1; fi
 out=build/agentcore-project/agentcore/cdk/cdk.out
-zip="$out/$(jq -r '[.files[].source.path | select(endswith(".zip"))][0]' "$out/AgentCore-AgentcoreDemo.assets.json")"
+zip="$out/$(jq -r '[.files[].source.path | select(endswith(".zip"))][0]' "${synth%.template.json}.assets.json")"
 echo "CodeZip asset: $(( $(wc -c <"$zip") / 1048576 )) MB; dependency file in the bundle: $(cd build/agentcore && ls pyproject.toml requirements.txt 2>/dev/null | paste -sd' ' -); arm64 wheels: $(unzip -l "$zip" | grep -c 'aarch64-linux-gnu.so')"
 
 step "9. AgentCore sessions of ours (check of record; AWS Q8)"
-scripts/agentcore-sessions.sh || { echo "FAIL: sessions of ours in the last 15 min"; exit 1; }
+scripts/agentcore-sessions.sh || echo "(informational here: a probe ran in the window; part 3 is the check of record)"
 
 step "GATE: 30-agentcore-iam roles (execution role, temporal-dev-wci)"
 missing=()
@@ -126,7 +167,7 @@ for r in agentcore-demo-support-exec temporal-dev-wci; do
   else echo "role $r: MISSING"; missing+=("$r"); fi
 done
 if [[ ${#missing[@]} -gt 0 ]]; then
-  echo "BLOCKED: apply 30-agentcore-iam first: make tf-plan STACK=30-agentcore-iam TF_VAR_create_dev_wci_role=true; make tf-apply STACK=30-agentcore-iam"
+  echo "BLOCKED: apply 30-agentcore-iam first (create_dev_wci_role = true in its terraform.auto.tfvars): make tf-plan STACK=30-agentcore-iam; make tf-apply STACK=30-agentcore-iam"
   exit 3
 fi
 [[ "${VERIFY_PART:-2}" == 1 ]] && { printf '\nVERIFY PART 1 OK\n'; exit 0; }
@@ -139,32 +180,53 @@ if AWS_PROFILE=temporal-dev-wci aws bedrock-agentcore-control list-agent-runtime
   echo "FAIL: temporal-dev-wci can do more than sts:AssumeRole"; exit 1
 else echo "temporal-dev-wci cannot call AgentCore directly (only sts:AssumeRole on the invocation role): ok"; fi
 
-step "11. Deploy the PUBLIC probe runtime (AgentCore CLI 1.0.1; ADR-0005)"
-t_deploy=$(date +%s)
-MODE=PUBLIC scripts/agentcore-deploy.sh deploy 2>&1 | tail -25
-echo "deploy took $(( $(date +%s) - t_deploy )) s"
-RUNTIME_ARN="$(scripts/agentcore-deploy.sh runtime-arn)"
+step "GATE 2: PUBLIC probe runtime and invocation-role stack (created by make targets, not here)"
+if ! RUNTIME_ARN="$(scripts/agentcore-deploy.sh runtime-arn 2>/dev/null)" \
+   || [[ "$(scripts/invoke-role.sh status | head -1)" != *CREATE_COMPLETE* && "$(scripts/invoke-role.sh status | head -1)" != *UPDATE_COMPLETE* ]]; then
+  echo "BLOCKED: run make aws-profile; make agentcore-deploy MODE=PUBLIC; make invoke-role"
+  exit 3
+fi
+echo "runtime and invocation-role stack present"
+
+step "11. The PUBLIC probe runtime (AgentCore CLI 1.0.1; ADR-0005)"
 ENDPOINT_ARN="$(scripts/agentcore-deploy.sh endpoint-arn)"
 echo "runtime  $RUNTIME_ARN"
 echo "endpoint $ENDPOINT_ARN"
 rid="${RUNTIME_ARN##*/}"
 aws bedrock-agentcore-control get-agent-runtime-endpoint --agent-runtime-id "$rid" --endpoint-name "b_${BUILD_ID:0:7}" \
-  --query '{name: name, status: status, version: liveVersion}' --output json
+  --query '{name: name, status: status, liveVersion: liveVersion}' --output json
 aws bedrock-agentcore-control get-agent-runtime --agent-runtime-id "$rid" \
-  --query '{name: agentRuntimeName, status: status, network: networkConfiguration.networkMode, role: roleArn}' --output json
+  --query '{name: agentRuntimeName, status: status, network: networkConfiguration.networkMode, role: roleArn, idle: lifecycleConfiguration.idleRuntimeSessionTimeout}' --output json
+echo "CLI stack tags: $(aws cloudformation describe-stacks --stack-name AgentCore-AgentcoreDemo-default --query 'Stacks[0].Tags[].join(`=`, [Key, Value])' --output text | tr '\t' ' ')"
+echo "runtime tag Project=$(aws bedrock-agentcore-control list-tags-for-resource --resource-arn "$RUNTIME_ARN" --query 'tags.Project' --output text)"
+echo "agentcore status (CLI):"
+scripts/agentcore-deploy.sh status | jq -c '.resources[] | {type: .resourceType, name, state: .deploymentState, children: [.children[]? | {name, state: .deploymentState}]}' 2>/dev/null || true
+echo "Transaction Search (account-wide; the CLI is told not to touch it): $(aws xray get-trace-segment-destination --query Destination --output text 2>/dev/null || echo unknown), last changed $(aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=UpdateTraceSegmentDestination --max-results 1 --query "Events[0].EventTime" --output text 2>/dev/null)"
 
 step "12. Invocation role: CFN stack from the vendored template (External ID from Secrets Manager)"
-DEV_WCI_ARN="$($TF -chdir=infra/terraform/30-agentcore-iam output -raw dev_wci_role_arn)"
-scripts/invoke-role.sh create --temporal-role-arn "$DEV_WCI_ARN" --runtime-arn "$RUNTIME_ARN"
 scripts/invoke-role.sh status
+echo "stack tag Project=$(aws cloudformation describe-stacks --stack-name temporal-agentcore-worker --query "Stacks[0].Tags[?Key=='Project'].Value | [0]" --output text); role tag Project=$(aws iam get-role --role-name Temporal-AgentCore-Worker --query "Role.Tags[?Key=='Project'].Value | [0]" --output text)"
 if aws sts assume-role --role-arn "$(scripts/invoke-role.sh arn)" --role-session-name no-extid >/dev/null 2>&1; then
-  echo "FAIL: the invocation role is assumable without the External ID"; exit 1
-else echo "AssumeRole without External ID (as the SSO admin, not even trusted): denied: ok"; fi
+  echo "FAIL: the invocation role is assumable by the SSO admin without the External ID"; exit 1
+else echo "AssumeRole as the SSO admin, no External ID: denied: ok"; fi
+if AWS_PROFILE=temporal-dev-wci aws sts assume-role --role-arn "$(scripts/invoke-role.sh arn)" --role-session-name no-extid >/dev/null 2>&1; then
+  echo "FAIL: temporal-dev-wci can assume the invocation role without the External ID"; exit 1
+else echo "AssumeRole as temporal-dev-wci, no External ID: denied: ok"; fi
+if AWS_PROFILE=temporal-dev-wci aws sts assume-role --role-arn "$(scripts/invoke-role.sh arn)" --role-session-name with-extid \
+     --external-id "$(scripts/external-id.sh --value)" --query 'AssumedRoleUser.Arn' --output text; then
+  echo "AssumeRole as temporal-dev-wci with the External ID: allowed: ok"
+else echo "FAIL: temporal-dev-wci cannot assume the invocation role with the External ID"; exit 1; fi
 
 step "13. Dev server with the WCI under AWS_PROFILE=temporal-dev-wci (WCI=aws); Finance side (scripted)"
 scripts/dev-server.sh stop >/dev/null 2>&1 || true
 rm -f .temporal/dev.db .temporal/dev.db-*
-AWS_PROFILE=temporal-dev-wci WCI=aws scripts/dev-server.sh start
+if [[ "${VERIFY_WCI_CREDS:-profile}" == export ]]; then
+  # Plan v0.8 step 4 fallback: 1 h static credentials of temporal-dev-wci for the WCI's Go SDK.
+  ( eval "$(aws configure export-credentials --profile temporal-dev-wci --format env)"; unset AWS_PROFILE; WCI=aws scripts/dev-server.sh start )
+else
+  AWS_PROFILE=temporal-dev-wci WCI=aws scripts/dev-server.sh start
+fi
+echo "WCI credentials: ${VERIFY_WCI_CREDS:-profile} (AWS_PROFILE=temporal-dev-wci: source_profile=default (SSO) -> sts:AssumeRole)"
 "${UV[@]}" python -m payments_mock.server >"$LOGS/payments.log" 2>&1 & pids+=($!)
 "${UV[@]}" python scripts/scripted_finance_worker.py >"$LOGS/finance.log" 2>&1 & pids+=($!)
 scripts/nexus-endpoint.sh apply | tail -1
@@ -200,20 +262,23 @@ T_PING="$(now)"
 temporal workflow start -n "$NS" --task-queue "$TQ" --type PingWorkflow -w ping-1 --input '"ping-1"' | tail -1
 sleep "$WATCH"
 echo "WCI events since $T_PING:"
-scripts/wci-history.sh "$BUILD_ID" --since "$T_PING" | sed -n '2,200p' | grep -E 'signal|activity|failed' | tail -40
+scripts/wci-history.sh "$BUILD_ID" --since "$T_PING" | sed -n '2,200p' | { grep -E 'signal|activity|failed' || echo '  (none)'; } | tail -40
+echo "InvokeWorker during the ${WATCH}s watch (re-invoke cadence while ping-1 waits): $(scripts/wci-history.sh "$BUILD_ID" --since "$T_PING" | grep -c 'InvokeWorker$' || true)"
 echo "InvokeWorker total now: $(inv_count)"
 LOG_GROUP="/aws/bedrock-agentcore/runtimes/${rid}-b_${BUILD_ID:0:7}"
 echo "AgentCore logs ($LOG_GROUP, matching lines):"
-aws logs filter-log-events --log-group-name "$LOG_GROUP" --start-time "$(( $(date -j -u -f %Y-%m-%dT%H:%M:%SZ "$T_PING" +%s) * 1000 ))" \
-  --filter-pattern '?"AgentCore app" ?"worker starting" ?"could not connect" ?"async task released" ?"lifetime"' \
+aws logs filter-log-events --log-group-name "$LOG_GROUP" --start-time "$(( $(date -j -u -f %Y-%m-%dT%H:%M:%S "${T_PING%%.*}" +%s) * 1000 ))" \
+  --filter-pattern '?"AgentCore app" ?lifetime ?refusing ?"already polling" ?Traceback ?TimeoutError' \
   --query 'events[].message' --output text 2>&1 | tr '\t' '\n' | cut -c1-200 | sed -n 1,30p
 temporal workflow terminate -n "$NS" -w ping-1 --reason "v0.8 probe done" >/dev/null
 T_TERM="$(now)"; echo "ping-1 terminated at $T_TERM"
 sleep 10
-temporal task-queue describe -n "$NS" --task-queue "$TQ" -o json | jq -c '[.. | objects | select(has("approximateBacklogCount")) | {backlog: .approximateBacklogCount}] | unique' 2>/dev/null || true
+temporal task-queue describe -n "$NS" --task-queue "$TQ" --select-build-id "$BUILD_ID" -o json | jq -c '[.. | objects | select(has("approximateBacklogCount")) | {type: .taskQueueType, backlog: .approximateBacklogCount}]' 2>/dev/null || true
 c0="$(inv_count)"; sleep "$WATCH"; c1="$(inv_count)"
 echo "invokes after terminate: $c0 -> $c1 over ${WATCH}s ($([[ "$c0" == "$c1" ]] && echo flat || echo NOT flat))"
 echo "last InvokeWorker: $(scripts/wci-history.sh "$BUILD_ID" | grep 'InvokeWorker$' | tail -1 | awk '{print $1}')"
+echo "WCI after the terminate (PullStats every ~60 s; it invokes while it still sees a backlog):"
+scripts/wci-history.sh "$BUILD_ID" --since "$T_TERM" | sed -n '2,40p' | grep -E 'PullStats|InvokeWorker|signal' || echo '  (none)'
 
 step "16. Q15 probe: does a Nexus completion wake the WCI? (yes / no / inconclusive)"
 wf=support-2077-v08
@@ -252,23 +317,36 @@ done
 step "Q9: does the UI (2.54.1) show the compute config? (API the UI reads: describe-version)"
 temporal worker deployment describe-version -n "$NS" --deployment-name "$DEP" --build-id "$BUILD_ID" -o json \
   | jq -c '[paths(type=="string") | join(".")] | map(select(test("(?i)compute|agentcore|scaling")))' | cut -c1-400
-
-if [[ "${VERIFY_KEEP:-0}" == 1 ]]; then echo "VERIFY_KEEP=1: teardown skipped (run it today!)"; exit 0; fi
-step "17. Same-day teardown"
-temporal worker deployment set-current-version -n "$NS" --deployment-name "$DEP" --unversioned --yes 2>&1 | tail -1
-temporal worker deployment delete-version -n "$NS" --deployment-name "$DEP" --build-id "$BUILD_ID" --skip-drainage 2>&1 | tail -1 || true
-scripts/dev-server.sh stop
-scripts/agentcore-deploy.sh down
-scripts/invoke-role.sh delete
-echo "waiting for the probe's sessions to idle out (120 s) and the metric to settle"
-ok=0
-for _ in $(seq 1 20); do
-  if scripts/agentcore-sessions.sh --window 5 >"$LOGS/sessions.txt" 2>&1; then ok=1; break; fi; sleep 30
+UI=http://127.0.0.1:8233
+echo "UI server HTTP API (what the browser calls):"
+curl -sf "$UI/api/v1/namespaces/$NS/worker-deployment-versions/$DEP/$BUILD_ID" \
+  | jq -c '[paths(scalars) | map(tostring) | join(".")] | map(select(test("(?i)compute"))) | .[0:8]' 2>/dev/null || echo "  (path not served)"
+# Which compute providers can the UI render? Crawl its JS chunks (dynamic imports included).
+ui="$LOGS/ui"; mkdir -p "$ui"; : >"$ui/seen"
+todo="$(curl -s "$UI/" | grep -oE '_app/immutable/[A-Za-z0-9_./-]+\.js' | sort -u)"
+while [[ -n "$todo" ]]; do
+  next=""
+  for a in $todo; do
+    grep -qxF "$a" "$ui/seen" && continue; echo "$a" >>"$ui/seen"
+    g="$ui/$(echo "$a" | tr / _)"; curl -s "$UI/$a" >"$g"
+    for r in $(grep -oE '"\.\.?/[A-Za-z0-9_./-]+\.js"' "$g" | tr -d '"'); do
+      case "$r" in ./*) next="$next $(dirname "$a")/${r#./}" ;; ../*) next="$next $(dirname "$(dirname "$a")")/${r#../}" ;; esac
+    done
+  done
+  todo="$(echo $next | tr ' ' '\n' | sort -u)"
 done
-cat "$LOGS/sessions.txt"
-[[ $ok -eq 1 ]] || { echo "FAIL: sessions of ours still starting"; exit 1; }
-echo "kept: 00-guardrails ($tf00), secret temporal/agentcore-external-id, 30-agentcore-iam roles"
-aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=agentcore-self-hosted \
-  --query 'ResourceTagMappingList[].ResourceARN' --output text | tr '\t' '\n' | sed 's/^/  /'
+echo "UI bundle: $(wc -l <"$ui/seen" | tr -d ' ') JS files, $(grep -l computeConfig "$ui"/*.js | wc -l | tr -d ' ') read computeConfig; provider renderers: $(grep -ohE '"(aws-lambda|gcp-cloud-run|aws-agentcore)"' "$ui"/*.js | sort -u | tr -d '"' | paste -sd, -)"
 
-printf '\nVERIFY OK\n'
+step "17. Same-day teardown, Temporal side (the AWS side is make agentcore-down + make invoke-role-delete)"
+temporal worker deployment set-current-version -n "$NS" --deployment-name "$DEP" --unversioned --yes 2>&1 | tail -1
+# delete-version refuses while the stopped local Worker still counts as a poller (a few minutes).
+for i in $(seq 1 24); do
+  if out="$(temporal worker deployment delete-version -n "$NS" --deployment-name "$DEP" --build-id "$BUILD_ID" --skip-drainage 2>&1)"; then echo "$out" | tail -1; break; fi
+  [[ $i -eq 1 ]] && echo "$out" | tail -1 && echo "retrying every 15 s until the pollers expire"
+  sleep 15
+done
+temporal worker deployment describe -n "$NS" --name "$DEP" -o json | jq -c '{current: .workerDeploymentInfo.routingConfig.currentVersion // .routingConfig.currentVersion // "unversioned", versions: [(.workerDeploymentInfo.versionSummaries // [])[] | .version]}' 2>/dev/null || true
+scripts/dev-server.sh stop
+echo "NEXT (same day): make agentcore-down; make invoke-role-delete; VERIFY_PART=3 scripts/verify/v0.8-wci-handshake.sh"
+
+printf '\nVERIFY PART 2 OK\n'

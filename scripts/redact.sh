@@ -13,6 +13,8 @@ sed -E \
   -e 's/(^|[^0-9A-Za-z])(vpc|subnet|sg|eni|igw|nat|rtb|vpce|eipalloc|i)-[0-9a-f]{8,17}([^0-9A-Za-z]|$)/\1<\2-…>\3/g' \
   -e 's/(AKIA|ASIA)[A-Z0-9]{16}/<aws-access-key>/g' \
   -e 's#(runtime/|runtime-endpoint/)[A-Za-z][A-Za-z0-9_]{0,47}-[A-Za-z0-9]{10}#\1<runtime-id>#g' \
+  -e 's#(runtimes/)[A-Za-z][A-Za-z0-9_]{0,47}-[A-Za-z0-9]{10}-#\1<runtime-id>-#g' \
+  -e 's#(:secret:[A-Za-z0-9/_+=.@-]+)-[A-Za-z0-9]{6}([^A-Za-z0-9]|$)#\1-<sfx>\2#g' \
   -e 's#(AROA|AIDA)[A-Z0-9]{16,}#<principal-id>#g' \
   -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<email>/g' \
   -e 's/127\.0\.0\.1/__KEEP_LOOPBACK__/g; s/0\.0\.0\.0/__KEEP_ANY__/g; s/10\.255\.255\.1/__KEEP_BLACKHOLE__/g' \

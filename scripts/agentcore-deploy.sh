@@ -25,7 +25,10 @@ RUNTIME="${AGENTCORE_RUNTIME_NAME:-support_supervisor}"
 MODE="${MODE:-PUBLIC}"
 P=build/agentcore-project
 AC=scripts/agentcore.sh
-STACK="AgentCore-$PROJECT-default"
+TARGET="${AGENTCORE_TARGET:-default}"
+STACK="AgentCore-$PROJECT-$TARGET"
+# The CLI 1.0.1 names the runtime <project>_<target>_<runtime> (seen at the v0.8 deploy).
+RUNTIME_FULL="${PROJECT}_${TARGET}_${RUNTIME}"
 export AGENTCORE_PROJECT_NAME="$PROJECT" AGENTCORE_RUNTIME_NAME="$RUNTIME"
 
 build_id() { echo "${TEMPORAL_BUILD_ID:-$(scripts/build-id.sh)}"; }
@@ -63,7 +66,7 @@ project() {
 
 runtime_id() {
   aws bedrock-agentcore-control list-agent-runtimes --region "$AWS_REGION" \
-    --query "agentRuntimes[?agentRuntimeName=='${PROJECT}_${RUNTIME}'].agentRuntimeId | [0]" --output text
+    --query "agentRuntimes[?agentRuntimeName=='${RUNTIME_FULL}'].agentRuntimeId | [0]" --output text
 }
 
 case "${1:-}" in
@@ -89,12 +92,12 @@ case "${1:-}" in
     (cd "$P" && "../../$AC" status --target default --json) 2>&1 | scripts/redact.sh
     ;;
   runtime-arn)
-    id="$(runtime_id)"; [[ "$id" != None && -n "$id" ]] || { echo "no runtime ${PROJECT}_${RUNTIME}" >&2; exit 1; }
+    id="$(runtime_id)"; [[ "$id" != None && -n "$id" ]] || { echo "no runtime ${RUNTIME_FULL}" >&2; exit 1; }
     aws bedrock-agentcore-control get-agent-runtime --region "$AWS_REGION" --agent-runtime-id "$id" \
       --query agentRuntimeArn --output text
     ;;
   endpoint-arn)
-    id="$(runtime_id)"; [[ "$id" != None && -n "$id" ]] || { echo "no runtime ${PROJECT}_${RUNTIME}" >&2; exit 1; }
+    id="$(runtime_id)"; [[ "$id" != None && -n "$id" ]] || { echo "no runtime ${RUNTIME_FULL}" >&2; exit 1; }
     name="b_$(build_id | cut -c1-7)"
     aws bedrock-agentcore-control list-agent-runtime-endpoints --region "$AWS_REGION" --agent-runtime-id "$id" \
       --query "runtimeEndpoints[?name=='$name'].agentRuntimeEndpointArn | [0]" --output text
@@ -106,15 +109,28 @@ case "${1:-}" in
       (cd "$P" && "../../$AC" remove all --yes && "../../$AC" deploy --target default --yes) 2>&1 | scripts/redact.sh || true
     fi
     if aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "$STACK" >/dev/null 2>&1; then
+      # The CLI tags its stack only agentcore:project-name / agentcore:target-name (the
+      # Project tag reaches the runtime, not the stack): delete only a stack of this project.
+      owner="$(aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "$STACK" \
+        --query "Stacks[0].Tags[?Key=='agentcore:project-name'].Value | [0]" --output text)"
+      [[ "$owner" == "$PROJECT" ]] || { echo "agentcore-deploy: stack $STACK is not tagged agentcore:project-name=$PROJECT; refusing" >&2; exit 1; }
       echo "agentcore-deploy: stack $STACK still present; deleting it"
       aws cloudformation delete-stack --region "$AWS_REGION" --stack-name "$STACK"
       aws cloudformation wait stack-delete-complete --region "$AWS_REGION" --stack-name "$STACK"
     fi
     id="$(runtime_id)"
     if [[ "$id" == None || -z "$id" ]]; then
-      echo "agentcore-deploy: runtime ${PROJECT}_${RUNTIME} gone, stack $STACK gone"
+      # AgentCore leaves the runtime's log groups (never-expire retention) behind:
+      # /aws/bedrock-agentcore/runtimes/<runtime name>-<10 chars>-<endpoint>. Only our name.
+      for lg in $(aws logs describe-log-groups --region "$AWS_REGION" \
+                    --log-group-name-prefix "/aws/bedrock-agentcore/runtimes/${RUNTIME_FULL}-" \
+                    --query 'logGroups[].logGroupName' --output text); do
+        aws logs delete-log-group --region "$AWS_REGION" --log-group-name "$lg"
+        echo "agentcore-deploy: deleted log group $lg" | scripts/redact.sh
+      done
+      echo "agentcore-deploy: runtime ${RUNTIME_FULL} gone, stack $STACK gone"
     else
-      echo "agentcore-deploy: runtime ${PROJECT}_${RUNTIME} still exists" >&2; exit 1
+      echo "agentcore-deploy: runtime ${RUNTIME_FULL} still exists" >&2; exit 1
     fi
     ;;
   *) echo "usage: $0 project|build|deploy|status|runtime-arn|endpoint-arn|down" >&2; exit 2 ;;
