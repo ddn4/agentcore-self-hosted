@@ -1,5 +1,5 @@
 # CI: `make check` with no AWS credentials, plus gitleaks over the full history.
-# Not run yet: the repo has no GitHub remote at v0.1 (plan section 2.1).
+# First run 2026-10-30, after the GitHub remote was added.
 # v0.9: `make infra-static` (helm template + kustomize -> kubeconform) is part of make check;
 # kubeconform comes from `make tools` (pinned sha256), helm/kubectl from the runner image.
 # terraform validate (v0.10) joins it later.
@@ -60,6 +60,29 @@ jobs:
           make tools
           helm version --short
           kubectl version --client
+
+      # The time-skipping tests start the SDK's test server, which the SDK downloads from
+      # temporal.download into the temp dir and reuses. The first CI run got a 429 there:
+      # cache the binary per SDK version, and fetch it once up front with retries.
+      - name: Cache the Temporal test server
+        uses: actions/cache@v4
+        with:
+          path: /tmp/temporal-test-server-sdk-python-*
+          key: temporal-test-server-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+
+      - name: Fetch the Temporal test server (retries on 429)
+        run: |
+          for attempt in 1 2 3 4 5; do
+            uv run --frozen python -c 'import asyncio
+          from temporalio.testing import WorkflowEnvironment
+          async def main():
+              env = await WorkflowEnvironment.start_time_skipping()
+              await env.shutdown()
+          asyncio.run(main())' && exit 0
+            echo "attempt $attempt failed; retrying in $((attempt * 20)) s"
+            sleep $((attempt * 20))
+          done
+          exit 1
 
       - name: make check
         run: make check
