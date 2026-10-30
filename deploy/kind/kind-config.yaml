@@ -1,0 +1,14 @@
+# kind cluster for v0.9 (plan v0.9; runbook Phase 2 rehearsal on the laptop).
+#   make kind-up      (DOCKER_CONTEXT=colima-agentcore; never the global docker context)
+# One control-plane node (arm64 on Apple silicon: proves the arm64 images the Graviton
+# nodes need). Default CNI kindnet: since kind v0.24 it enforces NetworkPolicy
+# (kube-network-policies), which v0.9 verifies (ledger 36; fallback Calico).
+# Nothing is published on host ports: the laptop reaches the cluster through
+# `make pf` (kubectl port-forward), the stand-in for the NLB/Route 53 path on EKS.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: agentcore-demo
+nodes:
+  - role: control-plane
+networking:
+  disableDefaultCNI: false

@@ -1,0 +1,52 @@
+# Environment-independent values for chart temporal-1.7.0 (runbook Phase 2 + Phase 3).
+# Frozen at v0.9 on kind; v0.11 reuses it unchanged on EKS (plus values.eks.yaml).
+# Order: -f values.postgresql.yaml -f values.base.yaml [-f values.tls.yaml] -f values.<env>.yaml
+server:
+  # 2.1: the chart's appVersion is 1.32.0; pin the 1.32.1 patch (ledger 30).
+  image:
+    tag: 1.32.1
+  config:
+    namespaces:
+      # 2.10: namespaces come from values (post-install hook Job via the frontend).
+      create: true
+      namespace:
+        - name: default
+          retention: 3d
+        - name: agents            # team Support (caller); the WCI manages this one only
+          retention: 7d
+        - name: agent-services    # team Finance (Nexus handler)
+          retention: 7d
+  # Phase 3: Serverless Workers (WCI). Constrained to `agents`: the WCI must never manage
+  # agent-services (runbook 7b; ledger 24). `require_role_and_external_id` stays at its
+  # default (true). Nexus needs no dynamic config on 1.32 (no system.enableNexus).
+  # A helm upgrade that only changes this block rewrites the <release>-dynamic-config
+  # ConfigMap and does NOT restart pods (checksum/config covers server-configmap.yaml
+  # only); the server polls the mounted file every 10 s (verified at v0.9, ledger 31).
+  dynamicConfig:
+    workercontroller.enabled:
+      - value: true
+        constraints:
+          namespace: agents
+    workercontroller.compute_providers.enabled:
+      - value:
+          - aws-agentcore
+    workercontroller.scaling_algorithms.enabled:
+      - value:
+          - no-sync
+    # Standalone Nexus Operations (Q16, `make card`): off by default on 1.32.0 (ledger 12).
+    nexusoperation.enableStandalone:
+      - value: true
+  # The WCI derives the Region from the endpoint ARN; set it anyway (Phase 3).
+  additionalEnv:
+    - name: AWS_REGION
+      value: us-east-1
+  metrics:
+    annotations:
+      enabled: true
+admintools:
+  image:
+    tag: "1.32.1"
+web:
+  # 2.8: chart default temporalio/ui:2.54.1 (kept explicit so the pin is visible).
+  image:
+    tag: 2.54.1

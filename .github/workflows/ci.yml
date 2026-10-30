@@ -1,6 +1,8 @@
 # CI: `make check` with no AWS credentials, plus gitleaks over the full history.
 # Not run yet: the repo has no GitHub remote at v0.1 (plan section 2.1).
-# kubeconform (v0.9) and terraform validate (v0.10) join `make infra-static` later.
+# v0.9: `make infra-static` (helm template + kustomize -> kubeconform) is part of make check;
+# kubeconform comes from `make tools` (pinned sha256), helm/kubectl from the runner image.
+# terraform validate (v0.10) joins it later.
 name: ci
 
 on:
@@ -53,6 +55,12 @@ jobs:
           DOCTOR_SKIP_AWS: "1"
         run: make doctor
 
+      - name: Tools (kubeconform)
+        run: |
+          make tools
+          helm version --short
+          kubectl version --client
+
       - name: make check
         run: make check
 
@@ -60,6 +68,14 @@ jobs:
       # under 250 MB zipped for linux arm64 (needs PyPI, no AWS).
       - name: AgentCore bundle
         run: make agentcore-bundle agentcore-bundle-test
+
+      # v0.9: the images the kind/EKS overlays run (build context = the uv workspace).
+      - name: Docker builds (Finance, payments-mock)
+        run: |
+          docker build -f services/finance-agent/Dockerfile --target finance -t finance-agent:ci .
+          docker build -f services/finance-agent/Dockerfile --target finance-scripted -t finance-agent:ci-scripted .
+          docker build -f services/payments-mock/Dockerfile -t payments-mock:ci .
+          docker run --rm finance-agent:ci python -c "import finance_agent.worker, finance_a2a_api"
 
   gitleaks:
     runs-on: ubuntu-24.04

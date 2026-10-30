@@ -1,0 +1,33 @@
+# Runbook 7b.4: the in-cluster payments system Finance calls (idempotent refunds).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-mock
+  namespace: temporal-workers
+  labels: { app: payments-mock }
+spec:
+  replicas: 1                                  # in-memory ledger: one replica on purpose
+  selector: { matchLabels: { app: payments-mock } }
+  template:
+    metadata: { labels: { app: payments-mock } }
+    spec:
+      containers:
+        - name: payments
+          image: payments-mock
+          env:
+            - { name: PAYMENTS_HOST, value: "0.0.0.0" }
+            - { name: PAYMENTS_PORT, value: "8080" }
+          ports: [{ containerPort: 8080, name: http }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: payments-mock, namespace: temporal-workers }
+spec:
+  selector: { app: payments-mock }
+  ports: [{ port: 8080, targetPort: http, name: http }]

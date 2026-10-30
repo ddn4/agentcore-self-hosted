@@ -1,0 +1,19 @@
+# Runbook 7b.6: egress firewall for the Finance pods. Allowed: the Temporal frontend
+# (7233; frontend label of chart 1.7.0, ledger 30), DNS, HTTPS (Bedrock/STS; tighten to
+# VPC endpoint subnets on EKS), and payments-mock. Everything else is dropped.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: agent-services-worker-egress, namespace: temporal-workers }
+spec:
+  podSelector: { matchLabels: { app: agent-services-worker } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: temporal } }
+          podSelector: { matchLabels: { app.kubernetes.io/component: frontend } }
+      ports: [{ protocol: TCP, port: 7233 }]
+    - to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } } }]
+      ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+    - ports: [{ protocol: TCP, port: 443 }]
+    - to: [{ podSelector: { matchLabels: { app: payments-mock } } }]
+      ports: [{ protocol: TCP, port: 8080 }]

@@ -1,0 +1,12 @@
+# Verify-only values (plan v0.9 acceptance: "a dynamic-config-only helm upgrade takes effect
+# without pod restarts"). Overrides ONE dynamic-config key of values.base.yaml: standalone
+# Nexus Operations off, so `make card` (the CLI calling Finance's get_agent_card directly,
+# Q16) is refused until the normal values are applied again. Applied and reverted by
+# scripts/verify/v0.9-temporal-on-kind-mtls.sh (scripts/kind.sh dc-upgrade). Never part
+# of an install. (Tried first and rejected as probes: limit.maxIDLength, which the server
+# applies globally because a namespace constraint isn't valid for it, and
+# limit.blobSize.error, which did not reject a 300 KB StartWorkflow input.)
+server:
+  dynamicConfig:
+    nexusoperation.enableStandalone:
+      - value: false

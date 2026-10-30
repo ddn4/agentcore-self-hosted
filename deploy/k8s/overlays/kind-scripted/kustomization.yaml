@@ -1,0 +1,16 @@
+# kind, offline: the same Finance Worker image with the scripted model bound to the
+# StrandsPlugin's "bedrock" key (scripts/scripted_finance_worker.py; test seam only,
+# as `make worker-finance-scripted`). Default for `make kind-workers` while there are no
+# AWS credentials; everything else (TLS, NetworkPolicy, pods, Nexus) is identical.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../kind
+images:
+  - { name: agentcore-demo/finance-agent, newName: agentcore-demo/finance-agent, newTag: kind-scripted }
+patches:
+  - target: { kind: Deployment, name: agent-services-worker }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/command
+        value: ["python", "scripts/scripted_finance_worker.py"]

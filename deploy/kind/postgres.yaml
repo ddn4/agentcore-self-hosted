@@ -1,0 +1,48 @@
+# In-cluster PostgreSQL 16 for kind (plan v0.9 commit 1). The stand-in for RDS on EKS
+# (v0.11). Password auth (plan 3.3, "SQL on PostgreSQL with password auth"): the
+# password is random, created by `scripts/kind.sh db-secret` as Secret
+# temporal/temporal-db-secret (key `password`), which the chart also reads
+# (existingSecret in values.postgresql.yaml). Nothing secret is committed.
+# Ephemeral storage (emptyDir): `make kind-down` throws everything away on purpose.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: temporal
+  labels: { app: postgres }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports: [{ containerPort: 5432, name: postgres }]
+          env:
+            - { name: POSTGRES_USER, value: temporal }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: temporal-db-secret, key: password } }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "temporal"] }
+            periodSeconds: 3
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: temporal
+  labels: { app: postgres }
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432, targetPort: postgres, name: postgres }]

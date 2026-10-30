@@ -1,0 +1,34 @@
+# Ingress firewall for the Temporal frontend (runbook 7b.6, last paragraph): 7233 is
+# reachable only from the `temporal` namespace itself (server roles, UI, admintools,
+# hook Jobs) and from pods in `temporal-workers` labelled `temporal.io/client: "true"`.
+# An unlabelled pod in any namespace cannot connect (verified at v0.9, ledger 36).
+# Selector label: chart 1.7.0 puts app.kubernetes.io/component=frontend on the
+# frontend pods (templates/server-deployment.yaml; ledger 30).
+# kubectl port-forward (`make pf`, the laptop path) enters the pod's network namespace
+# from the node and is not subject to NetworkPolicy; on EKS the NLB path is governed
+# by security groups instead (runbook 1.x, 2.4).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: temporal-frontend-ingress
+  namespace: temporal
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: temporal
+      app.kubernetes.io/component: frontend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}                      # same namespace: history, matching, worker, web, admintools, Jobs
+      ports:
+        - { protocol: TCP, port: 7233 }
+        - { protocol: TCP, port: 7243 }        # HTTP API
+        - { protocol: TCP, port: 6933 }        # membership
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: temporal-workers }
+          podSelector:
+            matchLabels: { temporal.io/client: "true" }
+      ports:
+        - { protocol: TCP, port: 7233 }

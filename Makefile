@@ -6,10 +6,14 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
 # Configuration precedence: runtime env > .env > config/temporal.toml profile > code defaults.
+# A profile picked in the environment (`TEMPORAL_PROFILE=kind make ...`) must beat .env.
+_PROFILE_FROM_ENV := $(TEMPORAL_PROFILE)
 -include .env
+ifneq ($(_PROFILE_FROM_ENV),)
+override TEMPORAL_PROFILE := $(_PROFILE_FROM_ENV)
+endif
 TEMPORAL_CONFIG_FILE ?= $(CURDIR)/config/temporal.toml
 TEMPORAL_PROFILE     ?= local
-TEMPORAL_TLS         ?= false
 BEDROCK_MODEL_ID     ?= global.anthropic.claude-opus-5-5
 BEDROCK_EFFORT       ?= medium
 AWS_REGION           ?= us-east-1
@@ -23,6 +27,14 @@ DOCKER_CONTEXT       ?= colima-agentcore
 # .env may hold a relative path; make it absolute so tools run from any cwd agree.
 override TEMPORAL_CONFIG_FILE := $(abspath $(TEMPORAL_CONFIG_FILE))
 export
+# The local dev server is plaintext (CLI 1.9.1 otherwise tries TLS). Every other profile
+# (kind, eks-pf) carries its own address and TLS settings: the .env values for the dev
+# server must not reach those clients, or TEMPORAL_TLS=false would switch mTLS off.
+ifeq ($(TEMPORAL_PROFILE),local)
+TEMPORAL_TLS         ?= false
+else
+unexport TEMPORAL_TLS TEMPORAL_ADDRESS
+endif
 
 UV  := uv run --frozen
 PYTEST := $(UV) pytest
@@ -36,7 +48,9 @@ PYTEST := $(UV) pytest
         timeline a2a e2e approve reject pending result approval-report \
         spike-nexus-wait build-id agentcore-local agentcore-local-scripted invoke-local \
         agentcore-ping agentcore-emulator agentcore-bundle agentcore-bundle-test \
-        worker-support-versioned register-version wci-history case-b-serverless
+        worker-support-versioned register-version wci-history case-b-serverless \
+        case-a-serverless tools kind-up kind-temporal kind-images kind-workers kind-aws-creds \
+        certs-pull pf pf-stop kind-status kind-down cert-renew export-agentcore-cert kind-env
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -75,9 +89,11 @@ test: ## unit + workflow + integration (no AWS)
 test-live: ## Live Bedrock tests (needs AWS credentials; costs tokens)
 	RUN_BEDROCK_TESTS=1 $(PYTEST) -m bedrock
 
-infra-static: ## Static checks for k8s/Helm/Terraform (nothing to check until v0.9)
-	@if [ -d deploy ] || [ -d infra ]; then echo "infra-static: TODO from v0.9"; exit 1; \
-	 else echo "infra-static: no deploy/ or infra/ yet (added in v0.9/v0.10)"; fi
+infra-static: ## helm template + kustomize -> kubeconform -strict for everything in deploy/ (no cluster)
+	scripts/infra-static.sh
+
+tools: ## Project-local kubeconform in .tools/bin (pinned sha256; no brew)
+	scripts/tools.sh
 
 scrub-check: ## No secrets, account IDs or AWS resource IDs in the tree (gitleaks if installed)
 	scripts/scrub-check.sh
@@ -241,6 +257,62 @@ wci-history: ## The dev server's WCI system Workflow for Support's version (BUIL
 
 case-b-serverless: ## Case B on the versioned queue support-tq (WF=support-2077-sl)
 	SUPPORT_TASK_QUEUE=support-tq scripts/demo/case-b.sh $(or $(WF),support-2077-sl)
+
+case-a-serverless: ## Case A on the versioned queue support-tq (WF=support-1042-sl)
+	SUPPORT_TASK_QUEUE=support-tq scripts/demo/case-a.sh $(or $(WF),support-1042-sl)
+
+# --- v0.9: the real server on kind, then mTLS (scripts/kind.sh) -------------------------
+# kubectl/helm/kind use .temporal/kubeconfig-agentcore-demo (never ~/.kube/config) and
+# DOCKER_CONTEXT=colima-agentcore. KIND_TLS=1 (default) installs with values.tls.yaml.
+KIND_TLS ?= 1
+
+kind-up: ## kind cluster + cert-manager + root CA / temporal-ca ClusterIssuer + postgres
+	scripts/kind.sh up
+
+kind-temporal: ## Helm chart temporal-1.7.0, server 1.32.1 (KIND_TLS=1 mTLS | 0 plaintext)
+	KIND_TLS=$(KIND_TLS) scripts/kind.sh temporal
+
+kind-images: ## Build Finance + payments-mock images and load them into kind
+	scripts/kind.sh images
+
+kind-workers: ## Finance (2 pods) + payments-mock + NetworkPolicies (FINANCE_MODEL=scripted|bedrock)
+	KIND_TLS=$(KIND_TLS) scripts/kind.sh workers
+
+kind-aws-creds: ## Laptop SSO credentials -> Secret temporal-workers/aws-creds (Finance on Bedrock)
+	scripts/kind-aws-creds.sh
+
+certs-pull: ## Client certs (operator, agentcore-worker, laptop-support) + CA -> .certs/
+	scripts/certs-pull.sh
+
+pf: ## Port-forward kind frontend -> 127.0.0.1:7233 and UI -> http://127.0.0.1:8233 (background)
+	scripts/kind.sh pf
+
+pf-stop: ## Stop the kind port-forwards
+	scripts/kind.sh pf-stop
+
+kind-status: ## Nodes, pods and certificates of the kind cluster
+	scripts/kind.sh status
+
+kind-down: ## Stop port-forwards and delete the kind cluster
+	scripts/kind.sh down
+
+kind-env: ## Print the KUBECONFIG export for kubectl by hand
+	@echo "export KUBECONFIG=$(CURDIR)/.temporal/kubeconfig-agentcore-demo"
+
+cert-renew: ## Re-issue a certificate now (NS=temporal CERT=temporal-frontend-tls)
+	scripts/cert-renew.sh $(or $(NS),temporal) $(or $(CERT),temporal-frontend-tls)
+
+export-agentcore-cert: ## Optional SM path (go-ahead G5): agentcore-worker cert -> Secrets Manager (SECRET_ID=)
+	scripts/export-agentcore-cert.sh --secret-id $(or $(SECRET_ID),temporal-kind/agentcore-worker-mtls)
+
+# On kind each laptop Worker presents its own client certificate (plan v0.9: one CN per
+# Worker type). The profile's default identity is `operator` (CLI and demo scripts).
+ifeq ($(TEMPORAL_PROFILE),kind)
+agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPORAL_TLS_CLIENT_CERT_PATH = $(CURDIR)/.certs/agentcore-worker/tls.crt
+agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(CURDIR)/.certs/agentcore-worker/tls.key
+worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_CERT_PATH = $(CURDIR)/.certs/laptop-support/tls.crt
+worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(CURDIR)/.certs/laptop-support/tls.key
+endif
 
 verify: ## Run scripts/verify/$(TAG).sh, e.g. make verify TAG=v0.1-scaffold
 	scripts/verify/$(TAG).sh

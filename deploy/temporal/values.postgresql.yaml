@@ -1,0 +1,50 @@
+# Edited copy of the chart's values/values.postgresql.yaml (chart tag temporal-1.7.0;
+# it ships inside the chart package too: `helm pull temporal --repo
+# https://go.temporal.io/helm-charts --version 1.7.0 --untar` -> temporal/values/).
+# Runbook 2.2. Pass it FIRST to every helm install/upgrade, then values.base.yaml,
+# [values.tls.yaml], values.<env>.yaml (scripts/kind.sh temporal).
+#
+# kind: the in-cluster postgres:16 from deploy/kind/postgres.yaml, password auth via
+# the Secret temporal-db-secret (key `password`, random, created by scripts/kind.sh).
+# EKS (v0.11) overrides connectAddr, user and tls (RDS CA) in values.eks.yaml.
+# numHistoryShards is IMMUTABLE after the first start: 4 on kind (values.kind.yaml),
+# 512 on EKS (ADR-0006). The value here is the chart's own default.
+server:
+  config:
+    persistence:
+      defaultStore: default
+      visibilityStore: visibility
+      numHistoryShards: 512
+      datastores:
+        default:
+          sql:
+            # The chart's schema Job creates the database and runs setup/update-schema
+            # (pre-install/pre-upgrade hooks; runbook 2.3).
+            createDatabase: true
+            manageSchema: true
+            pluginName: postgres12
+            driverName: postgres12
+            databaseName: temporal
+            connectAddr: "postgres.temporal.svc.cluster.local:5432"
+            connectProtocol: "tcp"
+            user: temporal
+            existingSecret: temporal-db-secret
+            secretKey: password
+            maxConns: 20
+            maxIdleConns: 20
+            maxConnLifetime: "1h"
+        visibility:
+          sql:
+            createDatabase: true
+            manageSchema: true
+            pluginName: postgres12
+            driverName: postgres12
+            databaseName: temporal_visibility
+            connectAddr: "postgres.temporal.svc.cluster.local:5432"
+            connectProtocol: "tcp"
+            user: temporal
+            existingSecret: temporal-db-secret
+            secretKey: password
+            maxConns: 20
+            maxIdleConns: 20
+            maxConnLifetime: "1h"

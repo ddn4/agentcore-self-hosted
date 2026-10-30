@@ -15,4 +15,29 @@ address = "127.0.0.1:7233"
 [profile.local.tls]
 disabled = true
 
-# kind (v0.9) and eks-pf (v0.11) profiles are added by those tags.
+# kind (v0.9): the Helm-installed server on the local kind cluster, reached through
+# `make pf` (kubectl port-forward 127.0.0.1:7233 -> svc/temporal-frontend), with mTLS.
+# The Route 53 name is checked as the TLS server name (SNI + SAN), exactly as an
+# AgentCore Worker will on EKS; the address stays 127.0.0.1 so no /etc/hosts entry is
+# needed (optional: `127.0.0.1 temporal-frontend.temporal-customer-support.internal`).
+# Paths are relative to the repo root (every make target runs there); the files come
+# from `make certs-pull` (.certs/ is gitignored). Identity: the `operator` cert (CLI,
+# demo scripts). Support's Workers override the client cert with their own via
+# TEMPORAL_TLS_CLIENT_CERT_PATH / _KEY_PATH (Makefile, TEMPORAL_PROFILE=kind).
+[profile.kind]
+address = "127.0.0.1:7233"
+
+[profile.kind.tls]
+server_name = "temporal-frontend.temporal-customer-support.internal"
+server_ca_cert_path = ".certs/ca.crt"
+client_cert_path = ".certs/operator/tls.crt"
+client_key_path = ".certs/operator/tls.key"
+
+# kind before mTLS (plan v0.9 commit 1: `make kind-temporal KIND_TLS=0`).
+[profile.kind-plaintext]
+address = "127.0.0.1:7233"
+
+[profile.kind-plaintext.tls]
+disabled = true
+
+# eks-pf (v0.11) is added by that tag.

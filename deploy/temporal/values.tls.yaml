@@ -1,0 +1,33 @@
+# mTLS everywhere (runbook 2.5, 2.6, 2.8; plan v0.9 commit 2). Use it in the FIRST
+# install's values set (runbook: TLS must be in place from the start).
+# Certificates come from cert-manager (deploy/k8s/base/cert-issuers + temporal-certs):
+# a SelfSigned bootstrap issues temporal-root-ca, which backs the `temporal-ca` CA
+# ClusterIssuer; every Secret has tls.crt, tls.key and ca.crt (the root), which is the
+# single file the chart lists in frontend.server.clientCaFiles (2.5: one CA for all).
+server:
+  tls:
+    internode:
+      enabled: true
+      secretName: temporal-internode-tls
+      mountPath: /etc/temporal/tls/internode
+      requireClientAuth: true
+      serverName: temporal-internode.temporal-customer-support.internal
+    frontend:
+      enabled: true
+      secretName: temporal-frontend-tls
+      mountPath: /etc/temporal/tls/frontend
+      requireClientAuth: true           # mTLS for Workers, CLI, UI
+      serverName: temporal-frontend.temporal-customer-support.internal
+  config:
+    # Deep-merged on top of what server.tls generates. refreshInterval makes the server
+    # re-read its cert files periodically (server >= 1.9 "periodic refreshing of TLS
+    # certificates from files"); Q10 is checked against it at v0.9 (ledger 33).
+    tls:
+      refreshInterval: 1m
+web:
+  # 2.8: frontend mTLS does not configure the UI; it needs its own client cert.
+  tls:
+    enabled: true
+    secretName: temporal-web-client-tls   # CN temporal-ui
+    serverName: temporal-frontend.temporal-customer-support.internal
+    enableHostVerification: true

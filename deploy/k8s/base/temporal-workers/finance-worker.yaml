@@ -1,0 +1,54 @@
+# Runbook 7b.5: the Finance agent Worker (namespace agent-services, queue
+# agent-services-tq; Nexus handler FinanceAgentA2A). Two replicas: deleting one pod
+# mid-conversation must not break Case B (plan v0.9 acceptance).
+# Connection is envconfig env only (TEMPORAL_TLS_*; ledger 34): it dials the in-cluster
+# service name and checks it against the frontend cert's in-cluster SAN.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-services-worker
+  namespace: temporal-workers
+  labels: { app: agent-services-worker }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: agent-services-worker } }
+  template:
+    metadata:
+      labels:
+        app: agent-services-worker
+        temporal.io/client: "true"            # allowed through temporal-frontend-ingress
+    spec:
+      serviceAccountName: agent-services-worker
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: finance-agent
+          env:
+            - { name: TEMPORAL_ADDRESS,   value: "temporal-frontend.temporal.svc.cluster.local:7233" }
+            - { name: TEMPORAL_NAMESPACE, value: "agent-services" }
+            - { name: TEMPORAL_TLS,       value: "true" }
+            - { name: TEMPORAL_TLS_SERVER_NAME,         value: "temporal-frontend.temporal.svc.cluster.local" }
+            - { name: TEMPORAL_TLS_CLIENT_CERT_PATH,    value: /etc/temporal/tls/tls.crt }
+            - { name: TEMPORAL_TLS_CLIENT_KEY_PATH,     value: /etc/temporal/tls/tls.key }
+            - { name: TEMPORAL_TLS_SERVER_CA_CERT_PATH, value: /etc/temporal/tls/ca.crt }
+            - { name: FINANCE_TASK_QUEUE, value: agent-services-tq }
+            - { name: PAYMENTS_URL,       value: "http://payments-mock.temporal-workers.svc.cluster.local:8080" }
+            - { name: BEDROCK_MODEL_ID,   value: "global.anthropic.claude-opus-5-5" }
+            - { name: AWS_REGION,         value: "us-east-1" }
+            - name: POD_NAME              # handled_by_pod in the refund_confirmation artifact
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - { name: tls, mountPath: /etc/temporal/tls, readOnly: true }
+      volumes:
+        - name: tls
+          secret: { secretName: eks-nexus-worker-tls }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: agent-services-worker, namespace: temporal-workers }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app: agent-services-worker } }

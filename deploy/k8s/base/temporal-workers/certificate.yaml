@@ -1,0 +1,14 @@
+# Runbook 7b.2: the Finance (EKS Nexus) Worker's client certificate. cert-manager renews
+# it; the Python SDK reads the files once at connect (ledger 33, Q18), so a renewal
+# reaches the Worker on its next restart (fallback: rollout restart / Reloader).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: eks-nexus-worker-tls, namespace: temporal-workers }
+spec:
+  secretName: eks-nexus-worker-tls          # kubernetes.io/tls with tls.crt, tls.key, ca.crt
+  commonName: eks-nexus-worker
+  duration: 720h
+  renewBefore: 168h
+  usages: [client auth, digital signature, key encipherment]
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: temporal-ca, kind: ClusterIssuer, group: cert-manager.io }

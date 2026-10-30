@@ -1,0 +1,93 @@
+# Runbook 2.6 steps 3-4: server and client certificates in the `temporal` namespace,
+# all from the `temporal-ca` ClusterIssuer (so the frontend's single clientCaFiles entry,
+# <mount>/ca.crt = the root, trusts every client; runbook 2.5 option 1).
+#
+# Deviation from runbook 2.6 (found at v0.9, ledger 34): the frontend certificate also
+# carries `client auth`. Chart 1.7.0's own CLI pods (admintools, the namespace-setup
+# hook Job, the helm test) mount the *frontend* Secret and present it as their client
+# certificate (templates/_helpers.tpl, temporal.adminClient.tls.*); with
+# requireClientAuth a server-auth-only cert is rejected and the namespace Job fails.
+# The chart's own CI values (ci/postgres-tls-values.yaml) issue it with both EKUs too.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: temporal-frontend-tls, namespace: temporal }
+spec:
+  secretName: temporal-frontend-tls
+  commonName: temporal-frontend.temporal-customer-support.internal
+  dnsNames:
+    - temporal-frontend.temporal-customer-support.internal   # Route 53 name (AgentCore Workers, operators, laptop via pf)
+    - temporal-frontend.temporal.svc.cluster.local           # in-cluster name (Finance Workers)
+    - temporal-frontend.temporal.svc
+  duration: 2160h
+  renewBefore: 360h
+  usages: [server auth, client auth, digital signature, key encipherment]
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: temporal-ca, kind: ClusterIssuer, group: cert-manager.io }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: temporal-internode-tls, namespace: temporal }
+spec:
+  secretName: temporal-internode-tls
+  commonName: temporal-internode.temporal-customer-support.internal
+  dnsNames: [temporal-internode.temporal-customer-support.internal]
+  duration: 2160h
+  renewBefore: 360h
+  usages: [server auth, client auth, digital signature, key encipherment]   # internode needs BOTH EKUs (2.5)
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: temporal-ca, kind: ClusterIssuer, group: cert-manager.io }
+---
+# Client certificates: one CN per Worker type / human (runbook 2.6 step 4, 2.7 option (c)
+# hardening path: distinct CNs now, a ClaimMapper later). No dnsNames.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: temporal-web-client-tls, namespace: temporal }
+spec:
+  secretName: temporal-web-client-tls
+  commonName: temporal-ui
+  duration: 2160h
+  renewBefore: 360h
+  usages: [client auth, digital signature, key encipherment]
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: temporal-ca, kind: ClusterIssuer, group: cert-manager.io }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: temporal-operator-tls, namespace: temporal }
+spec:
+  secretName: temporal-operator-tls
+  commonName: operator
+  duration: 720h
+  renewBefore: 168h
+  usages: [client auth, digital signature, key encipherment]
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: temporal-ca, kind: ClusterIssuer, group: cert-manager.io }
+---
+# The AgentCore Worker's identity. Longer lifetime: in the cloud its copy in Secrets
+# Manager is refreshed by hand (runbook 2.6 step 5, scripts/export-agentcore-cert.sh).
+# On kind, Support (the AgentCore-shaped Worker on the laptop) uses it from local files
+# (make certs-pull -> .certs/agentcore-worker/, TEMPORAL_TLS_CLIENT_*_PATH).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: agentcore-worker-tls, namespace: temporal }
+spec:
+  secretName: agentcore-worker-tls
+  commonName: agentcore-worker
+  duration: 4320h
+  renewBefore: 720h
+  usages: [client auth, digital signature, key encipherment]
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: temporal-ca, kind: ClusterIssuer, group: cert-manager.io }
+---
+# The unversioned laptop Support Worker (make worker-support / -scripted on kind).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: laptop-support-tls, namespace: temporal }
+spec:
+  secretName: laptop-support-tls
+  commonName: laptop-support
+  duration: 720h
+  renewBefore: 168h
+  usages: [client auth, digital signature, key encipherment]
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: temporal-ca, kind: ClusterIssuer, group: cert-manager.io }

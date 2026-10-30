@@ -1,0 +1,22 @@
+# Build context = repo root (uv workspace). Keep it small and secret-free.
+.git
+.venv
+**/.venv
+**/__pycache__
+.pytest_cache
+.ruff_cache
+.temporal
+.generated
+.certs
+.tools
+.env
+build
+node_modules
+**/tests
+docs
+deploy
+infra
+spikes
+*.pem
+*.key
+*.crt

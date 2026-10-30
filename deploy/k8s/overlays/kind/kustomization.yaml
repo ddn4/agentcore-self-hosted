@@ -1,0 +1,28 @@
+# kind overlay (plan v0.9): the real Finance agent (Opus 5.5 on Bedrock) with
+# short-lived laptop credentials from the optional Secret aws-creds
+# (`make kind-aws-creds`; no IRSA on kind). For an offline cluster use
+# overlays/kind-scripted (`make kind-workers FINANCE_MODEL=scripted`).
+# Images are built locally and loaded into kind (`make kind-images`): never pulled.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base/temporal-workers
+  - ../../base/temporal-network
+images:
+  - { name: finance-agent, newName: agentcore-demo/finance-agent, newTag: kind }
+  - { name: payments-mock, newName: agentcore-demo/payments-mock, newTag: kind }
+patches:
+  - target: { kind: Deployment, name: agent-services-worker }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - secretRef: { name: aws-creds, optional: true }
+  - target: { kind: Deployment, name: payments-mock }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never

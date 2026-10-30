@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 from concurrent.futures import Executor, ThreadPoolExecutor
+from datetime import timedelta
 
 from temporalio.client import Client
 from temporalio.worker import Worker
@@ -27,6 +29,11 @@ from finance_agent.workflows import FinanceAgentTaskWorkflow, HelloWorkflow
 
 WORKFLOWS = [FinanceAgentTaskWorkflow, HelloWorkflow]
 ACTIVITIES = [fraud_score, refund_history, issue_refund, say_hello]
+#: How long a stopping Worker lets in-flight Activities finish (k8s: below the pod's
+#: terminationGracePeriodSeconds of 30 s, so a deleted pod drains instead of being killed).
+GRACEFUL_SHUTDOWN_TIMEOUT = timedelta(seconds=20)
+
+log = logging.getLogger(__name__)
 
 
 def build_worker(
@@ -56,6 +63,36 @@ def build_worker(
     )
 
 
+async def run_until_signalled(worker: Worker) -> None:
+    """Run ``worker`` until SIGTERM/SIGINT, then shut it down gracefully.
+
+    On Kubernetes the Worker is PID 1, which ignores SIGTERM unless a handler is
+    installed; without this a deleted pod keeps polling until SIGKILL 30 s later.
+    Same shape as samples-python ``gcp/cloud_run/worker.py``: the signal handler
+    schedules ``worker.shutdown()``, which stops polling, waits up to
+    ``graceful_shutdown_timeout`` for in-flight Activities, and makes ``run()`` return.
+    """
+    loop = asyncio.get_running_loop()
+    shutdown: list[asyncio.Task[None]] = []  # strong reference to the shutdown task
+
+    def request_shutdown() -> None:
+        if shutdown:
+            return
+        log.info("finance worker: shutdown requested; draining")
+        shutdown.append(loop.create_task(worker.shutdown()))
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(signum, request_shutdown)
+    try:
+        await worker.run()
+    finally:
+        for signum in (signal.SIGTERM, signal.SIGINT):
+            loop.remove_signal_handler(signum)
+        if shutdown:
+            await shutdown[0]
+    log.info("finance worker: stopped")
+
+
 async def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -74,7 +111,12 @@ async def main() -> None:
         config.approval_timeout(),
     )
     with ThreadPoolExecutor(max_workers=16) as executor:
-        await build_worker(client, activity_executor=executor).run()
+        worker = build_worker(
+            client,
+            activity_executor=executor,
+            graceful_shutdown_timeout=GRACEFUL_SHUTDOWN_TIMEOUT,
+        )
+        await run_until_signalled(worker)
 
 
 if __name__ == "__main__":

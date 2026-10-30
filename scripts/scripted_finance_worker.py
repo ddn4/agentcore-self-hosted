@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from demo_testing.finance_script import finance_responder
 from demo_testing.scripted_model import ScriptedModel, scripted_plugin
 from finance_agent import agents, config
-from finance_agent.worker import build_worker
+from finance_agent.worker import GRACEFUL_SHUTDOWN_TIMEOUT, build_worker, run_until_signalled
 
 
 async def main() -> None:
@@ -38,7 +38,12 @@ async def main() -> None:
         config.payments_url(),
     )
     with ThreadPoolExecutor(max_workers=8) as executor:
-        await build_worker(client, activity_executor=executor).run()
+        worker = build_worker(
+            client,
+            activity_executor=executor,
+            graceful_shutdown_timeout=GRACEFUL_SHUTDOWN_TIMEOUT,
+        )
+        await run_until_signalled(worker)
 
 
 if __name__ == "__main__":
