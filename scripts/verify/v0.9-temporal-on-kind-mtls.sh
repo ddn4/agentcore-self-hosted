@@ -154,13 +154,13 @@ cert_info() {  # cert_info NS SECRET
   echo
 }
 for s in temporal-frontend-tls temporal-internode-tls temporal-web-client-tls temporal-operator-tls agentcore-worker-tls laptop-support-tls; do
-  printf '  %-24s %s' "$s" "$(cert_info temporal "$s")"
+  printf '  %-24s %s\n' "$s" "$(cert_info temporal "$s")"
 done
 
 step "B5. Finance (2 pods) + payments-mock in the cluster; laptop certs; port-forward; Nexus endpoint"
 FINANCE_MODEL=scripted scripts/kind.sh workers >"$LOGS/b-workers.log" 2>&1 || { tail -30 "$LOGS/b-workers.log"; exit 1; }
 k get pods -n temporal-workers -o wide | awk '{print "  " $1, $2, $3}'
-printf '  %-24s %s' eks-nexus-worker-tls "$(cert_info temporal-workers eks-nexus-worker-tls)"
+printf '  %-24s %s\n' eks-nexus-worker-tls "$(cert_info temporal-workers eks-nexus-worker-tls)"
 scripts/certs-pull.sh | sed 's/^/  /'
 scripts/kind.sh pf | sed 's/^/  /'
 make -s nexus-endpoint | tail -1
