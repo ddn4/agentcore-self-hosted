@@ -2,6 +2,36 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.6-human-in-the-loop
+
+Finance's human approver, and a caller that can wait for it at no cost.
+
+- Finance (`FinanceAgentTaskWorkflow`): over $100 or at HIGH risk the A2A task goes
+  `input-required` and waits, durably, for `approve`/`reject` signals
+  (`ApproverDecision(approver, comment)`; sync handlers; decisions outside `input-required`
+  ignored) for at most `FINANCE_APPROVAL_TIMEOUT` (default 24h, labelled timer); no decision
+  → `failed`; approve → refund with `approved_by=<approver>`. "Current details" in the Web UI
+  show the task state. The timeout travels in the task's memo (ledger 58).
+- Contract: `APPROVAL_WAIT_LIMIT` (24 h) published in `finance_a2a_api` and in the Agent
+  Card (v1.1.0); Finance refuses a larger `FINANCE_APPROVAL_TIMEOUT`.
+- Support: `SUPPORT_NEXUS_SEND_TIMEOUT` (default 25h) is the third Workflow input and the
+  `send_message` budget (ADR-0009). `rejected` → apology, `failed` → apology + escalation,
+  `NexusOperationError` → apology (explicit "Next step" in the tool result; prompts updated).
+- ADR-0002 (HITL in code, not Strands `interrupt()`) and ADR-0009 (timeout budget) accepted.
+- Tests: 283 in `make check` (208 at v0.5). Finance time-skipping: approve, reject, 24 h
+  timeout, RISK=HIGH on $40, idempotency key, out-of-place signals. Support (stub Finance with
+  the approval rule): approve/reject in both modes, `failed` → escalation, caller budget too
+  short → Nexus timeout with the Finance task orphaned. Two namespaces: approve, reject,
+  Support Worker stopped mid-wait, end-to-end timeout (5s/60s). `tests/test_timeout_budget.py`.
+- Demo: `make approve`, `make reject`, `make pending`, `make result`, `make approval-report`;
+  `make case-b` starts and returns; `scripts/verify/v0.6-human-in-the-loop.sh`
+  (`VERIFY_REAL_WAIT_MINUTES=31`: approved after 31 real minutes with Support stopped).
+- Found: no time skipping through an open Nexus operation on the v1 test server (ledger 56,
+  `make spike-nexus-wait`); the server caps a Nexus budget at the caller's execution timeout
+  (57); an optional trailing `run()` parameter untypes a dataclass input (58). Reported in
+  `ask-temporal.md`.
+- Live Bedrock still deferred (AWS SSO session expired; ledger 49 carried to v0.7).
+
 ## v0.5-a2a-over-nexus
 
 The Supervisor asks Finance itself: A2A over Nexus from inside the agent loop.

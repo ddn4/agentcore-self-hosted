@@ -84,3 +84,26 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
   `services/support-agent/tests/test_tool_kinds.py` (sandboxed Workflow, scripted
   model). Suggest: run sync tools inline in the plugin (they are meant to be
   deterministic), or document "in-workflow tools must be `async def`" and fix the sample.
+- v0.6 (temporalio 1.35.0, CLI 1.9.1 test server via `start_time_skipping()`): **the
+  time-skipping test server does not skip time while a caller has an async Nexus
+  operation open.** A caller Workflow awaits a workflow-backed operation whose handler
+  Workflow waits 24 h (`wait_condition(timeout=24h)`). Waiting on the caller's result
+  does not advance time, and `env.sleep(timedelta(hours=24))` fails with
+  `RPCError: Timeout expired`; the handler's timer fires in real time. Started directly
+  (no Nexus), the same handler Workflow skips 24 h in ~10 ms. So "Nexus under
+  time-skipping" (v0.4, ledger 13) works for quick operations only; long human waits
+  behind Nexus can't be unit-tested in virtual time. Is that expected, and is
+  `start_time_skipping_v2()` meant to cover it (it is not enabled on CLI 1.9.1's dev
+  server)? Repro: `make spike-nexus-wait` (`spikes/nexus_long_wait_time_skipping.py`).
+- v0.6 (temporalio 1.35.0): **an optional trailing `run()` parameter silently untypes the
+  first one.** `_convert_payloads` drops all type hints when the payload count differs
+  from the parameter count, so adding `approval_timeout: str = "24h"` after a dataclass
+  input made older histories decode the dataclass as a `dict` (replay failure). This
+  matches the "single dataclass input" advice, but a warning (or per-position hints when
+  fewer payloads than parameters arrive) would make the failure obvious. We moved the
+  value to the memo (ADR-0009).
+- v0.6 (server 1.32.0): **a Nexus operation's schedule-to-close is capped at the caller's
+  remaining run time** (`describe` shows `120s` for a 25 h budget on a Workflow started with
+  `execution_timeout=120s`). Sensible, but not in the Nexus timeout docs; worth a line
+  there, since a caller-side execution timeout then becomes the A2A budget.
+

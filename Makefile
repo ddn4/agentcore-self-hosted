@@ -30,7 +30,8 @@ PYTEST := $(UV) pytest
         verify clean worker-support worker-support-scripted case-a case-b record-histories spikes \
         spike-nested sub-agents worker-finance worker-finance-scripted worker-smoke payments-mock \
         nexus-endpoint agent-card agent-card-golden smoke task-state card spike-nexus-ts \
-        timeline a2a e2e approve reject pending result approval-report
+        timeline a2a e2e approve reject pending result approval-report \
+        spike-nexus-wait
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -181,6 +182,9 @@ e2e: ## End-to-end Cases against the RUNNING stack of TEMPORAL_PROFILE (make dev
 
 spike-nexus-ts: ## Spike: the A2A hop under the time-skipping test servers (no AWS)
 	$(UV) python spikes/nexus_time_skipping.py
+
+spike-nexus-wait: ## Spike: a 24 h approval wait behind Nexus on the time-skipping server (no AWS)
+	$(UV) python spikes/nexus_long_wait_time_skipping.py
 
 record-histories: ## Save a completed Workflow's history for the replay test (WF=support-1042)
 	$(UV) python scripts/record_history.py $(or $(WF),support-1042)

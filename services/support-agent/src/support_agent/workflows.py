@@ -153,11 +153,11 @@ class SupportSupervisorWorkflow:
                 non_retryable=True,
             )
         budget = self.finance.send_timeout
-        if budget < APPROVAL_WAIT_LIMIT:
-            # Allowed (tests and demos shorten it), but then a slow approver shows up
-            # as a Nexus timeout instead of Finance's own "failed" answer (ADR-0009).
+        if budget <= APPROVAL_WAIT_LIMIT:
+            # Allowed (tests and demos shorten it), but then a slow approver may show
+            # up as a Nexus timeout instead of Finance's own "failed" answer (ADR-0009).
             workflow.logger.warning(
-                "Nexus budget %s is below Finance's published approval limit %s",
+                "Nexus budget %s is not above Finance's published approval limit %s",
                 format_duration(budget),
                 format_duration(APPROVAL_WAIT_LIMIT),
             )

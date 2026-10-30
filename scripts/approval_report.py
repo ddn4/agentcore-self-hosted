@@ -3,9 +3,10 @@
     uv run python scripts/approval_report.py support-2077        (make approval-report WF=...)
 
 Support side (namespace ``agents``): when ``send_message`` was scheduled, started
-and completed, how long the operation stayed open, and how many Workflow Tasks
-Support ran while it was open (0 = the Supervisor was parked inside its
-``ask_finance_agent`` tool, costing nothing; any Worker could have been off).
+and completed, how long the operation stayed open, how many Workflow Tasks
+Support ran while it was open (one handles ``NexusOperationStarted``; nothing
+else runs while the Supervisor is parked inside its ``ask_finance_agent`` tool),
+and the longest stretch with no Support event at all (any Worker could be off).
 The Worker identities before and after the wait show whether a different Support
 Worker finished the conversation.
 
@@ -23,6 +24,7 @@ import argparse
 import asyncio
 import json
 from datetime import datetime
+from itertools import pairwise
 
 from temporalio.api.enums.v1 import EventType
 from temporalio.api.history.v1 import HistoryEvent
@@ -94,12 +96,18 @@ async def main() -> None:
         if e.event_type == E.EVENT_TYPE_WORKFLOW_TASK_STARTED and e.event_id > end.event_id
     ]
     waited = (_at(end) - _at(started)).total_seconds()
+    window = [e for e in events if started.event_id <= e.event_id <= end.event_id]
+    silent = max(
+        ((_at(b) - _at(a)).total_seconds() for a, b in pairwise(window)),
+        default=0.0,
+    )
     print(f"Support {args.workflow_id} (agents):")
     print(f"  send_message scheduled   {_at(sched).isoformat()}  budget {budget.ToSeconds()}s")
     print(f"  send_message started     {_at(started).isoformat()}  (Finance task running)")
     print(f"  send_message {ends[end.event_type]:<11} {_at(end).isoformat()}")
     print(f"  operation open for       {_fmt(waited)}")
     print(f"  Support Workflow Tasks while open: {len(tasks_during)}")
+    print(f"  longest silence in Support's history while open: {_fmt(silent)}")
     print(
         f"  Support Workers: {len(set(identities))} distinct identities; "
         f"same before/after the wait: {bool(before and after and before[-1] == after[0])}"
