@@ -5,7 +5,7 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
 
 | Q | Question | Status | Notes |
 |---|---|---|---|
-| Q15 | Does a Workflow Task produced by a Nexus completion callback reliably trigger the WCI when nothing is polling the caller's versioned task queue? | open: first AWS answer v0.8, definitive v0.13; **local first look (v0.7): yes** | v0.7 on the dev server with a local AgentCore API emulator: `task-add-signal` → `InvokeWorker` 0.22 s after the approval that completed Finance's task (story v0.7 step 10). Report with WCI history and timeline |
+| Q15 | Does a Workflow Task produced by a Nexus completion callback reliably trigger the WCI when nothing is polling the caller's versioned task queue? | **answered v0.13 (server 1.32.1 on EKS, real AgentCore in VPC mode): yes**; v0.8 (dev server WCI): yes; v0.7 (local): yes | Report: Case B with Support's only session drained (debounce 30 s) while Finance waited in `input-required`; approve → `NexusOperationCompleted` → WCI `task-add-signal` **+27 ms** → `InvokeWorker` **+56 ms** → session #2 process start +4.9 s → first Workflow Task +5.3 s → reply +9.1 s. Same in every Case B of the run (demo, verify, e2e approve and reject: 2 sessions and 2 `InvokeWorker` each). No nudge Workflow and no longer debounce needed. Merged timeline in story v0.13 |
 | Q16 | Does stock server 1.32.1 support Nexus operations backed by a standalone Activity (`activity.enableCallbacks`, `TemporalOperationHandler.start_activity`)? Standalone Nexus Operations from the CLI? | ask (Activity half); CLI half answered for 1.32.0 at v0.4 | Activity-backed variant **descoped** (ADR-0004). CLI on 1.32.0: works once `nexusoperation.enableStandalone=true` is set (see the v0.4 report below); **1.32.1 re-checked at v0.9 (kind) and v0.11 (EKS, RDS): same, works with the flag set** |
 | Q19 (1st half) | Does `temporalio-strands-agents` run an `async` plain `@tool` on the Workflow event loop, so it can `await` a Nexus operation? | **resolved v0.5: yes** (0.1.0 / strands-agents 1.62.0) | Strands awaits a coroutine tool directly (`strands/tools/decorator.py`); the Nexus operation is scheduled from inside the Supervisor's turn and the history replays (`test_workflow.py`, `tests/test_supervisor_a2a.py`, verify v0.5). Strands' tool executor has no timeout of its own (source read; the multi-hour wait is v0.6, Q19b). No question to send, but see the sync-tool report below |
 | Q19 (2nd half) | Is a `nexus_operation_as_tool` planned for the Strands plugin, like the OpenAI Agents integration's (`temporalio.openai_agents.workflow.nexus_operation_as_tool`)? | ask | Not in `temporalio-strands-agents` 0.1.0 (no Nexus code in `temporalio/strands_agents/`); the docs list it only for OpenAI Agents. The demo uses a hand-written async `@tool` (`support_agent/agents.py` + `finance_peer.py`, ~40 lines incl. the A2A message) |
@@ -166,3 +166,21 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
   `create-version`. Should the WCI retry the registration (or should `set-current-version` warn
   when the version has no task queues yet)? Also: `create-version` right after that delete
   failed with "something went wrong, please retry" until the old WCI instance had closed.
+- v0.13 (server 1.32.1, real AgentCore in VPC mode): **Q15 answered: yes** (table above), with
+  numbers to share: Nexus completion → `task-add-signal` 27 ms → `InvokeWorker` 56 ms → new
+  session's first Workflow Task 5.3 s (cold start ≈ 4.9 s of it is AgentCore session/process
+  start). The scale-to-zero A2A pattern (caller drains while the handler waits for a human)
+  works with no workaround.
+- v0.13: **a query is a task too.** A query on a Support Workflow while nothing polls
+  `support-tq` (closed or idle; our `make timeline` and the e2e's `a2a` query) makes the WCI
+  invoke a session: it replays the Workflow, answers, idles 30 s and drains (a few cents of
+  session time per query, plus a ~5 s wait for the caller). Expected, but worth a line in the
+  serverless-workers docs (dashboards that poll queries keep waking sessions). Would the WCI
+  ever skip queries (e.g. answer from a cached state), or should users avoid queries on
+  serverless versions?
+- v0.13: the redundant invoke from v0.7 also happens on 1.32.1. The e2e queried a Case A
+  Workflow (`a2a`) 60 ms after it completed, while its session was still polling (draining 30 s
+  later). The WCI still got `task-add-signal` and ran `InvokeWorker`, and the extra session
+  polled 30 s and drained with 0 Activities. In the Case B runs the same post-completion query
+  produced a `task-add-signal` but **no** invoke. Why does `no-sync` sometimes invoke while a
+  poller of the version is connected? (Each extra invoke is a paid session.)

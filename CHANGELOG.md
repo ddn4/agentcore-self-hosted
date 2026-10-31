@@ -2,6 +2,33 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.13-scale-to-zero
+
+Case B **entirely in the cloud**: Support on AgentCore (VPC), Finance on EKS. Finance waits in
+`input-required`, Support's only session drains (debounce 30 s), the human approves, and the
+Nexus completion makes the server's Worker Controller start a **second** AgentCore session that
+finishes the reply with the refund ID. **Q15 answered: yes** (task-add-signal +27 ms, InvokeWorker
++56 ms, first Workflow Task on session #2 +5.3 s after the Nexus completion). No AWS resources
+created; Build ID unchanged (**`4ee7f87`**); everything left running.
+
+- Demo: `scripts/demo/case-b.sh` with `TEMPORAL_PROFILE=eks-pf` waits for `input-required` and
+  for the drain in the AgentCore logs, shows the pending Nexus operation, then asks "approve now?"
+  (`CASE_B_APPROVE=approve|reject|no`). `approve.sh APPROVE_NUDGE=1` (Q15 fallback a; not needed).
+- `make timeline WF=… MERGED=1`: one wall-clock slide merging the Support, Finance and WCI
+  histories plus each AgentCore session (start, connect, drain), with the Q15 deltas; redacted.
+- `make load N=10` (`scripts/demo/load.sh`, Case A ×10 or `LOAD_KIND=ping`): 10/10 in 55 s, no WCI
+  failure, sessions drained and back to 0. The runbook's N=50 is **deferred to v1.2**.
+- `make e2e TEMPORAL_PROFILE=eks-pf` asserts the WCI invocation counts: sessions and `InvokeWorker`
+  per Case (A 1, B 2, reject 2). `demo_testing.agentcore_logs` reads sessions from the runtime's
+  log streams (one per session). `make refund-idempotency` (same key → same refund on EKS),
+  `make ui-shot` (headless Chrome; Agent Card visible in the UI; Q9: the deployment page's
+  Compute column stays empty for `aws-agentcore` on UI 2.54.1).
+- Findings: a query on a Workflow with no poller wakes a session; the WCI sometimes invokes once
+  more while a Worker is still polling (after a Case; 3 extra idle sessions during the N=10 load);
+  no re-invoke after a terminate when the Worker is reachable (ledger 44: the v0.8 storm came from
+  an unreachable Worker). Reported in `docs/ask-temporal.md`.
+- Ledger 28, 29, 44 closed.
+
 ## v0.12-agentcore-worker
 
 Support on AgentCore Runtime in **VPC mode**, registered from `main` as the serverless Worker

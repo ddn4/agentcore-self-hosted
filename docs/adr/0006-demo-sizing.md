@@ -66,3 +66,16 @@ about **$0.51/h (~$12/day)**; `make pause` (nodes to 0, RDS stopped) brings it t
   to be reaped, and it is billed while it waits. A new demand starts a new session through the
   WCI either way. While a Worker runs, the async task keeps `/ping` `HealthyBusy`, so the idle
   timer cannot cut work short. `maxLifetime` stays 28800 s.
+
+## v0.13: the 30 s debounce holds for the human-in-the-loop path (2026-10-31)
+
+- Q15 answered yes, so fallback (b) (a debounce longer than the approval wait) is **not** used:
+  the debounce stays 30 s and Case B uses two sessions on purpose. Session #1 drained 30 s after
+  Finance's task went to `input-required`; the approval's Nexus completion started session #2
+  (first Workflow Task 5.3-5.7 s after the completion, of which ~5 s is AgentCore session and
+  process start).
+- Cost shape for one Case B: session #1 ≈ 50 s of work + 30 s debounce + up to 120 s idle until
+  reaped; session #2 ≈ 5 s of work + 30 s + 120 s. A waiting approval costs nothing in compute,
+  however long the human takes (Finance's 24 h limit applies).
+- N=10 Case A at once ran in one session (100 Activities) plus three idle sessions the WCI
+  started while the backlog lasted (ledger 73); no sizing change at demo scale. N=50 is v1.2.

@@ -52,6 +52,8 @@ Python packages are locked in `uv.lock`; the table records the resolved versions
 | AgentCore runtime, VPC mode (v0.12) | AgentCore CLI 1.0.1, `bedrock-agentcore-control` (AWS CLI v2) | v0.12 | `AgentcoreDemo_default_support_supervisor`, endpoint `b_4ee7f87` (version 1), `networkMode VPC`, idle 120 s, maxLifetime 28800 s; Support Build ID `4ee7f87` |
 | NLB attribute (v0.12) | LBC annotation `aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true` | v0.12 | Helm revision 2 of `temporal`; ledger 70 |
 | Test image (verify v0.12) | `amazon/aws-cli:2.27.50` | v0.12 | throwaway pod on SA `temporal-worker` (IRSA AssumeRole negative test), deleted after the check |
+| Web UI check (v0.13) | Google Chrome (installed app) `--headless=new --screenshot`, UI 2.54.1 via the port-forward | v0.13 | `scripts/ui-screenshot.sh`; screenshots stay in `.temporal/` |
+| AgentCore session evidence (v0.13) | CloudWatch Logs, one stream per session `<date>/[runtime-logs-<session id>]<uuid>`; boto3 (workspace lock) | v0.13 | `demo_testing.agentcore_logs` (declared dependency of `demo-testing`; Support's Build ID unchanged, `4ee7f87`) |
 
 ## Python packages (uv.lock at v0.1)
 
