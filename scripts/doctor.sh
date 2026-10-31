@@ -43,7 +43,8 @@ command -v docker  >/dev/null && { DOCKER_CONTEXT=colima-agentcore docker info >
   && ok docker "context colima-agentcore reachable" || warn docker "context colima-agentcore not running (needed from v0.9)"; } \
   || warn docker "not installed"
 command -v gitleaks >/dev/null && ok gitleaks "$(gitleaks version)" || warn gitleaks "not installed: scrub-check uses grep only (CI runs gitleaks)"
-command -v terraform >/dev/null && ok terraform "$(terraform version | head -1)" || warn terraform "not installed (v0.10)"
+[[ -x .tools/bin/terraform ]] && ok terraform "$(.tools/bin/terraform version | head -1) (.tools/bin)" || warn terraform "not installed (make tools)"
+[[ -x .tools/bin/tflint ]] && ok tflint "$(.tools/bin/tflint --version | head -1) (.tools/bin)" || warn tflint "not installed (make tools)"
 command -v agentcore >/dev/null && ok agentcore "$(agentcore --version)" || warn agentcore "not installed (v0.8)"
 
 echo "doctor: AWS"

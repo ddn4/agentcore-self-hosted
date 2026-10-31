@@ -4,6 +4,8 @@
 # v0.8 adds: email addresses -> <email>; IPv4 addresses other than 127.0.0.1 / 0.0.0.0 /
 # 10.255.255.1 (the test blackhole) -> <ip>; standalone 32-hex strings (the External ID
 # shape, openssl rand -hex 16) -> <hex32>.
+# v0.10 adds: the SSO role suffix (AWSReservedSSO_<set>_<16 hex>), EKS OIDC issuer IDs and API
+# endpoint hostnames (32 upper-case hex), RDS endpoint IDs (<db>.<12 chars>.<region>.rds...).
 set -euo pipefail
 sed -E \
   -e 's/arn:aws([a-z-]*):([a-z0-9-]*):([a-z0-9-]*):[0-9]{12}:/arn:aws\1:\2:\3:<acct>:/g' \
@@ -11,6 +13,10 @@ sed -E \
   -e 's/(^|[^0-9A-Za-z])[0-9]{12}([^0-9A-Za-z]|$)/\1<acct>\2/g' \
   -e 's/(^|[^0-9A-Za-z])(vpc|subnet|sg|eni|igw|nat|rtb|vpce|eipalloc|i)-[0-9a-f]{8,17}([^0-9A-Za-z]|$)/\1<\2-…>\3/g' \
   -e 's/(^|[^0-9A-Za-z])(vpc|subnet|sg|eni|igw|nat|rtb|vpce|eipalloc|i)-[0-9a-f]{8,17}([^0-9A-Za-z]|$)/\1<\2-…>\3/g' \
+  -e 's/AWSReservedSSO_([A-Za-z]+)_[0-9a-f]{16}/AWSReservedSSO_\1_<id>/g' \
+  -e 's#(oidc\.eks\.[a-z0-9-]+\.amazonaws\.com/id/)[0-9A-F]{32}#\1<oidc-id>#g' \
+  -e 's#(^|[^0-9A-Za-z])[0-9A-F]{32}(\.[a-z0-9]+\.[a-z0-9-]+\.eks\.amazonaws\.com)#\1<eks-id>\2#g' \
+  -e 's#(\.)[a-z0-9]{12}(\.[a-z0-9-]+\.rds\.amazonaws\.com)#\1<rds-id>\2#g' \
   -e 's/(AKIA|ASIA)[A-Z0-9]{16}/<aws-access-key>/g' \
   -e 's#(runtime/|runtime-endpoint/)[A-Za-z][A-Za-z0-9_]{0,47}-[A-Za-z0-9]{10}#\1<runtime-id>#g' \
   -e 's#(runtimes/)[A-Za-z][A-Za-z0-9_]{0,47}-[A-Za-z0-9]{10}-#\1<runtime-id>-#g' \

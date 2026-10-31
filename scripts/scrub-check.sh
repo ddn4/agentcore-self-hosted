@@ -26,6 +26,13 @@ patterns+=(
   '[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'   # email address
   '(^|[^0-9.])([0-9]{1,3}\.){3}[0-9]{1,3}([^0-9.]|$)'                  # IPv4 address
 )
+# v0.10: the SSO role suffix, EKS OIDC issuer IDs, EKS API hostnames, RDS endpoint IDs.
+patterns+=(
+  'AWSReservedSSO_[A-Za-z]+_[0-9a-f]{16}'
+  'oidc\.eks\.[a-z0-9-]+\.amazonaws\.com/id/[0-9A-F]{32}'
+  '[0-9A-F]{32}\.[a-z0-9]+\.[a-z0-9-]+\.eks\.amazonaws\.com'
+  '\.[a-z0-9]{12}\.[a-z0-9-]+\.rds\.amazonaws\.com'
+)
 regex="$(IFS='|'; echo "${patterns[*]}")"
 # Hits that are only allowlisted emails or private/loopback/documentation IPs are fine.
 allow_line() {

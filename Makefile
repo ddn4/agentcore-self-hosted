@@ -53,7 +53,8 @@ PYTEST := $(UV) pytest
         certs-pull pf pf-stop kind-status kind-down cert-renew export-agentcore-cert kind-env env \
         tools-agentcore tf-static tf-plan tf-apply tf-destroy tf-output guardrails external-id \
         cfn-template aws-profile invoke-role invoke-role-delete agentcore-build agentcore-deploy \
-        agentcore-status agentcore-down agentcore-sessions register-version-aws
+        agentcore-status agentcore-down agentcore-sessions register-version-aws \
+        check-quotas render-config pause resume eks-kubeconfig eks-env eks-status
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -275,14 +276,14 @@ STACK ?=
 tf-static: ## terraform fmt -check, validate (-backend=false), tflint for every stack (no AWS)
 	scripts/tf.sh static
 
-tf-plan: ## terraform plan for STACK= (writes STACK/tfplan; review it)
-	scripts/tf.sh plan $(STACK)
+tf-plan: ## terraform plan for STACK= (writes STACK/tfplan; review it; ARGS= e.g. -target=...)
+	scripts/tf.sh plan $(STACK) $(ARGS)
 
 tf-apply: ## Apply the reviewed saved plan of STACK=
 	scripts/tf.sh apply $(STACK)
 
-tf-destroy: ## terraform destroy STACK=
-	scripts/tf.sh destroy $(STACK)
+tf-destroy: ## Destroy STACK= (guarded; STACK=foundation = 20-platform then 10-network; DRY_RUN=1 = plan -destroy only)
+	DRY_RUN=$(or $(DRY_RUN),0) scripts/tf.sh destroy $(STACK)
 
 tf-output: ## terraform output of STACK=
 	scripts/tf.sh output $(STACK)
@@ -322,6 +323,30 @@ agentcore-sessions: ## New AgentCore sessions of our runtimes in the last 15 min
 
 register-version-aws: ## register-version against the real AgentCore endpoint (role + External ID at run time)
 	scripts/register-version.sh --agentcore-auto
+
+# --- v0.10: the AWS foundation (10-network, 20-platform; go-ahead G5) -----------------
+# kubectl/helm for EKS use .temporal/kubeconfig-eks (context agentcore-demo-eks), never
+# ~/.kube/config. pause/resume/tf-destroy honour DRY_RUN=1 (read-only).
+check-quotas: ## Read-only pre-flight: VPC/EIP quotas, AZ IDs, node type, endpoints, PG minor, CDKToolkit, IAM simulate
+	scripts/check-quotas.sh
+
+render-config: ## Terraform outputs -> .generated/foundation.{json,env} (gitignored; v0.11/v0.12 inputs)
+	$(UV) python scripts/render-config.py
+
+eks-kubeconfig: ## Write .temporal/kubeconfig-eks (context agentcore-demo-eks); ~/.kube/config untouched
+	scripts/eks.sh kubeconfig
+
+eks-env: ## Print the KUBECONFIG export for kubectl against EKS by hand
+	@scripts/eks.sh env
+
+eks-status: ## Nodes (AZ ID, arch), add-ons, LBC and cert-manager on EKS (redacted)
+	scripts/eks.sh status
+
+pause: ## Nodes to 0 and stop RDS (EKS, NAT, endpoints keep billing; DRY_RUN=1 prints only)
+	DRY_RUN=$(or $(DRY_RUN),0) scripts/pause.sh pause
+
+resume: ## Start RDS and nodes back to 2 (DRY_RUN=1 prints only)
+	DRY_RUN=$(or $(DRY_RUN),0) scripts/pause.sh resume
 
 # --- v0.9: the real server on kind, then mTLS (scripts/kind.sh) -------------------------
 # kubectl/helm/kind use .temporal/kubeconfig-agentcore-demo (never ~/.kube/config) and

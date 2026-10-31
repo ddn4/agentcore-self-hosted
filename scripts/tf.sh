@@ -3,11 +3,14 @@
 #   scripts/tf.sh static                 fmt -check, init -backend=false, validate, tflint (no AWS)
 #   scripts/tf.sh plan STACK [args]      writes STACK/tfplan (gitignored; review it)   (make tf-plan STACK=...)
 #   scripts/tf.sh apply STACK            applies exactly that saved plan, then deletes it (make tf-apply STACK=...)
-#   scripts/tf.sh destroy STACK [args]   (make tf-destroy STACK=...)
+#   scripts/tf.sh destroy STACK [args]   (make tf-destroy STACK=...) after guards (destroy_guard below)
+#   scripts/tf.sh destroy foundation     20-platform then 10-network (v0.10 reverse order; 00/30 are
+#                                        kept until v1.0 down-all and need STACK= explicitly)
+#   DRY_RUN=1 scripts/tf.sh destroy ...  read-only: the guards plus `plan -destroy` (no changes made)
 #   scripts/tf.sh output STACK [args...]
 # State is local per stack (gitignored); .terraform.lock.hcl is committed. Every stack
 # tags its resources Project=agentcore-self-hosted (provider default_tags).
-# Region is us-east-1 only; plan/apply/destroy refuse any other AWS_REGION.
+# Region is us-east-1 only; plan/apply refuse any other AWS_REGION.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 TF="$PWD/.tools/bin/terraform"
@@ -18,6 +21,42 @@ export TF_PLUGIN_CACHE_DIR="$PWD/.tools/tf-plugin-cache" TF_IN_AUTOMATION=1 TF_I
 mkdir -p "$TF_PLUGIN_CACHE_DIR"
 
 stacks() { find "$ROOT" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' | sort; }
+
+# Refuse a destroy that would orphan AWS resources Terraform does not know about.
+#  20-platform: Helm releases other than the two Terraform-managed ones (v0.11 temporal) and
+#    Services of type LoadBalancer (their NLB is the LBC's, not Terraform's) must be gone first:
+#    `helm uninstall` before the destroy (plan v0.10 "after a Helm uninstall").
+#  10-network: 20-platform must be empty, and no ENIs other than the endpoints' and the NAT's may
+#    remain (AgentCore VPC-mode ENIs linger up to 8 h after a runtime is deleted; plan v0.12).
+destroy_guard() {
+  local stack="$1" kcfg=.temporal/kubeconfig-eks
+  case "$stack" in
+    20-platform)
+      local st
+      st="$("$TF" -chdir="$ROOT/20-platform" state list 2>/dev/null || true)"
+      if grep -q '^module.eks.aws_eks_cluster' <<<"$st"; then
+        scripts/eks.sh kubeconfig >/dev/null
+        local extra lbs
+        extra="$(KUBECONFIG=$kcfg helm list -A -q | grep -vxE 'aws-load-balancer-controller|cert-manager' || true)"
+        lbs="$(KUBECONFIG=$kcfg kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}')"
+        [[ -z "$extra" ]] || { echo "tf: helm uninstall these first: $extra" >&2; return 1; }
+        [[ -z "$lbs" ]] || { echo "tf: LoadBalancer Services still exist (their NLBs would be orphaned): $lbs" >&2; return 1; }
+        echo "tf: guard ok: only the Terraform-managed Helm releases, no LoadBalancer Services"
+      fi ;;
+    10-network)
+      if [[ -s "$ROOT/20-platform/terraform.tfstate" ]] && [[ -n "$("$TF" -chdir="$ROOT/20-platform" state list 2>/dev/null)" ]]; then
+        echo "tf: destroy 20-platform first" >&2; return 1
+      fi
+      local vpc others
+      vpc="$("$TF" -chdir="$ROOT/10-network" output -raw vpc_id 2>/dev/null || true)"
+      if [[ -n "$vpc" ]]; then
+        others="$(aws ec2 describe-network-interfaces --region us-east-1 --filters Name=vpc-id,Values="$vpc" \
+          --query 'NetworkInterfaces[?InterfaceType!=`vpc_endpoint` && InterfaceType!=`nat_gateway`].[InterfaceType,Description]' --output text)"
+        [[ -z "$others" ]] || { echo "tf: ENIs still in the VPC (AgentCore ENIs can linger up to 8 h):" >&2; echo "$others" | scripts/redact.sh >&2; return 1; }
+        echo "tf: guard ok: no ENIs besides the endpoints' and the NAT's"
+      fi ;;
+  esac
+}
 
 cmd="${1:-}"; shift || true
 case "$cmd" in
@@ -38,7 +77,23 @@ case "$cmd" in
       echo "tf: tflint missing (make tools)" >&2; exit 1
     fi
     ;;
-  plan|apply|destroy|output|init)
+  destroy)
+    target="${1:?usage: $0 destroy STACK|foundation}"; shift
+    if [[ "$target" == foundation ]]; then order=(20-platform 10-network); else order=("$target"); fi
+    for stack in "${order[@]}"; do
+      [[ -d "$ROOT/$stack" ]] || { echo "tf: no stack $ROOT/$stack" >&2; exit 2; }
+      "$TF" -chdir="$ROOT/$stack" init -lockfile=readonly >/dev/null
+      if [[ "${DRY_RUN:-0}" == 1 ]]; then
+        echo "tf: DRY_RUN: guard and plan -destroy for $stack (nothing is changed)"
+        destroy_guard "$stack" || echo "tf: DRY_RUN: the guard would refuse $stack now" >&2
+        "$TF" -chdir="$ROOT/$stack" plan -destroy -no-color -lock=false "$@" | grep -E '^Plan:|No changes'
+      else
+        destroy_guard "$stack"
+        "$TF" -chdir="$ROOT/$stack" destroy -auto-approve -no-color "$@"
+      fi
+    done
+    ;;
+  plan|apply|output|init)
     stack="${1:?usage: $0 $cmd STACK}"; shift
     dir="$ROOT/$stack"
     [[ -d "$dir" ]] || { echo "tf: no stack $dir" >&2; exit 2; }
@@ -57,7 +112,6 @@ case "$cmd" in
         "$TF" -chdir="$dir" apply -no-color "$@" tfplan
         rm -f "$dir/tfplan"
         ;;
-      destroy) "$TF" -chdir="$dir" destroy -auto-approve -no-color "$@" ;;
     esac
     ;;
   lock)
