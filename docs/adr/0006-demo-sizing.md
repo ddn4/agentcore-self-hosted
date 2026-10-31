@@ -57,3 +57,12 @@ about **$0.51/h (~$12/day)**; `make pause` (nodes to 0, RDS stopped) brings it t
   `make tf-plan STACK=20-platform` now shows an in-place node group update (a node rollout).
   v0.11 applied only its one SG rule with `-target` so the nodes were not rolled mid-tag; the
   AMI update is left for a deliberate maintenance step (or v1.0 `up`).
+
+## v0.12: AgentCore session lifecycle in the cloud (2026-10-31)
+
+- `AGENTCORE_DEBOUNCE_SECONDS=30` (as decided) and `idleRuntimeSessionTimeout` **120 s** for the
+  VPC runtime (runbook default 900 s; the v0.8 probe used 120 s too). The Worker drains and
+  calls `complete_async_task` 30 s after its last Activity; after that the session only waits
+  to be reaped, and it is billed while it waits. A new demand starts a new session through the
+  WCI either way. While a Worker runs, the async task keeps `/ping` `HealthyBusy`, so the idle
+  timer cannot cut work short. `maxLifetime` stays 28800 s.

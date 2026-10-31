@@ -2,6 +2,26 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.12-agentcore-worker (in progress: blocked, not tagged)
+
+Support on AgentCore Runtime in VPC mode, invoked by the WCI on EKS. **Blocked** at the mTLS
+secret write (`make export-agentcore-cert CLUSTER=eks CONFIRM=yes`, refused by the session's
+permission policy). Build ID **`4ee7f87`** (was `fd7af7a`).
+
+- Applied: `30-agentcore-iam` with `create_dev_wci_role = false` (role `temporal-dev-wci`
+  deleted; the execution role unchanged). `[profile temporal-dev-wci]` in `~/.aws/config` is
+  now unused.
+- Tooling: `make agentcore-deploy MODE=VPC` (default; inputs from `.generated/foundation.env`,
+  TLS + mTLS secret, debounce 30 s, idle 120 s), `make agentcore-network`, `make
+  agentcore-logs`, `make flow-report` (`scripts/flow_report.py`), `make export-agentcore-cert
+  CLUSTER=eks CONFIRM=yes|CHECK=1` (tag `Project`, shreds the laptop copy), `make invoke-role`
+  (create-or-update, trusts `temporal-server-wci`), `make register-version
+  MODE=--agentcore-auto CLOUD=1`, `scripts/verify/v0.12-agentcore-worker.sh`.
+- Support: the AgentCore Worker logs where and how it connected (target, TLS server name,
+  client cert yes/no). No Workflow change.
+- Ledger 42 (synth half): the AgentCore CLI 1.0.1 synthesizes a VPC runtime with the named
+  endpoint and the existing execution role.
+
 ## v0.11-temporal-and-finance-on-eks
 
 Temporal 1.32.1 on EKS with RDS, an internal NLB and IRSA, then Finance on EKS and the hybrid
