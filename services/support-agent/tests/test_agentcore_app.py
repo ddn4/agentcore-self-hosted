@@ -226,3 +226,38 @@ def test_bad_debounce_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENTCORE_DEBOUNCE_SECONDS", "0")
     with pytest.raises(ValueError):
         config.debounce_seconds()
+
+
+def _client_with(target: str, tls: Any) -> Any:
+    """Just the attributes ``describe_connection`` reads (a real Client needs a server)."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        namespace="agents",
+        service_client=SimpleNamespace(config=SimpleNamespace(target_host=target, tls=tls)),
+    )
+
+
+def test_describe_connection_mtls_names_the_server_and_no_secrets() -> None:
+    """v0.12: the AgentCore log line shows the Route 53 name, mTLS on, no PEM material."""
+    from temporalio.service import TLSConfig
+
+    tls = TLSConfig(
+        server_root_ca_cert=b"not-a-real-ca",
+        client_cert=b"not-a-real-cert",
+        client_private_key=b"not-a-real-key",
+        domain="temporal-frontend.example.internal",
+    )
+    line = agentcore_app.describe_connection(
+        _client_with("temporal-frontend.example.internal:7233", tls)
+    )
+    assert line == (
+        "temporal-frontend.example.internal:7233 namespace agents "
+        "(TLS, server name temporal-frontend.example.internal, client certificate yes)"
+    )
+    assert "not-a-real" not in line
+
+
+def test_describe_connection_plaintext() -> None:
+    line = agentcore_app.describe_connection(_client_with("127.0.0.1:7233", False))
+    assert line == "127.0.0.1:7233 namespace agents (plaintext)"

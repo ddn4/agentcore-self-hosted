@@ -6,6 +6,8 @@
 #   scripts/agentcore-deploy.sh status           `agentcore status --json` (redacted)
 #   scripts/agentcore-deploy.sh runtime-arn | endpoint-arn   (raw ARNs for other scripts; never paste them)
 #   scripts/agentcore-deploy.sh down             (make agentcore-down) remove the runtime, delete the CLI stack
+#   scripts/agentcore-deploy.sh network          (make agentcore-network) get-agent-runtime: network, role, lifecycle, endpoints
+#   scripts/agentcore-deploy.sh logs [MIN]       (make agentcore-logs) the b_<build7> endpoint's log lines of the last MIN minutes
 #
 # Layout. build/agentcore/ is the CodeZip code location (make agentcore-bundle, tested by
 # make agentcore-bundle-test). The CLI 1.0.x wants a v1 project (agentcore.json "version": 2,
@@ -14,7 +16,11 @@
 #
 # MODE=PUBLIC (v0.8 probe, ADR-0005): no VPC; TEMPORAL_ADDRESS=127.0.0.1:7233 (the Worker
 # inside AgentCore cannot reach the laptop and fails within TEMPORAL_CONNECT_TIMEOUT_SECONDS),
-# no mTLS secret, idle session timeout 120 s. MODE=VPC: v0.12 (subnets/SGs from Terraform).
+# no mTLS secret, idle session timeout 120 s. MODE=VPC (v0.12, the demo runtime): the private
+# subnets, sg-agentcore-worker, the execution role and the Route 53 frontend name come from
+# .generated/foundation.env (make render-config); TLS on, server name = the Route 53 name, mTLS
+# from Secrets Manager temporal/agentcore-worker-mtls, debounce 30 s, idle timeout 120 s
+# (ADR-0006 v0.12: an idle session costs while it waits; the Worker has already drained).
 # The execution role is the 30-agentcore-iam one (executionRoleArn), not a CLI-created role.
 # CLI stack: AgentCore-<project>-default (project AgentcoreDemo).
 set -euo pipefail
@@ -41,6 +47,23 @@ mode_env() {
     export TEMPORAL_MTLS_SECRET_ID="${TEMPORAL_MTLS_SECRET_ID-}"
     export AGENTCORE_TEMPORAL_TLS_SERVER_NAME="${AGENTCORE_TEMPORAL_TLS_SERVER_NAME-}"
     export AGENTCORE_IDLE_SESSION_TIMEOUT="${AGENTCORE_IDLE_SESSION_TIMEOUT:-120}"
+  else
+    [[ -f .generated/foundation.env ]] || { echo "agentcore-deploy: make render-config first (.generated/foundation.env)" >&2; exit 1; }
+    # Runtime-injected values win (plan 3.2): only fill what the caller did not set.
+    local k v
+    while IFS='=' read -r k v; do
+      k="${k#export }"
+      case "$k" in
+        AGENTCORE_SUBNETS|AGENTCORE_SECURITY_GROUPS|AGENTCORE_TEMPORAL_ADDRESS|AGENTCORE_TEMPORAL_TLS_SERVER_NAME|AGENTCORE_EXECUTION_ROLE_ARN)
+          [[ -n "${!k:-}" ]] || export "$k=$(eval "printf '%s' $v")" ;;
+      esac
+    done < <(grep '^export ' .generated/foundation.env)
+    export AGENTCORE_TEMPORAL_TLS="${AGENTCORE_TEMPORAL_TLS:-true}"
+    export TEMPORAL_MTLS_SECRET_ID="${TEMPORAL_MTLS_SECRET_ID:-temporal/agentcore-worker-mtls}"
+    export AGENTCORE_CLOUD_DEBOUNCE_SECONDS="${AGENTCORE_CLOUD_DEBOUNCE_SECONDS:-30}"
+    export AGENTCORE_IDLE_SESSION_TIMEOUT="${AGENTCORE_IDLE_SESSION_TIMEOUT:-120}"
+    [[ "$AGENTCORE_SUBNETS" == subnet-* && "$AGENTCORE_SECURITY_GROUPS" == sg-* ]] ||
+      { echo "agentcore-deploy: VPC mode needs AGENTCORE_SUBNETS / AGENTCORE_SECURITY_GROUPS" >&2; exit 1; }
   fi
 }
 
@@ -72,7 +95,7 @@ runtime_id() {
 case "${1:-}" in
   project) mode_env; project ;;
   build)
-    mode_env; project
+    mode_env; scripts/agentcore-bundle.sh >/dev/null; project
     (cd "$P" && "../../$AC" build)
     ;;
   deploy)
@@ -101,6 +124,24 @@ case "${1:-}" in
     name="b_$(build_id | cut -c1-7)"
     aws bedrock-agentcore-control list-agent-runtime-endpoints --region "$AWS_REGION" --agent-runtime-id "$id" \
       --query "runtimeEndpoints[?name=='$name'].agentRuntimeEndpointArn | [0]" --output text
+    ;;
+  network)
+    id="$(runtime_id)"; [[ "$id" != None && -n "$id" ]] || { echo "no runtime ${RUNTIME_FULL}" >&2; exit 1; }
+    aws bedrock-agentcore-control get-agent-runtime --region "$AWS_REGION" --agent-runtime-id "$id" \
+      --query '{name: agentRuntimeName, status: status, version: agentRuntimeVersion, networkConfiguration: networkConfiguration, role: roleArn, lifecycle: lifecycleConfiguration, protocol: protocolConfiguration, authorizer: authorizerConfiguration}' \
+      --output json | scripts/redact.sh
+    aws bedrock-agentcore-control list-agent-runtime-endpoints --region "$AWS_REGION" --agent-runtime-id "$id" \
+      --query 'runtimeEndpoints[].{name: name, status: status, liveVersion: liveVersion}' --output json | scripts/redact.sh
+    ;;
+  logs)
+    id="$(runtime_id)"; [[ "$id" != None && -n "$id" ]] || { echo "no runtime ${RUNTIME_FULL}" >&2; exit 1; }
+    mins="${2:-30}"; name="b_$(build_id | cut -c1-7)"
+    lg="/aws/bedrock-agentcore/runtimes/${id}-${name}"
+    start=$(( ($(date +%s) - mins * 60) * 1000 ))
+    echo "log group ${lg} (last ${mins} min)" | scripts/redact.sh
+    aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$lg" --start-time "$start" \
+      --query 'events[].message' --output json 2>/dev/null \
+      | jq -r '.[] | rtrimstr("\n")' | grep -v '^[[:space:]]*$' | scripts/redact.sh || true
     ;;
   down)
     # The CLI 1.0.1 has no `destroy` (ledger 45): empty the project, then `deploy --yes`
@@ -133,5 +174,5 @@ case "${1:-}" in
       echo "agentcore-deploy: runtime ${RUNTIME_FULL} still exists" >&2; exit 1
     fi
     ;;
-  *) echo "usage: $0 project|build|deploy|status|runtime-arn|endpoint-arn|down" >&2; exit 2 ;;
+  *) echo "usage: $0 project|build|deploy|status|runtime-arn|endpoint-arn|network|logs|down" >&2; exit 2 ;;
 esac

@@ -45,6 +45,7 @@ from typing import Any, Protocol
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from temporalio.client import Client, Plugin
+from temporalio.service import TLSConfig
 
 from support_agent import config, mtls
 from support_agent.activity_tracker import ActivityTracker
@@ -168,6 +169,24 @@ async def connect_with_timeout(plugins: Sequence[Plugin], seconds: float) -> Cli
         raise TimeoutError(f"could not connect to Temporal within {seconds:g}s") from None
 
 
+def describe_connection(client: Client) -> str:
+    """Where the Worker connected and how, without secret material (for the AgentCore logs).
+
+    v0.12 evidence that a session dialled the Route 53 name over mTLS: the target, TLS on or
+    off, the server name the frontend certificate was checked against, and whether a client
+    certificate was presented.
+    """
+    cfg = client.service_client.config
+    tls = cfg.tls
+    if isinstance(tls, TLSConfig):
+        server_name = tls.domain or "<target host>"
+        client_cert = "yes" if tls.client_cert else "no"
+        how = f"TLS, server name {server_name}, client certificate {client_cert}"
+    else:
+        how = "TLS, system roots" if tls else "plaintext"
+    return f"{cfg.target_host} namespace {client.namespace} ({how})"
+
+
 def default_plugins() -> list[Plugin]:
     return [config.build_strands_plugin()]
 
@@ -184,6 +203,7 @@ async def run_worker(
     mtls.load_mtls_into_env()
     debounce = config.debounce_seconds() if debounce is None else debounce
     client = await connect(plugins(), config.connect_timeout_seconds())
+    log.info("lifetime %d: connected to %s", lifetime, describe_connection(client))
     tracker = ActivityTracker()
     identity = f"{os.getpid()}@{socket.gethostname()}/agentcore-lifetime-{lifetime}"
     log.info(

@@ -54,6 +54,7 @@ PYTEST := $(UV) pytest
         tools-agentcore tf-static tf-plan tf-apply tf-destroy tf-output guardrails external-id \
         cfn-template aws-profile invoke-role invoke-role-delete agentcore-build agentcore-deploy \
         agentcore-status agentcore-down agentcore-sessions register-version-aws \
+        agentcore-network agentcore-logs flow-report \
         check-quotas render-config pause resume eks-kubeconfig eks-env eks-status \
         eks-temporal eks-rds-ca create-db-user rds-snapshot route53-alias finance-image finance-deploy \
         finance-scale failure
@@ -257,8 +258,8 @@ agentcore-bundle-test: ## Bundle imports and serves in a fresh 3.12 venv; arm64 
 worker-support-versioned: ## Long-lived versioned Support Worker (support-supervisor:<build>, support-tq)
 	TEMPORAL_BUILD_ID="$(BUILD_ID_SH)" $(UV) python -m support_agent.worker_versioned
 
-register-version: ## deployment create -> create-version -> set-current-version (MODE=--poller|--local-wci)
-	scripts/register-version.sh $(or $(MODE),--local-wci)
+register-version: ## deployment create -> create-version -> set-current-version (MODE=--poller|--local-wci|--agentcore-auto; CLOUD=1 = from main only)
+	scripts/register-version.sh $(or $(MODE),--local-wci) $(if $(filter 1,$(CLOUD)),--cloud)
 
 wci-history: ## The dev server's WCI system Workflow for Support's version (BUILD=<build id>)
 	scripts/wci-history.sh $(BUILD)
@@ -302,8 +303,8 @@ cfn-template: ## Download + sha256-check + vendor Temporal's self-hosted invocat
 aws-profile: ## Append [profile temporal-dev-wci] to ~/.aws/config (backup first; append-only)
 	scripts/aws-profile.sh
 
-invoke-role: ## CFN invocation-role stack for the dev WCI (needs the runtime deployed)
-	scripts/invoke-role.sh create --temporal-role-arn "$$(scripts/tf.sh output 30-agentcore-iam -raw dev_wci_role_arn)"
+invoke-role: ## CFN invocation-role stack trusting temporal-server-wci (IRSA; v0.12); create or update (needs the runtime)
+	scripts/invoke-role.sh create-or-update --temporal-role-arn "$$(scripts/tf.sh output 20-platform -raw temporal_server_wci_role_arn)"
 
 invoke-role-delete: ## Delete the CFN invocation-role stack (Project tag checked)
 	scripts/invoke-role.sh delete
@@ -311,8 +312,17 @@ invoke-role-delete: ## Delete the CFN invocation-role stack (Project tag checked
 agentcore-build: ## AgentCore CLI synth of the runtime (MODE=PUBLIC|VPC; local packaging check, no AWS)
 	scripts/agentcore-deploy.sh build
 
-agentcore-deploy: ## Bundle + agentcore deploy (MODE=PUBLIC is the v0.8 probe, ADR-0005)
-	MODE=$(or $(MODE),PUBLIC) scripts/agentcore-deploy.sh deploy
+agentcore-deploy: ## Bundle + agentcore deploy (MODE=VPC is the demo runtime, v0.12; MODE=PUBLIC the v0.8 probe, ADR-0005)
+	MODE=$(or $(MODE),VPC) scripts/agentcore-deploy.sh deploy
+
+agentcore-network: ## get-agent-runtime: networkConfiguration, role, endpoints of our runtime (redacted)
+	scripts/agentcore-deploy.sh network
+
+agentcore-logs: ## Our runtime's CloudWatch log lines (SINCE=<minutes>, default 30; redacted)
+	scripts/agentcore-deploy.sh logs $(or $(SINCE),30)
+
+flow-report: ## VPC flow logs of the AgentCore ENIs: destinations by kind (SINCE=<minutes>, default 60; AWS Q2)
+	$(UV) python scripts/flow_report.py --since $(or $(SINCE),60)
 
 agentcore-status: ## agentcore status --json (redacted)
 	scripts/agentcore-deploy.sh status
@@ -323,8 +333,8 @@ agentcore-down: ## Remove the runtime and the CLI stack AgentCore-AgentcoreDemo-
 agentcore-sessions: ## New AgentCore sessions of our runtimes in the last 15 min (must be 0 after teardown)
 	scripts/agentcore-sessions.sh
 
-register-version-aws: ## register-version against the real AgentCore endpoint (role + External ID at run time)
-	scripts/register-version.sh --agentcore-auto
+register-version-aws: ## register-version against the real AgentCore endpoint (role + External ID at run time; CLOUD=1)
+	scripts/register-version.sh --agentcore-auto $(if $(filter 1,$(CLOUD)),--cloud)
 
 # --- v0.10: the AWS foundation (10-network, 20-platform; go-ahead G5) -----------------
 # kubectl/helm for EKS use .temporal/kubeconfig-eks (context agentcore-demo-eks), never
@@ -426,8 +436,9 @@ env: ## Print the envconfig exports for bare `temporal` commands (eval the outpu
 cert-renew: ## Re-issue a certificate now (NS=temporal CERT=temporal-frontend-tls)
 	scripts/cert-renew.sh $(or $(NS),temporal) $(or $(CERT),temporal-frontend-tls)
 
-export-agentcore-cert: ## Optional SM path (go-ahead G5): agentcore-worker cert -> Secrets Manager (SECRET_ID=)
-	scripts/export-agentcore-cert.sh --secret-id $(or $(SECRET_ID),temporal-kind/agentcore-worker-mtls)
+export-agentcore-cert: ## agentcore-worker cert -> Secrets Manager (CLUSTER=eks SECRET_ID=temporal/agentcore-worker-mtls CONFIRM=yes; CHECK=1 read-only)
+	scripts/export-agentcore-cert.sh --cluster $(or $(CLUSTER),eks) --secret-id $(or $(SECRET_ID),temporal/agentcore-worker-mtls) \
+	  $(if $(filter 1,$(CHECK)),--check,$(if $(filter yes,$(CONFIRM)),--yes))
 
 # On kind each laptop Worker presents its own client certificate (plan v0.9: one CN per
 # Worker type). The profile's default identity is `operator` (CLI and demo scripts).

@@ -4,6 +4,7 @@
 # Terraform state (ADR-0007). It is read from Secrets Manager at run time.
 #   scripts/invoke-role.sh create --temporal-role-arn ARN [--runtime-arn ARN]   (make invoke-role)
 #   scripts/invoke-role.sh update [--temporal-role-arn ARN] [--runtime-arn ARN]  (e.g. after an External ID rotation)
+#   scripts/invoke-role.sh create-or-update --temporal-role-arn ARN [--runtime-arn ARN]   (make invoke-role, v0.12)
 #   scripts/invoke-role.sh delete
 #   scripts/invoke-role.sh status | arn
 # --temporal-role-arn: the identity the WCI runs as: temporal-dev-wci (v0.8, laptop dev
@@ -47,6 +48,11 @@ params() {
           ParameterKey=RoleName,ParameterValue="$ROLE_NAME")
 }
 
+if [[ "$cmd" == create-or-update ]]; then
+  if [[ "$(stack_status)" == ABSENT ]]; then cmd=create; else cmd=update; fi
+  echo "invoke-role: create-or-update -> $cmd"
+fi
+
 case "$cmd" in
   create)
     [[ "$(stack_status)" == ABSENT ]] || { echo "invoke-role: stack $STACK exists ($(stack_status)); use update" >&2; exit 1; }
@@ -56,6 +62,7 @@ case "$cmd" in
       --tags Key=Project,Value=agentcore-self-hosted Key=ManagedBy,Value=scripts/invoke-role.sh >/dev/null
     cfn wait stack-create-complete --stack-name "$STACK"
     echo "invoke-role: stack $STACK $(stack_status); role $ROLE_NAME"
+    echo "  trusts $TEMPORAL_ROLE_ARN; resource ${RUNTIME_ARN}*; External ID from Secrets Manager" | scripts/redact.sh
     ;;
   update)
     [[ "$(stack_status)" != ABSENT ]] || { echo "invoke-role: no stack $STACK" >&2; exit 1; }
@@ -93,5 +100,5 @@ case "$cmd" in
   arn)
     cfn describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='RoleARN'].OutputValue | [0]" --output text
     ;;
-  *) echo "usage: $0 create|update|delete|status|arn [--temporal-role-arn ARN] [--runtime-arn ARN]" >&2; exit 2 ;;
+  *) echo "usage: $0 create|update|create-or-update|delete|status|arn [--temporal-role-arn ARN] [--runtime-arn ARN]" >&2; exit 2 ;;
 esac
