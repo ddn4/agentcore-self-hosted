@@ -6,6 +6,7 @@ __pycache__/
 .temporal/
 .env
 .certs/
+.claude/
 build/
 .generated/
 *.pem
