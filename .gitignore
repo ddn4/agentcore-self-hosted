@@ -28,3 +28,6 @@ crash.log
 .agentcore/
 tfplan
 *.tfplan
+
+# Claude Code personal settings (project-local permission rules)
+.claude/settings.local.json
