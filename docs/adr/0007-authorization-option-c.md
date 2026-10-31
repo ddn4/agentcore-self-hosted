@@ -79,3 +79,23 @@ cert-manager v1.21.3; `scripts/verify/v0.9-temporal-on-kind-mtls.sh`):
   a restart (Q10); the Python SDK keeps the certificate it read at connect (Q18), so a
   renewed Worker certificate reaches a Worker on its next start (rollout restart, or
   Reloader) while the old one stays valid until it expires.
+
+## v0.11: the same decision on EKS (2026-10-31)
+
+- **A second, independent CA.** The EKS cluster runs its own `selfsigned-bootstrap` →
+  `temporal-root-ca` → `temporal-ca` chain (`deploy/k8s/overlays/eks/cert-issuers`), so a kind
+  certificate is not trusted on EKS and vice versa. Laptop copies live in `.certs/eks/`
+  (gitignored; `make certs-pull TEMPORAL_PROFILE=eks-pf`).
+- **The NLB passes TLS through.** The frontend Service is an internal TCP NLB (ip targets) with
+  no certificate: `openssl s_client` from a pod in the VPC sees the cert-manager frontend
+  certificate and the frontend's request for a client certificate from `temporal-ca`; the CLI
+  with the operator certificate works through the Route 53 name, the same call without a
+  certificate is refused.
+- **Network isolation on EKS** has two layers: security groups for the NLB path (the NLB SG
+  admits 7233 from `sg-agentcore-worker` and, since v0.11, the EKS node SG for in-VPC checks)
+  and the VPC CNI NetworkPolicy for the in-cluster path. Because the NLB's ip targets see the
+  NLB's private IPs (`preserve_client_ip` off), the frontend gets one more, generated policy
+  (`temporal-frontend-from-nlb`) that admits exactly the NLB ENIs' /32s; an unlabelled pod in the
+  VPC CIDR still cannot dial the service directly. A pod can reach the NLB name (SG-allowed), so
+  mTLS is the control on that path, as for an AgentCore ENI.
+- Unchanged accepted risk: any certificate from the EKS `temporal-ca` is admin on both namespaces.

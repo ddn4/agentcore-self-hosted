@@ -2,6 +2,41 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.11-temporal-and-finance-on-eks
+
+Temporal 1.32.1 on EKS with RDS, an internal NLB and IRSA, then Finance on EKS and the hybrid
+demo (laptop Support → EKS Finance over Nexus). Applied in us-east-1 and **left running**.
+Build ID unchanged (`fd7af7a`: no Support input touched).
+
+- Server (commit 1): `deploy/temporal/values.eks.yaml` layered on the unchanged v0.9 values
+  (RDS TLS with `caFile` + `enableHostVerification` on both stores, Secret `rds-ca` from the
+  official us-east-1 bundle mounted for the server and the schema hook Job, user `temporal_user`,
+  512 shards, frontend ×2 behind an internal TCP NLB with ip targets and
+  `agentcore-demo-nlb-temporal-frontend`, IRSA `temporal-server-wci` on `server.worker` only);
+  a generated `.generated/values.eks.ids.yaml` carries the RDS address and role ARN.
+  `deploy/k8s/overlays/eks/{cert-issuers,temporal-certs,temporal-network}` (the v0.9 bases).
+  Scripts `create-db-user.sh` (password → Secrets Manager `temporal/rds-temporal-user` + k8s
+  Secret; role created over `verify-full` TLS), `rds-snapshot.sh`, `route53-alias.sh`;
+  `scripts/eks.sh` `rds-ca`, `certs`, `values`, `temporal` (dry-run=server, install --timeout
+  900s), `netpol-nlb` (the NLB ENIs' /32s), `pf`/`pf-stop`. envconfig profile `eks-pf`;
+  `make certs-pull/pf TEMPORAL_PROFILE=eks-pf` (`.certs/eks/`). 20-platform: SG rule
+  `nlb_from_nodes` (in-VPC checks through the NLB).
+- Finance (commit 2): `deploy/k8s/overlays/eks/temporal-workers` (ECR images, IRSA annotation,
+  HTTPS egress narrowed to the VPC, pods spread over nodes) plus a generated layer;
+  `make finance-image` (linux/arm64, push to ECR), `make finance-deploy`
+  (`FINANCE_BEDROCK_MODEL_ID=` for the `us.` fallback), `make finance-scale`, `make failure`
+  (`scripts/demo/failure.sh`).
+- Live: schemas 1.19 / 1.14 on PostgreSQL 16.15, every DB session TLS, `s_client` through the NLB
+  shows the cert-manager cert and the client-cert request, mTLS with/without cert, NetworkPolicy,
+  IRSA (`assumed-role/temporal-server-wci`, `agent-services-worker`), Bedrock global/us allowed and
+  another model denied, Q16 on 1.32.1, hybrid Case A and Case B (approve) handled by EKS pods
+  (gate **G4**), failure demo recovers, light Q18 re-check.
+- `scripts/verify/v0.11-temporal-and-finance-on-eks.sh`; `make infra-static` renders the EKS
+  values and overlays; 4 new unit tests; `test_vpc_render` made hermetic against an exported
+  `foundation.env`; `redact.sh`/`scrub-check.sh` cover Route 53 zone IDs and NLB names.
+- Ledger 39, 40 resolved, 41 resolved for IRSA, 12/33 re-checked, 68/69 recorded. ADR-0006 and
+  ADR-0007 v0.11 sections.
+
 ## v0.10-aws-foundation
 
 The AWS foundation in Terraform (us-east-1, go-ahead G5), applied and **left running** for

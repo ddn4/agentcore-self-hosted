@@ -1,0 +1,33 @@
+# EKS overlay for team Finance (plan v0.11; runbook 7b.1-7b.7): the v0.9 base (namespace
+# temporal-workers, eks-nexus-worker-tls, ServiceAccount, 2 Finance pods with POD_NAME, PDB,
+# egress NetworkPolicy, payments-mock) with:
+#   - images from ECR, built linux/arm64 for the m7g nodes (`make finance-image`);
+#   - IRSA instead of the kind aws-creds Secret: the ServiceAccount's role-arn annotation;
+#   - HTTPS egress narrowed to the VPC (the interface endpoints: STS for IRSA, bedrock-runtime).
+# The ECR registry host and the role ARN carry the account ID, so `make finance-deploy`
+# (scripts/eks.sh finance-deploy) applies a GENERATED kustomization in .generated/ (gitignored)
+# that layers them on top of this directory. No static AWS credentials anywhere.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/temporal-workers
+images:
+  - { name: finance-agent, newName: agentcore-demo/finance-agent, newTag: set-by-make-finance-deploy }
+  - { name: payments-mock, newName: agentcore-demo/payments-mock, newTag: set-by-make-finance-deploy }
+patches:
+  - target: { kind: NetworkPolicy, name: agent-services-worker-egress }
+    patch: |-
+      - op: replace
+        path: /spec/egress/2
+        value:
+          to: [{ ipBlock: { cidr: 10.40.0.0/16 } }]   # VPC CIDR (10-network): interface endpoints only
+          ports: [{ protocol: TCP, port: 443 }]
+  - target: { kind: Deployment, name: agent-services-worker }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/topologySpreadConstraints
+        value:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector: { matchLabels: { app: agent-services-worker } }

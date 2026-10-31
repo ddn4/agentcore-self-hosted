@@ -44,6 +44,11 @@ Python packages are locked in `uv.lock`; the table records the resolved versions
 | cert-manager chart (EKS) | v1.21.3 | v0.10 | same as kind; `helm_release`, `crds.enabled=true` |
 | RDS PostgreSQL | **16.15** | v0.10 | Temporal tests 16.6, which RDS no longer offers (2026-10-31: 16.9–16.15 available); latest 16 minor chosen, `auto_minor_version_upgrade = false` (ADR-0006). Parameter group `temporal-db-pg16` (family `postgres16`, `rds.force_ssl = 1`, also the family default); CA `rds-ca-rsa2048-g1` |
 | Test images (verify v0.10) | `public.ecr.aws/docker/library/busybox:1.37`, `…/postgres:16`, `public.ecr.aws/aws-cli/aws-cli:2.36.46` | v0.10 | public ECR (no Docker Hub rate limit) |
+| Temporal on EKS (v0.11) | chart 1.7.0, server/admin-tools 1.32.1, UI 2.54.1 | v0.11 | same values as kind (`values.postgresql/base/tls`) + `values.eks.yaml` + generated IDs; frontend ×2, others ×1; 512 shards; schemas core **1.19**, visibility **1.14** on RDS PostgreSQL 16.15 |
+| RDS CA bundle | `https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem` (3 CAs, read 2026-10-31) | v0.11 | Secret `temporal/rds-ca`; the instance uses `rds-ca-rsa2048-g1` |
+| Internal NLB | AWS Load Balancer Controller 3.6.2 (v0.10), Service annotations | v0.11 | `temporal-frontend`: network / internal / ip targets / TCP 7233 + 7243, SG `agentcore-demo-nlb-temporal-frontend` |
+| Finance / payments-mock images on EKS | `linux/arm64`, ECR tags `img-<12 hex of the local image ID>` | v0.11 | built in colima (`DOCKER_CONTEXT=colima-agentcore`), pushed by `make finance-image` |
+| Test images (verify v0.11) | `public.ecr.aws/docker/library/alpine:3.22` (+ `apk add openssl bind-tools`), `…/postgres:16`, `…/busybox:1.37`, `public.ecr.aws/aws-cli/aws-cli:2.36.46`, `temporalio/admin-tools:1.32.1` | v0.11 | throwaway pods, deleted after each check |
 
 ## Python packages (uv.lock at v0.1)
 

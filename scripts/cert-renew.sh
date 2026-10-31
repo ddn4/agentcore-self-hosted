@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # Force cert-manager to re-issue a Certificate now (rotation drill, plan v0.9).
 #   scripts/cert-renew.sh NAMESPACE CERTIFICATE
+#   CLUSTER=eks scripts/cert-renew.sh ...   the EKS cluster (v0.11), default kind
 # Uses `cmctl renew` when installed; otherwise does what cmctl does: sets the
 # Certificate's Issuing condition to True through the status subresource.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-export KUBECONFIG="$PWD/.temporal/kubeconfig-agentcore-demo"
+case "${CLUSTER:-kind}" in
+  kind) export KUBECONFIG="$PWD/.temporal/kubeconfig-agentcore-demo" ;;
+  eks)  export KUBECONFIG="$PWD/.temporal/kubeconfig-eks" ;;
+  *) echo "cert-renew: CLUSTER must be kind or eks" >&2; exit 2 ;;
+esac
 ns="${1:?namespace}" cert="${2:?certificate}"
 if command -v cmctl >/dev/null; then exec cmctl renew -n "$ns" "$cert"; fi
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

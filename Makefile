@@ -55,7 +55,8 @@ PYTEST := $(UV) pytest
         cfn-template aws-profile invoke-role invoke-role-delete agentcore-build agentcore-deploy \
         agentcore-status agentcore-down agentcore-sessions register-version-aws \
         check-quotas render-config pause resume eks-kubeconfig eks-env eks-status \
-        eks-temporal eks-rds-ca create-db-user rds-snapshot route53-alias
+        eks-temporal eks-rds-ca create-db-user rds-snapshot route53-alias finance-image finance-deploy \
+        finance-scale failure
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -345,7 +346,7 @@ eks-status: ## Nodes (AZ ID, arch), add-ons, LBC and cert-manager on EKS (redact
 
 # --- v0.11: Temporal and Finance on EKS (plan v0.11; scripts/eks.sh) ------------------
 # Order: eks-rds-ca, create-db-user, rds-snapshot, eks-temporal, route53-alias, then
-# certs-pull/pf with TEMPORAL_PROFILE=eks-pf.
+# certs-pull/pf with TEMPORAL_PROFILE=eks-pf; finance-image, finance-deploy, nexus-endpoint.
 eks-rds-ca: ## Namespace temporal + Secret rds-ca from the official us-east-1 RDS CA bundle
 	scripts/eks.sh rds-ca
 
@@ -360,6 +361,18 @@ eks-temporal: ## Chart temporal-1.7.0 on EKS: certs, values (+generated IDs), dr
 
 route53-alias: ## temporal-frontend.temporal-customer-support.internal -> internal NLB (UPSERT; ARGS=--show|--delete)
 	scripts/route53-alias.sh $(ARGS)
+
+finance-image: ## Build linux/arm64 Finance + payments-mock images and push them to ECR
+	scripts/eks.sh finance-image
+
+finance-deploy: ## Finance (2 pods, IRSA) + payments-mock on EKS via overlays/eks (FINANCE_BEDROCK_MODEL_ID= for the us. fallback)
+	scripts/eks.sh finance-deploy
+
+finance-scale: ## Scale the EKS Finance Deployment (N=0|2)
+	scripts/eks.sh scale-finance $(or $(N),2)
+
+failure: ## Failure demo: Finance to 0 mid-Case A -> pending Nexus op retries -> back to 2 -> completes (WF=)
+	scripts/demo/failure.sh $(WF)
 
 pause: ## Nodes to 0 and stop RDS (EKS, NAT, endpoints keep billing; DRY_RUN=1 prints only)
 	DRY_RUN=$(or $(DRY_RUN),0) scripts/pause.sh pause

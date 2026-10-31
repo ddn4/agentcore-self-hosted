@@ -44,3 +44,16 @@ about **$0.51/h (~$12/day)**; `make pause` (nodes to 0, RDS stopped) brings it t
   16.15, the fallback is the lowest available 16 minor.
 - `make pause` leaves the node group's `min_size` at 0, which Terraform shows as drift until
   `make resume`.
+
+## v0.11: what runs on the two nodes (2026-10-31)
+
+- Temporal on EKS: frontend **2** replicas (one NLB target per node/AZ; PDB `minAvailable: 1`),
+  history, matching, worker, web and admin-tools **1** each, with requests sized for 2 × m7g.large
+  (`values.eks.yaml`); `numHistoryShards: 512` as decided. Finance 2 pods (spread across nodes),
+  payments-mock 1. Everything fits on the 2 nodes; `max_size` 3 was not needed.
+- PostgreSQL 16.15 works with Temporal 1.32.1: the chart's schema Job brought `temporal` to
+  **1.19** and `temporal_visibility` to **1.14** (the runbook's targets) with no change.
+- The node group's AMI release moved on (AWS published a newer AL2023 release); a plain
+  `make tf-plan STACK=20-platform` now shows an in-place node group update (a node rollout).
+  v0.11 applied only its one SG rule with `-target` so the nodes were not rolled mid-tag; the
+  AMI update is left for a deliberate maintenance step (or v1.0 `up`).
