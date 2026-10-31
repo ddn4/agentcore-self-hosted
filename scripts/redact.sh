@@ -6,6 +6,8 @@
 # shape, openssl rand -hex 16) -> <hex32>.
 # v0.10 adds: the SSO role suffix (AWSReservedSSO_<set>_<16 hex>), EKS OIDC issuer IDs and API
 # endpoint hostnames (32 upper-case hex), RDS endpoint IDs (<db>.<12 chars>.<region>.rds...).
+# v0.11 adds: NLB DNS-name suffixes (<name>-<16 hex>.elb.<region>...), ELB ARN IDs and Route 53
+# hosted zone IDs (Z + 12-31 upper-case alphanumerics).
 set -euo pipefail
 sed -E \
   -e 's/arn:aws([a-z-]*):([a-z0-9-]*):([a-z0-9-]*):[0-9]{12}:/arn:aws\1:\2:\3:<acct>:/g' \
@@ -18,6 +20,9 @@ sed -E \
   -e 's#(^|[^0-9A-Za-z])[0-9A-F]{32}(\.[a-z0-9]+\.[a-z0-9-]+\.eks\.amazonaws\.com)#\1<eks-id>\2#g' \
   -e 's#(\.)[a-z0-9]{12}(\.[a-z0-9-]+\.rds\.amazonaws\.com)#\1<rds-id>\2#g' \
   -e 's/(AKIA|ASIA)[A-Z0-9]{16}/<aws-access-key>/g' \
+  -e 's#([a-z0-9-]+)-[0-9a-f]{16}(\.elb\.[a-z0-9-]+\.amazonaws\.com)#\1-<nlb-id>\2#g' \
+  -e 's#(loadbalancer/net/[A-Za-z0-9-]+/|targetgroup/[A-Za-z0-9-]+/)[0-9a-f]{16}#\1<elb-id>#g' \
+  -e 's/(^|[^0-9A-Za-z])Z[0-9A-Z]{12,31}([^0-9A-Za-z]|$)/\1<zone-id>\2/g' \
   -e 's#(runtime/|runtime-endpoint/)[A-Za-z][A-Za-z0-9_]{0,47}-[A-Za-z0-9]{10}#\1<runtime-id>#g' \
   -e 's#(runtimes/)[A-Za-z][A-Za-z0-9_]{0,47}-[A-Za-z0-9]{10}-#\1<runtime-id>-#g' \
   -e 's#(:secret:[A-Za-z0-9/_+=.@-]+)-[A-Za-z0-9]{6}([^A-Za-z0-9]|$)#\1-<sfx>\2#g' \

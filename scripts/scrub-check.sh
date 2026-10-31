@@ -33,6 +33,12 @@ patterns+=(
   '[0-9A-F]{32}\.[a-z0-9]+\.[a-z0-9-]+\.eks\.amazonaws\.com'
   '\.[a-z0-9]{12}\.[a-z0-9-]+\.rds\.amazonaws\.com'
 )
+# v0.11: NLB DNS-name suffixes, ELB ARN IDs, Route 53 hosted zone IDs.
+patterns+=(
+  '[a-z0-9-]+-[0-9a-f]{16}\.elb\.[a-z0-9-]+\.amazonaws\.com'
+  '(loadbalancer/net/[A-Za-z0-9-]+/|targetgroup/[A-Za-z0-9-]+/)[0-9a-f]{16}'
+  '(^|[^0-9A-Za-z])Z[0-9A-Z]{12,31}([^0-9A-Za-z]|$)'
+)
 regex="$(IFS='|'; echo "${patterns[*]}")"
 # Hits that are only allowlisted emails or private/loopback/documentation IPs are fine.
 allow_line() {

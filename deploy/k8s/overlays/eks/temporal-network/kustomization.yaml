@@ -1,0 +1,10 @@
+# EKS (plan v0.11): the v0.9 ingress firewall on the frontend pods (7233 only from the temporal
+# namespace and from temporal-workers pods labelled temporal.io/client=true). On EKS the VPC CNI
+# network-policy agent enforces it (ledger 37). The NLB's own source IPs (ip targets,
+# preserve_client_ip off) are admitted by a second, GENERATED policy temporal-frontend-from-nlb
+# (`make eks-temporal`, scripts/eks.sh netpol-nlb): /32s of the NLB's ENIs, so an unlabelled pod
+# in the VPC CIDR is still refused (runbook 7b.6, last paragraph).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/temporal-network

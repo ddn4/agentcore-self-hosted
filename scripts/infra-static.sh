@@ -34,7 +34,11 @@ step "helm template (plaintext: postgresql + base + kind)"
 helm template temporal "$tgz" -n temporal -f $V/values.postgresql.yaml -f $V/values.base.yaml -f $V/values.kind.yaml | validate
 step "helm template (mTLS: postgresql + base + tls + kind)"
 helm template temporal "$tgz" -n temporal -f $V/values.postgresql.yaml -f $V/values.base.yaml -f $V/values.tls.yaml -f $V/values.kind.yaml | validate
-for dir in deploy/k8s/base/* deploy/k8s/overlays/*; do
+# v0.11: the EKS set (RDS TLS, NLB Service, IRSA SA). The generated IDs file is not in git;
+# the committed placeholders render the same objects.
+step "helm template (EKS: postgresql + base + tls + eks)"
+helm template temporal "$tgz" -n temporal -f $V/values.postgresql.yaml -f $V/values.base.yaml -f $V/values.tls.yaml -f $V/values.eks.yaml | validate
+for dir in deploy/k8s/base/* deploy/k8s/overlays/* deploy/k8s/overlays/eks/*; do
   [[ -f "$dir/kustomization.yaml" ]] || continue
   step "kustomize $dir"
   kubectl kustomize "$dir" | validate

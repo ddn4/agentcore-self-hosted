@@ -54,7 +54,8 @@ PYTEST := $(UV) pytest
         tools-agentcore tf-static tf-plan tf-apply tf-destroy tf-output guardrails external-id \
         cfn-template aws-profile invoke-role invoke-role-delete agentcore-build agentcore-deploy \
         agentcore-status agentcore-down agentcore-sessions register-version-aws \
-        check-quotas render-config pause resume eks-kubeconfig eks-env eks-status
+        check-quotas render-config pause resume eks-kubeconfig eks-env eks-status \
+        eks-temporal eks-rds-ca create-db-user rds-snapshot route53-alias
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -342,6 +343,24 @@ eks-env: ## Print the KUBECONFIG export for kubectl against EKS by hand
 eks-status: ## Nodes (AZ ID, arch), add-ons, LBC and cert-manager on EKS (redacted)
 	scripts/eks.sh status
 
+# --- v0.11: Temporal and Finance on EKS (plan v0.11; scripts/eks.sh) ------------------
+# Order: eks-rds-ca, create-db-user, rds-snapshot, eks-temporal, route53-alias, then
+# certs-pull/pf with TEMPORAL_PROFILE=eks-pf.
+eks-rds-ca: ## Namespace temporal + Secret rds-ca from the official us-east-1 RDS CA bundle
+	scripts/eks.sh rds-ca
+
+create-db-user: ## RDS role temporal_user: password -> Secrets Manager + k8s Secret temporal-db-secret
+	scripts/create-db-user.sh
+
+rds-snapshot: ## Manual RDS snapshot temporal-pre-<CHANGE>-<ts> before an install/upgrade (CHANGE=)
+	scripts/rds-snapshot.sh $(or $(CHANGE),change)
+
+eks-temporal: ## Chart temporal-1.7.0 on EKS: certs, values (+generated IDs), dry-run=server, install --timeout 900s, NetworkPolicies
+	scripts/eks.sh temporal
+
+route53-alias: ## temporal-frontend.temporal-customer-support.internal -> internal NLB (UPSERT; ARGS=--show|--delete)
+	scripts/route53-alias.sh $(ARGS)
+
 pause: ## Nodes to 0 and stop RDS (EKS, NAT, endpoints keep billing; DRY_RUN=1 prints only)
 	DRY_RUN=$(or $(DRY_RUN),0) scripts/pause.sh pause
 
@@ -368,14 +387,14 @@ kind-workers: ## Finance (2 pods) + payments-mock + NetworkPolicies (FINANCE_MOD
 kind-aws-creds: ## Laptop SSO credentials -> Secret temporal-workers/aws-creds (Finance on Bedrock)
 	scripts/kind-aws-creds.sh
 
-certs-pull: ## Client certs (operator, agentcore-worker, laptop-support) + CA -> .certs/
-	scripts/certs-pull.sh
+certs-pull: ## Client certs (operator, agentcore-worker, laptop-support) + CA -> .certs/ (EKS: TEMPORAL_PROFILE=eks-pf -> .certs/eks/)
+	CLUSTER=$(if $(filter eks-pf,$(TEMPORAL_PROFILE)),eks,kind) scripts/certs-pull.sh
 
-pf: ## Port-forward kind frontend -> 127.0.0.1:7233 and UI -> http://127.0.0.1:8233 (background)
-	scripts/kind.sh pf
+pf: ## Port-forward frontend -> 127.0.0.1:7233, UI -> http://127.0.0.1:8233 (kind; EKS with TEMPORAL_PROFILE=eks-pf)
+	if [[ "$(TEMPORAL_PROFILE)" == eks-pf ]]; then scripts/eks.sh pf; else scripts/kind.sh pf; fi
 
-pf-stop: ## Stop the kind port-forwards
-	scripts/kind.sh pf-stop
+pf-stop: ## Stop the port-forwards (kind; EKS with TEMPORAL_PROFILE=eks-pf)
+	if [[ "$(TEMPORAL_PROFILE)" == eks-pf ]]; then scripts/eks.sh pf-stop; else scripts/kind.sh pf-stop; fi
 
 kind-status: ## Nodes, pods and certificates of the kind cluster
 	scripts/kind.sh status
@@ -404,6 +423,14 @@ agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPOR
 agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(CURDIR)/.certs/agentcore-worker/tls.key
 worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_CERT_PATH = $(CURDIR)/.certs/laptop-support/tls.crt
 worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(CURDIR)/.certs/laptop-support/tls.key
+endif
+# v0.11 hybrid demo: the laptop Support Worker on EKS (through `make pf TEMPORAL_PROFILE=eks-pf`)
+# presents laptop-support from the EKS CA, as a plain Worker on support-dev-tq.
+ifeq ($(TEMPORAL_PROFILE),eks-pf)
+worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_CERT_PATH = $(CURDIR)/.certs/eks/laptop-support/tls.crt
+worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(CURDIR)/.certs/eks/laptop-support/tls.key
+agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPORAL_TLS_CLIENT_CERT_PATH = $(CURDIR)/.certs/eks/agentcore-worker/tls.crt
+agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(CURDIR)/.certs/eks/agentcore-worker/tls.key
 endif
 
 verify: ## Run scripts/verify/$(TAG).sh, e.g. make verify TAG=v0.1-scaffold

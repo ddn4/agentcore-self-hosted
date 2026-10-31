@@ -40,4 +40,17 @@ address = "127.0.0.1:7233"
 [profile.kind-plaintext.tls]
 disabled = true
 
-# eks-pf (v0.11) is added by that tag.
+# eks-pf (v0.11): the Helm-installed server on EKS (RDS, internal NLB), reached from the laptop
+# through `make pf TEMPORAL_PROFILE=eks-pf` (kubectl port-forward 127.0.0.1:7233 ->
+# svc/temporal-frontend on EKS), with mTLS from the EKS cluster's own cert-manager CA. Same
+# shape as `kind`: dial 127.0.0.1, check the Route 53 name (SNI + SAN). Files from
+# `make certs-pull TEMPORAL_PROFILE=eks-pf` (.certs/eks/, gitignored). Identity: `operator`;
+# the laptop Support Worker overrides it with `laptop-support` (Makefile, TEMPORAL_PROFILE=eks-pf).
+[profile.eks-pf]
+address = "127.0.0.1:7233"
+
+[profile.eks-pf.tls]
+server_name = "temporal-frontend.temporal-customer-support.internal"
+server_ca_cert_path = ".certs/eks/ca.crt"
+client_cert_path = ".certs/eks/operator/tls.crt"
+client_key_path = ".certs/eks/operator/tls.key"

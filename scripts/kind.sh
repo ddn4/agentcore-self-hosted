@@ -183,12 +183,13 @@ cmd_pf() {
 }
 
 cmd_pf_stop() {
-  local pid
+  local pid kids
   for f in "$PIDS"-*.pid; do
     [[ -f "$f" ]] || continue
     pid="$(cat "$f")"
-    kill "$pid" 2>/dev/null || true          # the supervisor loop first, then its kubectl
-    pkill -P "$pid" 2>/dev/null || true
+    kids="$(pgrep -P "$pid" 2>/dev/null || true)"     # v0.11 fix: read the kubectl child before it is re-parented
+    kill "$pid" 2>/dev/null || true                     # the supervisor loop first, then its kubectl
+    [[ -z "$kids" ]] || kill $kids 2>/dev/null || true
     rm -f "$f"
   done
   log "port-forwards stopped"

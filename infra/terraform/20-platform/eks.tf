@@ -67,3 +67,16 @@ resource "aws_vpc_security_group_ingress_rule" "vpce_from_nodes" {
   to_port                      = 443
   referenced_security_group_id = module.eks.node_security_group_id
 }
+
+# v0.11: pods in the VPC reach the frontend through the internal NLB by its Route 53 name (the
+# in-VPC mTLS checks of plan v0.11; the same path an AgentCore ENI takes). sg-nlb-temporal-frontend
+# otherwise admits only sg-agentcore-worker (10-network). The NLB -> pod rules are the LBC's
+# (manage-backend-security-group-rules), not Terraform's.
+resource "aws_vpc_security_group_ingress_rule" "nlb_from_nodes" {
+  security_group_id            = local.sg.nlb_temporal_frontend
+  description                  = "EKS nodes and pods to the Temporal frontend NLB (in-VPC checks)"
+  ip_protocol                  = "tcp"
+  from_port                    = 7233
+  to_port                      = 7233
+  referenced_security_group_id = module.eks.node_security_group_id
+}

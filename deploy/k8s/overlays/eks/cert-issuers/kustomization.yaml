@@ -1,0 +1,7 @@
+# EKS (plan v0.11): runbook 2.6 step 2 unchanged from kind: SelfSigned bootstrap ->
+# cert-manager/temporal-root-ca -> CA ClusterIssuer temporal-ca. cert-manager itself is the
+# Terraform helm_release of 20-platform (v0.10). Applied by `make eks-temporal`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/cert-issuers

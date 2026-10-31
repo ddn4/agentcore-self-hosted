@@ -43,7 +43,18 @@ def _env(doc: dict[str, Any]) -> dict[str, str]:
 
 
 def test_vpc_render(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AGENTCORE_NETWORK_MODE", raising=False)
+    # Hermetic: a shell that sourced .generated/foundation.env (v0.10+) exports the real
+    # subnets / SG / execution role ARN, which this test must not see (found at v0.11).
+    for var in (
+        "AGENTCORE_NETWORK_MODE",
+        "AGENTCORE_EXECUTION_ROLE_ARN",
+        "AGENTCORE_SUBNETS",
+        "AGENTCORE_SECURITY_GROUPS",
+        "AGENTCORE_TEMPORAL_ADDRESS",
+        "AGENTCORE_TEMPORAL_TLS_SERVER_NAME",
+        "AGENTCORE_IDLE_SESSION_TIMEOUT",
+    ):
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("SUPPORT_GIT_SHA", "deadbeef")
     doc = render.render_agentcore_json("3f9c2a1")
     rt = doc["runtimes"][0]
