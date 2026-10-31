@@ -14,7 +14,7 @@ in the numbered rows of the table.
 
 | Needs | Items | First tag |
 |---|---|---|
-| **Live Bedrock only** (no AWS resources; `aws sso login`): Opus 5.5 400s / effort / latency, live Case A ×5 (prompt drift), live Case B, `kill -9` live, nested agents live, recorded live histories | 7, 8 (live half), 10 (live half), 17 (live N=5), **49** | first thing at v0.8 (or any time after `aws sso login`: `make test-live`, `scripts/verify/v0.3…v0.6` without `VERIFY_SKIP_BEDROCK`) |
+| **Live Bedrock only** (no AWS resources; `aws sso login`): Opus 5.5 400s / effort / latency, live Case A ×5 (prompt drift), live Case B, `kill -9` live, nested agents live, recorded live histories | ~~7, 8 (live half), 10 (live half), 17 (live N=5), 49~~ closed at v0.9.2-live-bedrock | — |
 | ~~v0.8-wci-handshake~~ **done** (resumed run, 2026-10-30): real WCI handshake, PUBLIC runtime start, wrong-ID negative test, Q15 first AWS look (**yes**), live CLI deploy/status/teardown, session metric live values. Left over: Q9 visual check, why the WCI re-invokes after a terminate (ask Temporal) | ~~25, 29 (first), 44, 61~~ closed; 28 partly | — (28 visual: v0.13) |
 | **v0.10** EKS foundation: Terraform module majors, VPC CNI NetworkPolicy, `force_ssl`, STS endpoint, CDK bootstrap / service-linked role / PassRole, RDS minor | 37, 38 | v0.10 |
 | **v0.11** Temporal on EKS: RDS TLS + schema job CA, NLB TLS passthrough, global-profile IAM / SCP | 39, 40, 41 | v0.11 |
