@@ -2,25 +2,32 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
-## v0.12-agentcore-worker (in progress: blocked, not tagged)
+## v0.12-agentcore-worker
 
-Support on AgentCore Runtime in VPC mode, invoked by the WCI on EKS. **Blocked** at the mTLS
-secret write (`make export-agentcore-cert CLUSTER=eks CONFIRM=yes`, refused by the session's
-permission policy). Build ID **`4ee7f87`** (was `fd7af7a`).
+Support on AgentCore Runtime in **VPC mode**, registered from `main` as the serverless Worker
+Deployment Version `support-supervisor:4ee7f87` on the EKS server; the WCI (IRSA
+`temporal-server-wci`) assumes `Temporal-AgentCore-Worker` with the External ID and invokes it.
+Ping and Case A ran with zero other pollers. Build ID **`4ee7f87`** (was `fd7af7a`). Applied in
+us-east-1 and **left running** for v0.13.
 
-- Applied: `30-agentcore-iam` with `create_dev_wci_role = false` (role `temporal-dev-wci`
-  deleted; the execution role unchanged). `[profile temporal-dev-wci]` in `~/.aws/config` is
-  now unused.
-- Tooling: `make agentcore-deploy MODE=VPC` (default; inputs from `.generated/foundation.env`,
-  TLS + mTLS secret, debounce 30 s, idle 120 s), `make agentcore-network`, `make
-  agentcore-logs`, `make flow-report` (`scripts/flow_report.py`), `make export-agentcore-cert
-  CLUSTER=eks CONFIRM=yes|CHECK=1` (tag `Project`, shreds the laptop copy), `make invoke-role`
-  (create-or-update, trusts `temporal-server-wci`), `make register-version
-  MODE=--agentcore-auto CLOUD=1`, `scripts/verify/v0.12-agentcore-worker.sh`.
-- Support: the AgentCore Worker logs where and how it connected (target, TLS server name,
-  client cert yes/no). No Workflow change.
-- Ledger 42 (synth half): the AgentCore CLI 1.0.1 synthesizes a VPC runtime with the named
-  endpoint and the existing execution role.
+- AWS: `30-agentcore-iam` with `create_dev_wci_role = false` (`temporal-dev-wci` deleted;
+  `[profile temporal-dev-wci]` in `~/.aws/config` now unused); secret
+  `temporal/agentcore-worker-mtls` (EKS CA, 180 d); runtime `AgentcoreDemo_default_support_supervisor`
+  + endpoint `b_4ee7f87` via the AgentCore CLI (VPC, existing execution role, idle 120 s); CFN
+  `temporal-agentcore-worker` trusting `temporal-server-wci`.
+- Fix: NLB `temporal-frontend` **cross-zone load balancing on** (`values.eks.yaml`, `make
+  eks-temporal`): with it off, an AgentCore ENI that resolved the NLB node of the AZ without a
+  frontend pod timed out connecting (ledger 70).
+- Tooling: `make agentcore-deploy MODE=VPC`, `make agentcore-network`, `make agentcore-logs`,
+  `make flow-report`, `make export-agentcore-cert CLUSTER=eks CONFIRM=yes|CHECK=1`, `make
+  invoke-role`, `make register-version MODE=--agentcore-auto CLOUD=1`,
+  `scripts/verify/v0.12-agentcore-worker.sh` (jq/JSON shapes fixed on its first live run; NLB
+  cross-zone check). `redact.sh`: the Secrets Manager suffix rule only masks a trailing suffix.
+- Support: the AgentCore Worker logs where and how it connected. No Workflow change.
+- Answers: Q13 (no `--allow-no-pollers` needed, even with no poller ever seen), Q6 on 1.32.1,
+  Q5 production form, 5.4 (CLI VPC + named endpoint + existing role), global profile with the
+  execution role, AWS Q2 (S3 prefix list, `logs`, `secretsmanager`, `bedrock-runtime`, NLB).
+  New: the WCI does not retry a failed task-queue registration (ledger 71, ask Temporal).
 
 ## v0.11-temporal-and-finance-on-eks
 

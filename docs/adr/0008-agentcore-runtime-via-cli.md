@@ -80,7 +80,7 @@ and 17 more `aws_bedrockagentcore_*` resources). So Terraform *could* own it.
 - Teardown with `make agentcore-down` (`remove all --yes` + `deploy --yes`): see the v0.8
   story for the observed result.
 
-## v0.12: VPC mode through the same CLI (2026-10-31, synth only so far)
+## v0.12: VPC mode through the same CLI (2026-10-31, deployed)
 
 - `make agentcore-deploy MODE=VPC` renders `networkMode: "VPC"` with the three private subnets
   and `sg-agentcore-worker` from `.generated/foundation.env`. AgentCore CLI 1.0.1 synthesizes
@@ -88,4 +88,8 @@ and 17 more `aws_bedrockagentcore_*` resources). So Terraform *could* own it.
   NetworkModeConfig {Subnets, SecurityGroups}}`, the existing execution role as `RoleArn` and
   the named endpoint `b_<build7>`. The CLI validates the IDs itself (`Must be a subnet id`), so
   placeholders cannot slip through. The decision stands: no control-plane fallback is needed.
-- The live deploy waits for the v0.12 resume (blocked at the mTLS secret write).
+- Live (resumed run): `make agentcore-deploy MODE=VPC` deployed `AgentcoreDemo_default_support_supervisor`
+  with exactly that configuration (`get-agent-runtime`: networkMode VPC, 3 subnets on use1-az1/az2/az4,
+  `sg-agentcore-worker`, `requireServiceS3Endpoint false`, the existing execution role, idle 120 s) and
+  the endpoint `b_4ee7f87` next to `DEFAULT`. The first VPC-mode runtime created the
+  service-linked role `AWSServiceRoleForBedrockAgentCoreNetwork`. Decision confirmed; no fallback used.

@@ -48,6 +48,12 @@ server:
   # (read 2026-10-31). preserve_client_ip defaults to disabled for ip targets, so the pods see
   # the NLB's private IPs (allowed by the generated NetworkPolicy temporal-frontend-from-nlb).
   # The chart puts both ports of the Service (7233 gRPC, 7243 HTTP) on the NLB; the SG admits 7233 only.
+  # v0.12: cross-zone load balancing ON. The NLB has a node in each of the 3 subnets and its DNS
+  # (client_routing_policy any_availability_zone) hands out all 3 IPs, but the 2 frontend pods sit
+  # in 2 AZs. With cross-zone off (the NLB default) a client that picks the third AZ's node gets
+  # its SYNs dropped: the first AgentCore session (ENI in another AZ, NLB node without targets)
+  # timed out connecting. In-cluster tests from the two pod AZs did not show it. Annotation per the
+  # LBC guide above ("enable cross zone load balancing", read 2026-10-31).
   frontend:
     replicaCount: 2
     podDisruptionBudget: { minAvailable: 1 }
@@ -61,6 +67,7 @@ server:
         service.beta.kubernetes.io/aws-load-balancer-name: temporal-frontend
         service.beta.kubernetes.io/aws-load-balancer-security-groups: agentcore-demo-nlb-temporal-frontend
         service.beta.kubernetes.io/aws-load-balancer-manage-backend-security-group-rules: "true"
+        service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
         service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags: Project=agentcore-self-hosted,Stack=v0.11-helm
   history:
     resources: { requests: { cpu: 300m, memory: 768Mi }, limits: { memory: 2Gi } }

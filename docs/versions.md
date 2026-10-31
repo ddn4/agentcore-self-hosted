@@ -49,6 +49,9 @@ Python packages are locked in `uv.lock`; the table records the resolved versions
 | Internal NLB | AWS Load Balancer Controller 3.6.2 (v0.10), Service annotations | v0.11 | `temporal-frontend`: network / internal / ip targets / TCP 7233 + 7243, SG `agentcore-demo-nlb-temporal-frontend` |
 | Finance / payments-mock images on EKS | `linux/arm64`, ECR tags `img-<12 hex of the local image ID>` | v0.11 | built in colima (`DOCKER_CONTEXT=colima-agentcore`), pushed by `make finance-image` |
 | Test images (verify v0.11) | `public.ecr.aws/docker/library/alpine:3.22` (+ `apk add openssl bind-tools`), `…/postgres:16`, `…/busybox:1.37`, `public.ecr.aws/aws-cli/aws-cli:2.36.46`, `temporalio/admin-tools:1.32.1` | v0.11 | throwaway pods, deleted after each check |
+| AgentCore runtime, VPC mode (v0.12) | AgentCore CLI 1.0.1, `bedrock-agentcore-control` (AWS CLI v2) | v0.12 | `AgentcoreDemo_default_support_supervisor`, endpoint `b_4ee7f87` (version 1), `networkMode VPC`, idle 120 s, maxLifetime 28800 s; Support Build ID `4ee7f87` |
+| NLB attribute (v0.12) | LBC annotation `aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true` | v0.12 | Helm revision 2 of `temporal`; ledger 70 |
+| Test image (verify v0.12) | `amazon/aws-cli:2.27.50` | v0.12 | throwaway pod on SA `temporal-worker` (IRSA AssumeRole negative test), deleted after the check |
 
 ## Python packages (uv.lock at v0.1)
 

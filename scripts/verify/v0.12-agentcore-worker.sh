@@ -26,7 +26,7 @@
 #      GetAgentRuntimeEndpoint), Invocations metric (InvokeAgentRuntime is a data event)
 #   10 AgentCore logs: mTLS from Secrets Manager, connected to the Route 53 name, polling, idle 30 s,
 #      drained, async task released
-#   11 VPC flow logs: AgentCore ENI -> NLB:7233 ACCEPT; every destination the ENIs used (AWS Q2)
+#   11 NLB cross-zone on; VPC flow logs: AgentCore ENI -> NLB:7233 ACCEPT; every destination (AWS Q2)
 #   12 sessions back to 0 (no new session of ours in the last 5 min), pollers gone, no local processes
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -78,7 +78,7 @@ check "execution role reads only temporal/agentcore-worker-mtls-* and invokes on
 check "role temporal-dev-wci is gone (v0.8 only; create_dev_wci_role = false)" bash -c "! aws iam get-role --role-name temporal-dev-wci >/dev/null 2>&1"
 scripts/invoke-role.sh status | tee $LOGS/invoke-role.json | sed 's/^/  /'
 trust="$(aws iam get-role --role-name Temporal-AgentCore-Worker --query Role.AssumeRolePolicyDocument --output json)"
-jq -c '.Statement[] | {principal: .Principal, condition: .Condition | keys? // .Condition}' <<<"$trust" | sed 's/^/  trust /'
+jq -c '.Statement[] | {principal: .Principal, condition: (.Condition | keys)}' <<<"$trust" | sed 's/^/  trust /'
 check "invocation role trusts the temporal-server-wci ROLE ARN and requires sts:ExternalId" bash -c \
   "jq -e '[.Statement[] | (.Principal.AWS | tostring | test(\":role/temporal-server-wci\$\")) and (.Condition.StringEquals[\"sts:ExternalId\"] != null)] | any' <<<'$trust' >/dev/null"
 check "invocation role resource = <runtime ARN>* (endpoints included)" grep -qE 'runtime/[^"/]+\*"' $LOGS/invoke-role.json
@@ -138,11 +138,13 @@ echo "  service-linked role: $(aws iam get-role --role-name AWSServiceRoleForBed
 if ! nc -z 127.0.0.1 7233 2>/dev/null; then scripts/eks.sh pf >/dev/null; PF_STARTED=1; fi
 step "6. Registration on EKS (create -> create-version -> set-current-version)"
 temporal worker deployment describe --namespace $NS --name $DEP -o json >$LOGS/deployment.json
-jq -c '{current: .routingConfig.currentDeploymentVersion.buildId // .routingConfig.currentVersion, versions: [.versionSummaries[]? | (.deploymentVersion.buildId // .version)]}' $LOGS/deployment.json | sed 's/^/  /'
+# CLI 1.9.1 JSON: routingConfig.currentVersionBuildID, versionSummaries[].BuildID; the
+# version's computeConfig is top level.
+jq -c '{current: .routingConfig.currentVersionBuildID, versions: [.versionSummaries[]? | .BuildID]}' $LOGS/deployment.json | sed 's/^/  /'
 temporal worker deployment describe-version --namespace $NS --deployment-name $DEP --build-id "$BUILD" -o json >$LOGS/version.json
-jq -c '{status: .workerDeploymentVersionInfo.status, provider: .workerDeploymentVersionInfo.computeConfig.scalingGroups.default.provider.type, scaler: .workerDeploymentVersionInfo.computeConfig.scalingGroups.default.scaler.type}' $LOGS/version.json | sed 's/^/  /'
-check "current version is $DEP:$BUILD" bash -c "grep -q '\"$BUILD\"' <(jq '.routingConfig' $LOGS/deployment.json)"
-check "compute config: aws-agentcore" bash -c "jq -e '.workerDeploymentVersionInfo.computeConfig.scalingGroups.default.provider.type==\"aws-agentcore\"' $LOGS/version.json >/dev/null"
+jq -c '{currentSince: .currentSinceTime, provider: .computeConfig.scalingGroups.default.provider.type, scaler: .computeConfig.scalingGroups.default.scaler.type}' $LOGS/version.json | sed 's/^/  /'
+check "current version is $DEP:$BUILD" bash -c "jq -e --arg b '$BUILD' '.routingConfig.currentVersionBuildID==\$b' $LOGS/deployment.json >/dev/null"
+check "compute config: aws-agentcore" bash -c "jq -e '.computeConfig.scalingGroups.default.provider.type==\"aws-agentcore\"' $LOGS/version.json >/dev/null"
 
 pollers() {  # count of pollers on support-tq (workflow + activity task queues)
   temporal task-queue describe --namespace $NS --task-queue $TQ -o json 2>/dev/null \
@@ -222,6 +224,11 @@ check "no failed lifetime, no refused invocation" bash -c "! grep -qE 'worker li
 
 # --- 11 --------------------------------------------------------------------------------
 step "11. VPC flow logs: the AgentCore ENIs (AWS Q2)"
+# Found at v0.12: 3 NLB nodes, frontend pods in 2 AZs. With cross-zone off a session whose
+# ENI resolved the third AZ's NLB IP timed out connecting (values.eks.yaml, ledger 70).
+lb="$(aws elbv2 describe-load-balancers --names temporal-frontend --query 'LoadBalancers[0].LoadBalancerArn' --output text)"
+check "NLB temporal-frontend: cross-zone load balancing enabled" bash -c \
+  "aws elbv2 describe-load-balancer-attributes --load-balancer-arn '$lb' --query 'Attributes[?Key==\`load_balancing.cross_zone.enabled\`].Value' --output text | grep -qx true"
 for i in $(seq 1 "${VERIFY_FLOW_TRIES:-20}"); do
   $(command -v uv) run --frozen python scripts/flow_report.py --since $(( ( $(date +%s) - ts ) / 60 + 10 )) >$LOGS/flow.log 2>&1 || true
   grep -q 'NLB temporal-frontend *7233 ACCEPT' $LOGS/flow.log && break

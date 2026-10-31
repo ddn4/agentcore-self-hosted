@@ -11,7 +11,7 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
 | Q19 (2nd half) | Is a `nexus_operation_as_tool` planned for the Strands plugin, like the OpenAI Agents integration's (`temporalio.openai_agents.workflow.nexus_operation_as_tool`)? | ask | Not in `temporalio-strands-agents` 0.1.0 (no Nexus code in `temporalio/strands_agents/`); the docs list it only for OpenAI Agents. The demo uses a hand-written async `@tool` (`support_agent/agents.py` + `finance_peer.py`, ~40 lines incl. the A2A message) |
 | Q4 | Minimum `temporalio` for a plain AgentCore Worker? | ask | v0.1: `temporalio-strands-agents` 0.1.0 requires >= 1.34.0. v0.7: the APIs used (`WorkerDeploymentConfig` with PINNED default) exist since Python SDK 1.11 per the docs; nothing in the SDK is AgentCore-specific. Is anything newer needed for WCI-invoked Workers? |
 | Q5 | Recommended pattern for self-hosted mTLS from AgentCore (envconfig + Secrets Manager)? | open | v0.9 / v0.12 |
-| Q13 | Does `set-current-version` for AgentCore versions need `--allow-no-pollers`? | v0.7 informational answer; v0.12 definitive | Dev server 1.32.0: **no**, for a version with a compute config (never polled, or after the Worker drained). Ask whether that is by design (a compute config counts as "can get pollers"), since the Lambda samples always pass the flag |
+| Q13 | Does `set-current-version` for AgentCore versions need `--allow-no-pollers`? | **answered v0.12 (server 1.32.1 on EKS): no** | Dev server 1.32.0 (v0.7) and server 1.32.1 (v0.12, a version whose registration session never connected, so no poller had ever been seen): **no**, for a version with a compute config. Ask whether that is by design (a compute config counts as "can get pollers"), since the Lambda samples always pass the flag |
 | Q21 | Can a Python caller attach a summary to a Nexus operation for the Web UI? | **resolved v0.4: yes** | `execute_operation(..., summary=...)` (temporalio 1.35.0) sets `user_metadata.summary` on `NexusOperationScheduled`; no question to send |
 
 ## Reports (non-questions)
@@ -157,3 +157,12 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
 - v0.8: `delete-version` right after the last Worker stops is refused ("cannot be deleted
   since it has active pollers") for a few minutes; `--skip-drainage` does not cover it.
   Worth a line in the delete-version docs.
+- v0.12 (server 1.32.1, real AgentCore in VPC mode): **a failed task-queue registration is not
+  retried.** The `InvokeWorkersToRegisterTaskQueues` session could not connect (our network
+  bug, ledger 70), so `support-tq` never joined the version. `set-current-version` still
+  succeeded without `--allow-no-pollers`, and a Workflow started on `support-tq` then sat as an
+  unversioned task for 14 min: no `task-add-signal`, no `InvokeWorker`, only `PullStats`. We
+  recovered with `set-current-version --unversioned`, `delete-version --skip-drainage` and a new
+  `create-version`. Should the WCI retry the registration (or should `set-current-version` warn
+  when the version has no task queues yet)? Also: `create-version` right after that delete
+  failed with "something went wrong, please retry" until the old WCI instance had closed.
