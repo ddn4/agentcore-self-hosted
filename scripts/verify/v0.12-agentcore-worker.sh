@@ -211,16 +211,26 @@ check "CloudTrail: GetAgentRuntimeEndpoint as Temporal-AgentCore-Worker, ok" gre
 
 # --- 10 --------------------------------------------------------------------------------
 step "10. AgentCore logs of $EP: mTLS from Secrets Manager -> Route 53 name -> poll -> work -> drain"
-since_min=$(( ( $(date +%s) - ts ) / 60 + 3 ))
-scripts/agentcore-deploy.sh logs "$since_min" >$LOGS/agentcore.log 2>&1 || true
-grep -E 'AgentCore app:|mTLS:|connected to|polling|idle for|drained|async task released|failed|ERROR|refusing' $LOGS/agentcore.log | tail -30 | sed 's/^/  /'
-check "mTLS material loaded from Secrets Manager" grep -q 'mTLS: client cert, key and CA loaded from Secrets Manager' $LOGS/agentcore.log
+# Only the probe's lifetime counts (lines at or after the probe start). Its drain comes 30 s
+# after Case A's last Activity, so wait for "async task released" (up to ~4 min).
+P0="$(date -u -r "$ts" '+%F %T')"
+for _ in $(seq 1 16); do
+  since_min=$(( ( $(date +%s) - ts ) / 60 + 3 ))
+  scripts/agentcore-deploy.sh logs "$since_min" >$LOGS/agentcore.log 2>&1 || true
+  awk -v p0="$P0" '/^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9] / { if (($1 " " substr($2,1,8)) >= p0) print }' \
+    $LOGS/agentcore.log >$LOGS/agentcore-probe.log
+  grep -q 'async task released' $LOGS/agentcore-probe.log && break
+  sleep 15
+done
+PL=$LOGS/agentcore-probe.log
+grep -E 'AgentCore app:|mTLS:|connected to|polling|idle for|drained|async task released|failed|ERROR|refusing' $PL | tail -30 | sed 's/^/  /' || true
+check "mTLS material loaded from Secrets Manager" grep -q 'mTLS: client cert, key and CA loaded from Secrets Manager' $PL
 check "connected to $FE:7233 with TLS, server name = the Route 53 name, client certificate yes" \
-  grep -q "connected to $FE:7233 namespace agents (TLS, server name $FE, client certificate yes)" $LOGS/agentcore.log
-check "polled support-tq as $DEP:$BUILD (PINNED), debounce 30 s" grep -q "polling agents/support-tq as $DEP:$BUILD (PINNED), debounce 30s" $LOGS/agentcore.log
+  grep -q "connected to $FE:7233 namespace agents (TLS, server name $FE, client certificate yes)" $PL
+check "polled support-tq as $DEP:$BUILD (PINNED), debounce 30 s" grep -q "polling agents/support-tq as $DEP:$BUILD (PINNED), debounce 30s" $PL
 check "idle for 30 s -> drained -> async task released (complete_async_task in finally)" bash -c \
-  "grep -q 'idle for 30s' $LOGS/agentcore.log && grep -q ': drained' $LOGS/agentcore.log && grep -q 'async task released' $LOGS/agentcore.log"
-check "no failed lifetime, no refused invocation" bash -c "! grep -qE 'worker lifetime [0-9]+ failed|refusing to start' $LOGS/agentcore.log"
+  "grep -q 'idle for 30s' $PL && grep -q ': drained' $PL && grep -q 'async task released' $PL"
+check "no failed lifetime, no refused invocation" bash -c "! grep -qE 'worker lifetime [0-9]+ failed|refusing to start' $PL"
 
 # --- 11 --------------------------------------------------------------------------------
 step "11. VPC flow logs: the AgentCore ENIs (AWS Q2)"
@@ -240,7 +250,7 @@ check "nothing from the AgentCore ENIs left the VPC (no NAT path used)" bash -c 
 
 # --- 12 --------------------------------------------------------------------------------
 step "12. Back to zero: sessions, pollers, local processes"
-last="$(grep -E 'async task released' $LOGS/agentcore.log | tail -1 | cut -c1-19)"
+last="$(grep -E 'async task released' $LOGS/agentcore.log | tail -1 | cut -c1-19 || true)"
 echo "  last 'async task released': ${last:-?} UTC; waiting for 5 quiet minutes"
 n=1; for _ in $(seq 1 "${VERIFY_SESSION_TRIES:-16}"); do
   if scripts/agentcore-sessions.sh --window 5 >$LOGS/sessions.log 2>&1; then n=0; break; fi
