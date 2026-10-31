@@ -34,6 +34,16 @@ Python packages are locked in `uv.lock`; the table records the resolved versions
 | `@aws/agentcore` CLI | 1.0.1 | v0.8 | `make tools-agentcore` → `.tools/agentcore-cli` (npm, exact version; Node >= 20.12); via `scripts/agentcore.sh` (telemetry off, Transaction Search off) |
 | `@aws/agentcore-cdk` / aws-cdk / aws-cdk-lib | 1.0.0 / 2.1126.0 / 2.269.0 | v0.8 | installed by the CLI's project template in `build/agentcore-project/agentcore/cdk` |
 | Self-hosted invocation-role CFN template | sha256 `033ff21ba09a56d31d611f661a65782837b0cfb30f74698bb84efd6999a1d4e3` | v0.8 | `deploy/agentcore/temporal-self-hosted-serverless-worker-agentcore-role.yaml` (`make cfn-template`; URL in `scripts/cfn-template.sh`) |
+| Terraform module `terraform-aws-modules/vpc/aws` | 6.7.3 (`~> 6.7`) | v0.10 | runbook sketch said `~> 5.0`; v6 takes AZ IDs in `azs` (sets `availability_zone_id`) |
+| Terraform module `terraform-aws-modules/eks/aws` | 21.29.0 (`~> 21.29`) | v0.10 | runbook sketch said `~> 20.0`; v21 inputs `name`, `kubernetes_version`, `endpoint_*`, `addons`, `encryption_config = null` |
+| Terraform module `terraform-aws-modules/iam/aws` (`iam-role-for-service-accounts`) | 6.8.2 (`~> 6.8`) | v0.10 | the LBC's IRSA role and policy only; the two app roles use `infra/terraform/modules/irsa-role` |
+| Terraform Helm provider | 3.3.0 (`~> 3.3`) | v0.10 | `kubernetes = { host, cluster_ca_certificate, exec = {...} }` (v3 attribute syntax); exec `aws eks get-token` |
+| EKS Kubernetes | 1.37 | v0.10 | standard-support default on 2026-10-31 (1.34–1.37 standard); same minor as the kind node (v0.9). Add-ons (most recent at create): vpc-cni v1.23.x with `enableNetworkPolicy`, coredns v1.14.x, kube-proxy v1.37.x |
+| EKS node AMI | `AL2023_ARM_64_STANDARD` on m7g.large | v0.10 | ADR-0006; fallback m6i.xlarge + `AL2023_x86_64_STANDARD` |
+| AWS Load Balancer Controller chart | 3.6.2 (app v3.6.2) | v0.10 | `https://aws.github.io/eks-charts`, `helm_release` in `20-platform` |
+| cert-manager chart (EKS) | v1.21.3 | v0.10 | same as kind; `helm_release`, `crds.enabled=true` |
+| RDS PostgreSQL | **16.15** | v0.10 | Temporal tests 16.6, which RDS no longer offers (2026-10-31: 16.9–16.15 available); latest 16 minor chosen, `auto_minor_version_upgrade = false` (ADR-0006). Parameter group `temporal-db-pg16` (family `postgres16`, `rds.force_ssl = 1`, also the family default); CA `rds-ca-rsa2048-g1` |
+| Test images (verify v0.10) | `public.ecr.aws/docker/library/busybox:1.37`, `…/postgres:16`, `public.ecr.aws/aws-cli/aws-cli:2.36.46` | v0.10 | public ECR (no Docker Hub rate limit) |
 
 ## Python packages (uv.lock at v0.1)
 

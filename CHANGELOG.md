@@ -2,6 +2,37 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## v0.10-aws-foundation
+
+The AWS foundation in Terraform (us-east-1, go-ahead G5), applied and **left running** for
+v0.11. Build ID unchanged (no Support input touched).
+
+- `infra/terraform/10-network`: VPC `temporal-customer-support` (10.40.0.0/16) with private
+  subnets placed by **AZ ID** (use1-az1/az2/az4; vpc module 6.7.3 takes AZ IDs directly), one
+  NAT gateway (one EIP), flow logs (7 d), interface endpoints `bedrock-agentcore`,
+  `bedrock-agentcore-control`, `sts`, `secretsmanager`, `bedrock-runtime`, `logs` (private DNS,
+  2 AZs), S3 gateway endpoint, security groups `agentcore-demo-{agentcore-worker,
+  nlb-temporal-frontend,vpce,rds}` (Role tag = the runbook's `sg-*` names), private zone
+  `temporal-customer-support.internal`.
+- `infra/terraform/20-platform`: EKS `temporal` 1.37 (eks module 21.29.0; IRSA; public endpoint
+  = the laptop /32 from a gitignored tfvars; VPC CNI `enableNetworkPolicy`), 2 × m7g.large
+  (arm64), AWS Load Balancer Controller 3.6.2 and cert-manager v1.21.3 by `helm_release`, RDS
+  `temporal-db` PostgreSQL **16.15** db.t4g.medium single-AZ encrypted (`rds.force_ssl=1`, RDS-
+  managed master password), IRSA roles `temporal-server-wci` and `agent-services-worker`
+  (`infra/terraform/modules/irsa-role`, one ServiceAccount each), ECR
+  `agentcore-demo/{finance-agent,payments-mock}` (`force_delete`).
+- `make check-quotas` (read-only pre-flight incl. CDKToolkit and IAM simulation of
+  `CreateServiceLinkedRole` / `PassRole`), `make render-config` (`.generated/foundation.{json,env}`),
+  `make eks-kubeconfig eks-env eks-status` (dedicated `.temporal/kubeconfig-eks`), `make pause`
+  / `resume` and guarded `make tf-destroy STACK=…|foundation` (all with `DRY_RUN=1`),
+  `make tf-plan ARGS=`.
+- `scripts/verify/v0.10-aws-foundation.sh`: AZ IDs, endpoints, zone, SGs, EKS, NetworkPolicy
+  enforcement, private DNS for AWS APIs, psql `sslmode=require` from a pod (and `disable`
+  refused), live IRSA positive/negative, second plan clean, dry runs.
+- `redact.sh` / `scrub-check.sh`: SSO role suffix, EKS OIDC and endpoint IDs, RDS endpoint IDs.
+- ADR-0006 written (demo sizing; PostgreSQL 16.15 because RDS no longer offers 16.6). Ledger 37
+  and 38 resolved.
+
 ## v0.8-wci-handshake
 
 First AWS contact (us-east-1, go-ahead G5). The first attempt stopped at the IAM apply
