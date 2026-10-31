@@ -57,7 +57,7 @@ PYTEST := $(UV) pytest
         agentcore-network agentcore-logs flow-report \
         check-quotas render-config pause resume eks-kubeconfig eks-env eks-status \
         eks-temporal eks-rds-ca create-db-user rds-snapshot route53-alias finance-image finance-deploy \
-        finance-scale failure
+        finance-scale failure load ui-shot refund-idempotency
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -147,7 +147,7 @@ worker-support-scripted: ## Same Support Worker with a scripted model (offline c
 case-a: ## Case A #1042: Supervisor -> sub-agents -> Finance over Nexus (WF=support-1042 SUPPORT_A2A_MODE=tool|handoff)
 	scripts/demo/case-a.sh $(or $(WF),support-1042)
 
-case-b: ## Case B #2077 ($450): starts it; Finance waits in input-required for a human (WF=support-2077 CASE_B_WAIT=1)
+case-b: ## Case B #2077 ($450): Finance waits in input-required (WF=support-2077 CASE_B_WAIT=1; eks-pf: waits for the AgentCore drain, CASE_B_APPROVE=approve|reject|no)
 	scripts/demo/case-b.sh $(or $(WF),support-2077)
 
 approve: ## Finance approver approves a task in input-required (WF=support-2077 APPROVER=dana.finance COMMENT=)
@@ -201,15 +201,24 @@ card: ## Standalone Nexus Operation from the CLI: FinanceAgentA2A.get_agent_card
 task-state: ## The A2A task as Finance sees it: get_task in agent-services (WF=support-1042 -> a2a-task-support-1042)
 	scripts/demo/task-state.sh $(or $(WF),support-1042)
 
-timeline: ## Both sides of a Support conversation: agents, tools, the A2A hop, Finance's task (WF=support-1042)
-	$(UV) python scripts/timeline.py $(or $(WF),support-1042)
+timeline: ## Both sides of a Support conversation (WF=support-1042; MERGED=1 adds the wall-clock Support+Finance+WCI+AgentCore slide, redacted)
+	$(UV) python scripts/timeline.py $(or $(WF),support-1042) $(if $(filter 1,$(MERGED)),--merged --agentcore) | scripts/redact.sh
 
 a2a: ## The Supervisor's A2A view: Agent Card, exchanges with Finance, guard re-prompts (WF=support-1042)
 	temporal workflow query --namespace agents --workflow-id $(or $(WF),support-1042) --type a2a -o json \
 	  | jq '.queryResult[0]'
 
-e2e: ## End-to-end Cases against the RUNNING stack of TEMPORAL_PROFILE (make dev + nexus-endpoint first)
-	RUN_E2E=1 $(PYTEST) -m e2e tests/e2e
+e2e: ## End-to-end Cases against the RUNNING stack of TEMPORAL_PROFILE (make dev + nexus-endpoint first; eks-pf: also AgentCore session counts)
+	RUN_E2E=1 SUPPORT_TASK_QUEUE=$(if $(filter eks-pf,$(TEMPORAL_PROFILE)),support-tq,$(SUPPORT_TASK_QUEUE)) $(PYTEST) -m e2e tests/e2e
+
+load: ## v0.13 load test: N Workflows at once on support-tq (N=10 LOAD_KIND=case-a|ping); N=50 is v1.2
+	scripts/demo/load.sh $(or $(N),10)
+
+refund-idempotency: ## Replay Finance's refund call in payments-mock on EKS: same key -> same refund (WF=support-2077)
+	scripts/refund-idempotency.sh $(or $(WF),support-2077)
+
+ui-shot: ## Headless Chrome screenshot of a Web UI page (PAGE=/nexus OUT=.temporal/ui.png; needs make pf)
+	scripts/ui-screenshot.sh $(or $(PAGE),/nexus) $(or $(OUT),.temporal/ui.png)
 
 spike-nexus-ts: ## Spike: the A2A hop under the time-skipping test servers (no AWS)
 	$(UV) python spikes/nexus_time_skipping.py

@@ -234,6 +234,7 @@ name = "demo-testing"
 version = "0.1.0"
 source = { editable = "packages/demo-testing" }
 dependencies = [
+    { name = "boto3" },
     { name = "finance-a2a-api" },
     { name = "httpx" },
     { name = "pytest" },
@@ -245,6 +246,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", specifier = ">=1.35" },
     { name = "finance-a2a-api", editable = "packages/finance-a2a-api" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pytest", specifier = ">=8.3" },
