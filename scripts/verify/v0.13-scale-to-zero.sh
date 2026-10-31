@@ -113,7 +113,12 @@ check "session #2 started and ran the next Workflow Task (cold start recorded ab
 closed="$(temporal workflow describe --namespace $NS --workflow-id "$WF" -o json | jq -r .workflowExecutionInfo.closeTime)"
 scripts/wci-history.sh "$BUILD" --since "$(date -u -r "$T4" +%FT%TZ)" >$LOGS/case-b-wci.log
 inv="$(awk -v c="${closed:0:26}" '/activity  InvokeWorker$/ && substr($1,1,26) <= c' $LOGS/case-b-wci.log | wc -l | tr -d ' ')"
-check "WCI InvokeWorker between start and close of Case B: $inv (expected 2)" [ "$inv" == 2 ]
+# Exactly 2 sessions ran the Workflow (checked above). The WCI may add one more InvokeWorker
+# right after a PullStats that still reports the backlog the just-started session #2 has not
+# taken yet: that session idles 30 s and runs nothing for the Workflow (ledger 73, seen by the
+# v0.13 independent verification). So: at least 2, extras reported.
+check "WCI InvokeWorker between start and close of Case B: $inv (2 expected; extras = ledger 73 idle sessions)" [ "$inv" -ge 2 ]
+(( inv > 2 )) && echo "  note  $((inv - 2)) extra InvokeWorker (ledger 73): its session ran nothing for $WF"
 
 # --- 5 ---------------------------------------------------------------------------------
 step "5. issue_refund is idempotent (payments-mock on EKS, same Idempotency-Key)"

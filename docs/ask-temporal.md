@@ -184,3 +184,8 @@ result (v0.8/v0.13). Numbers are runbook §7 question numbers.
   polled 30 s and drained with 0 Activities. In the Case B runs the same post-completion query
   produced a `task-add-signal` but **no** invoke. Why does `no-sync` sometimes invoke while a
   poller of the version is connected? (Each extra invoke is a paid session.)
+  Independent verification saw it in the middle of a Case B: the Nexus completion's
+  `InvokeWorker` started session #2, which connected at 21:21:57.503Z. A `PullStats` at .546Z
+  still reported the backlog Workflow Task, and the WCI invoked again at .610Z. The third
+  session idled 30 s with nothing to do. Could the scaler skip an invoke while the previous
+  `InvokeWorker`'s session has only just connected (a short grace period after an invoke)?

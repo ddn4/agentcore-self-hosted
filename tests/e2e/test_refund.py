@@ -164,13 +164,19 @@ async def run_case(
 
 
 def assert_cloud_counts(wf_id: str, expected: int) -> None:
-    """eks-pf: the Case ran in ``expected`` AgentCore sessions, each one WCI invocation."""
+    """eks-pf: exactly ``expected`` AgentCore sessions ran the Case, each one WCI invocation.
+
+    The WCI may add an ``InvokeWorker`` right after a ``PullStats`` that still reports the
+    backlog a just-started session has not taken yet; that session idles out and runs nothing
+    for the Workflow (ledger 73). So invocations are at least ``expected``, extras reported.
+    """
     if not cloud():
         return
     sessions, invokes = CLOUD_COUNTS[wf_id]
-    print(f"{wf_id}: AgentCore sessions {sessions}, WCI InvokeWorker {invokes}")
+    extra = f" ({invokes - expected} extra: ledger 73)" if invokes > expected else ""
+    print(f"{wf_id}: AgentCore sessions {sessions}, WCI InvokeWorker {invokes}{extra}")
     assert sessions == expected
-    assert invokes == expected
+    assert invokes >= expected
 
 
 async def finance_task(wf_id: str) -> A2ATask:
