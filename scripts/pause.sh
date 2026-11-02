@@ -42,6 +42,6 @@ else
   )
 fi
 for c in "${cmds[@]}"; do
-  if [[ "$DRY" == 1 ]]; then echo "DRY_RUN: $c"; else echo "+ $c"; $c --query '{}' --output text >/dev/null; fi
+  if [[ "$DRY" == 1 ]]; then echo "DRY_RUN: $c"; else echo "+ $c"; $c --output json >/dev/null; fi
 done
 [[ "$DRY" == 1 ]] && echo "DRY_RUN: nothing changed" || echo "$action: requested (RDS takes ~5 min; nodes ~3 min)"
