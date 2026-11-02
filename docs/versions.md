@@ -66,6 +66,9 @@ Python packages are locked in `uv.lock`; the table records the resolved versions
 | bedrock-agentcore | 1.25.1 | `>=1.9.1` | Support only (AgentCore entrypoint, v0.7) |
 | boto3 / botocore | 1.43.122 | `>=1.34.92,<2` | |
 | httpx | 0.28.1 | `>=0.27` | Finance → payments-mock (v0.4) |
+| starlette | 1.10.0 | `>=1.10,<2` | demo console only (was transitive through bedrock-agentcore and mcp; no new download) |
+| uvicorn | 0.54.0 | `>=0.54` | demo console only (same) |
+| websockets | 17.3 | (transitive) | `scripts/console_shot.py` (DevTools protocol for headless Chrome) |
 | pydantic | 2.14.2 | (transitive) | the plugin installs the pydantic data converter |
 | ruff | 0.17.3 | dev | |
 | pyright | 1.1.414 | dev | |

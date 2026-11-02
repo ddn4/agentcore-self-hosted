@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo console mockup</title>
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Static mockup of the demo console run view, midway through Case B on the WCI emulator (fake data). Dark Temporal brand styling: docs/console/BRAND.md and DESIGN.md.">
+<style>
+/* Demo console, dark Temporal brand styling (docs/console/BRAND.md overrides DESIGN.md section 3).
+   Space Black ground, Off White type in a light grotesk, UV for everything you can press.
+   The one loud thing is the Nexus seam: a glowing purple-to-UV band between the two teams,
+   with the held-open call as a bright core line. Compute that is alive glows mint; compute
+   scaled to zero is an empty dashed lane. Everything else stays quiet. */
+
+/* ---------- fonts (vendored, OFL: static/vendor/fonts/) ---------- */
+@font-face {
+  font-family: "Hanken Grotesk"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("../../services/demo-console/src/demo_console/static/vendor/fonts/hanken-grotesk-latin-wght.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("../../services/demo-console/src/demo_console/static/vendor/fonts/ibm-plex-mono-latin-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap;
+  src: url("../../services/demo-console/src/demo_console/static/vendor/fonts/ibm-plex-mono-latin-500.woff2") format("woff2");
+}
+
+/* ---------- tokens: dark is the default (no preference needed) ---------- */
+:root {
+  color-scheme: dark;
+  /* brand primaries and accents (temporal.io/brand) */
+  --space: #141414; --offwhite: #F8FAFC; --uv: #444CE7;
+  --purple: #B664FF; --pink: #FF6BFF; --red: #FF5555; --lime: #C3FF62; --mint: #1FF1A5; --blue: #0066FF;
+  --g-nexus: linear-gradient(180deg, #B664FF, #444CE7);
+  --g-go: linear-gradient(90deg, #C3FF62, #1FF1A5);
+  --g-stop: linear-gradient(90deg, #FF5555, #B664FF);
+
+  /* surfaces and text (text pairs are AA on --page, --panel and --raised) */
+  --page: #141414; --panel: #1C1C1F; --raised: #26262B; --well: #101011;
+  --ink: #F8FAFC;            /* 17.6:1 on --page */
+  --muted: #A9ABAD;          /* ~65% Off White, 8.0:1 */
+  --faint: #8F9195;          /* ~52% Off White, 5.8:1 (4.8:1 on --raised) */
+  --rule: #2F2F35;           /* ~11% white */
+  --hair: rgb(248 250 252 / .09);
+
+  /* semantics: each a text-safe tone plus, where needed, a fill */
+  --support: #4A93FF;        /* Support blue as text, 6.1:1 */
+  --support-fill: #0066FF;
+  --support-tint: rgb(0 102 255 / .13);
+  --finance: #FF6BFF;        /* Finance pink, 7.7:1 */
+  --finance-fill: #FF6BFF;
+  --finance-tint: rgb(255 107 255 / .10);
+  --nexus: #A3A8FF;          /* UV family as text, 8.4:1 */
+  --nexus-fill: #444CE7;
+  --nexus-tint: rgb(68 76 231 / .18);
+  --wire: #8E7BFF;           /* purple-UV midpoint for connectors, 5.6:1 */
+  --hold: #C3FF62;           /* input-required, lime */
+  --ok: #1FF1A5;             /* completed, healthy, mint, 12.4:1 */
+  --bad: #FF5555;            /* rejected, failed, 5.9:1 */
+  --alive: #1FF1A5;          /* compute running */
+  --dead: rgb(248 250 252 / .40); /* the dashed outline of compute scaled to zero */
+  --off: transparent;
+  --focus: #8C92FF;
+  --on-accent: #141414;
+  --on-uv: #FFFFFF;          /* 6.1:1 on UV */
+
+  --band: linear-gradient(180deg, rgb(182 100 255 / .17), rgb(68 76 231 / .24));
+  --band-edge: inset 1px 0 0 rgb(182 100 255 / .38), inset -1px 0 0 rgb(68 76 231 / .45);
+  --lit-glow: 0 0 0 1px rgb(31 241 165 / .55), 0 0 18px rgb(31 241 165 / .55);
+  --held-glow: 0 0 10px rgb(142 123 255 / .9), 0 0 26px rgb(68 76 231 / .7);
+  --lift: 0 16px 48px rgb(0 0 0 / .55), 0 0 0 1px var(--rule);
+
+  --ui: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --scale: 1;
+  --cols: 4.4rem 18px minmax(0, 1fr) 7.5rem minmax(0, 1fr);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+/* Light is secondary: only when chosen with the theme toggle or ?theme=light. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --page: #F8FAFC; --panel: #FFFFFF; --raised: #EEF1F5; --well: #F1F3F7;
+  --ink: #141414; --muted: #55585E; --faint: #676A71; --rule: #D9DCE2; --hair: rgb(20 20 20 / .1);
+  --support: #0057D9; --support-fill: #0066FF; --support-tint: rgb(0 102 255 / .09);
+  --finance: #B4189E; --finance-fill: #E043E0; --finance-tint: rgb(224 67 224 / .09);
+  --nexus: #444CE7; --nexus-fill: #444CE7; --nexus-tint: rgb(68 76 231 / .10);
+  --wire: #5F55E8;
+  --hold: #4A7000; --ok: #06714C; --bad: #C42929;
+  --alive: #12C98A; --dead: rgb(20 20 20 / .32);
+  --focus: #444CE7;
+  --band: linear-gradient(180deg, rgb(182 100 255 / .10), rgb(68 76 231 / .14));
+  --band-edge: inset 1px 0 0 rgb(182 100 255 / .35), inset -1px 0 0 rgb(68 76 231 / .4);
+  --lit-glow: 0 0 0 1px rgb(18 201 138 / .6), 0 0 14px rgb(18 201 138 / .45);
+  --held-glow: 0 0 8px rgb(68 76 231 / .45);
+  --lift: 0 14px 40px rgb(20 20 20 / .16), 0 0 0 1px var(--rule);
+}
+:root[data-projector="on"] { --scale: 1.25; }
+
+/* ---------- base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { font-size: calc(15px * var(--scale)); -webkit-text-size-adjust: 100%; background: var(--page); }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font-family: var(--ui); line-height: 1.45; font-weight: 400;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-variant-numeric: tabular-nums;
+}
+a { color: inherit; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+::selection { background: rgb(68 76 231 / .55); color: #fff; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.id { font-family: var(--mono); font-size: .86em; letter-spacing: 0; }
+.muted { color: var(--muted); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+svg.i { width: 1.05em; height: 1.05em; flex: none; vertical-align: -.16em; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.skip { position: absolute; left: -999px; top: .5rem; z-index: 60; background: var(--raised); padding: .4rem .7rem; border-radius: 8px; }
+.skip:focus { left: .5rem; }
+.noscript { padding: 2rem; }
+[hidden] { display: none !important; }
+
+/* buttons: UV for actions, the lime-to-mint gradient only on Approve */
+.tbtn { border: 1px solid var(--rule); background: transparent; border-radius: 8px; padding: .25rem .6rem; display: inline-flex; gap: .35rem; align-items: center; font-size: .9rem; white-space: nowrap; text-decoration: none; color: var(--ink); }
+.tbtn:hover:not(:disabled) { border-color: var(--faint); background: var(--panel); }
+.tbtn[aria-pressed="true"] { background: var(--nexus-tint); border-color: var(--nexus-fill); color: var(--ink); }
+.tbtn:disabled { opacity: .5; }
+.tbtn kbd { font-family: var(--mono); font-size: .75rem; color: inherit; opacity: .7; }
+.btn { border-radius: 8px; padding: .55rem 1rem; font-weight: 600; border: 1px solid transparent; display: inline-flex; gap: .45rem; align-items: center; justify-content: center; white-space: nowrap; text-decoration: none; line-height: 1.2; letter-spacing: .005em; transition: background-color 120ms, border-color 120ms, box-shadow 160ms; }
+.btn.primary { background: var(--nexus-fill); color: var(--on-uv); }
+.btn.primary:hover:not(:disabled) { background: #5A61F0; box-shadow: 0 0 0 1px #5A61F0, 0 0 18px rgb(68 76 231 / .45); }
+.btn.ok { background: var(--g-go); color: var(--on-accent); }
+.btn.ok:hover:not(:disabled) { box-shadow: 0 0 20px rgb(31 241 165 / .45); }
+.btn.no { background: transparent; color: var(--bad); border-color: var(--bad); }
+.btn.no:hover:not(:disabled) { background: rgb(255 85 85 / .1); }
+.btn.ghost { background: var(--raised); border-color: var(--rule); color: var(--ink); font-weight: 500; }
+.btn.ghost:hover:not(:disabled) { border-color: var(--faint); }
+.btn.small { padding: .32rem .7rem; font-size: .88rem; font-weight: 600; }
+.btn:disabled { opacity: .45; }
+.btn.busy { position: relative; color: transparent !important; }
+.btn.busy::after { content: ""; position: absolute; width: 1em; height: 1em; border-radius: 50%; border: 2px solid var(--muted); border-top-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(1turn); } }
+.cost { display: inline-flex; gap: .25rem; align-items: center; font-size: .8rem; font-weight: 600; white-space: nowrap; }
+.cost[data-c="tokens"] { color: var(--hold); }
+.cost[data-c="aws"] { color: var(--bad); }
+.cost[data-c="free"] { color: var(--muted); font-weight: 500; }
+.copy { display: flex; align-items: flex-start; gap: .4rem; font-family: var(--mono); font-size: .8rem; background: var(--well); border: 1px solid var(--rule); border-radius: 8px; padding: .5rem .5rem .5rem .65rem; overflow-wrap: anywhere; color: var(--ink); }
+.copy code { flex: 1; min-width: 0; font: inherit; }
+.copy button { flex: none; border: 0; background: none; color: var(--muted); padding: .05rem .15rem; border-radius: 4px; }
+.copy button:hover { color: var(--ink); }
+
+/* ---------- stack bar ---------- */
+.stack {
+  position: sticky; top: 0; z-index: 20; background: var(--page);
+  border-bottom: 1px solid var(--rule); padding: .6rem 1.25rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem;
+}
+.brand { font-weight: 400; font-size: 1.2rem; letter-spacing: -.02em; white-space: nowrap; display: inline-flex; gap: .6rem; align-items: center; }
+.brand .mark { display: inline-grid; grid-template-columns: 4px 3px 4px; gap: 2px; height: 1.05em; }
+.brand .mark i { display: block; border-radius: 2px; }
+.brand .mark i:nth-child(1) { background: var(--support-fill); }
+.brand .mark i:nth-child(2) { background: var(--g-nexus); box-shadow: 0 0 8px rgb(142 123 255 / .8); }
+.brand .mark i:nth-child(3) { background: var(--finance-fill); }
+.recorded { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 500; color: var(--nexus); border: 1px dashed color-mix(in srgb, var(--nexus) 70%, transparent); border-radius: 999px; padding: .1rem .6rem; white-space: nowrap; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; padding: 2px; background: var(--panel); }
+.seg button { border: 0; background: none; padding: .2rem .75rem; border-radius: 999px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+.seg button:hover:not(:disabled):not([aria-pressed="true"]) { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--nexus-fill); color: var(--on-uv); }
+.seg button:disabled { opacity: .55; }
+.shape { display: flex; gap: 1rem; color: var(--muted); font-size: .93rem; white-space: nowrap; }
+.shape b { color: var(--ink); font-weight: 500; }
+.pips { display: flex; flex-wrap: wrap; gap: .25rem .95rem; list-style: none; margin: 0; padding: 0; font-size: .9rem; }
+.pip { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.pip button { all: unset; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; border-radius: 4px; }
+.pip button:hover { color: var(--ink); }
+.pip button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pip .dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--ok); flex: none; box-shadow: 0 0 6px rgb(31 241 165 / .55); }
+.pip[data-s="zero"] .dot { background: none; border-radius: 2px; box-shadow: none; outline: 1.5px dashed var(--dead); outline-offset: -1.5px; }
+.pip[data-s="down"] .dot { background: none; box-shadow: inset 0 0 0 2px var(--bad); }
+.pip[data-s="degraded"] .dot { background: linear-gradient(90deg, var(--hold) 50%, transparent 50%); box-shadow: inset 0 0 0 1.5px var(--hold); }
+.pip[data-s="unknown"] .dot { background: none; box-shadow: none; border: 1.5px dashed var(--faint); }
+.pip[data-s="external"] .dot { background: none; box-shadow: inset 0 0 0 2px var(--ok); }
+.pip[data-s="down"] { color: var(--bad); }
+.pip .n { color: var(--muted); }
+.pip.summary { display: none; }
+.build { display: inline-flex; gap: .4rem; align-items: baseline; font-size: .9rem; white-space: nowrap; }
+.build.warn { color: var(--bad); }
+.tools { margin-left: auto; display: flex; gap: .35rem; }
+.navbtn { display: none; }
+
+/* banners */
+.banners:empty { display: none; }
+.banners { display: grid; gap: 1px; background: var(--rule); border-bottom: 1px solid var(--rule); }
+.banner { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding: .55rem 1.25rem; background: color-mix(in srgb, var(--hold) 9%, var(--page)); font-size: .92rem; }
+.banner[data-level="error"] { background: color-mix(in srgb, var(--bad) 13%, var(--page)); }
+.banner[data-level="info"] { background: color-mix(in srgb, var(--nexus-fill) 16%, var(--page)); }
+.banner > svg.i { color: var(--bad); }
+.banner[data-level="warn"] > svg.i { color: var(--hold); }
+.banner[data-level="info"] > svg.i { color: var(--nexus); }
+.banner p { margin: 0; flex: 1 1 24rem; }
+.banner .copy { flex: 0 1 auto; }
+
+/* ---------- shell ---------- */
+/* Wide screens: a fixed control panel. The page does not scroll; the lanes do, following the newest row. */
+body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+.stack, .banners { flex: none; }
+.shell { flex: 1; min-height: 0; display: grid; grid-template-columns: 18rem minmax(0, 1fr) 19rem; }
+.side, .notes { overflow-y: auto; }
+.main { min-width: 0; min-height: 0; overflow-y: auto; outline: none; }
+:root[data-notes="off"] .shell { grid-template-columns: 18rem minmax(0, 1fr); }
+:root[data-notes="off"] .notes { display: none; }
+:root[data-projector="on"] .shell { grid-template-columns: minmax(0, 1fr) 19rem; }
+:root[data-projector="on"][data-notes="off"] .shell { grid-template-columns: minmax(0, 1fr); }
+:root[data-projector="on"] .side,
+:root[data-projector="on"] .ident,
+:root[data-projector="on"] .log,
+:root[data-projector="on"] .stack .shape,
+:root[data-projector="on"] .stack .build,
+:root[data-projector="on"] .pips .pip:not([data-key]) { display: none; }
+:root[data-projector="on"] .stack { flex-wrap: nowrap; overflow: hidden; }
+
+/* ---------- left column ---------- */
+.side { border-right: 1px solid var(--rule); padding: 1.2rem 1rem 2rem; display: flex; flex-direction: column; gap: 1.7rem; }
+.side h2, .notes h2, .sheet h3 { font-size: .9rem; font-weight: 500; margin: 0 0 .55rem; color: var(--muted); letter-spacing: .005em; }
+.scen, .runs { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.scen a { width: 100%; text-align: left; border-radius: 8px; padding: .45rem .6rem; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 .5rem; text-decoration: none; }
+.scen a:hover, .runs a:hover { background: var(--panel); }
+.scen a[aria-current="page"] { background: var(--raised); box-shadow: inset 2px 0 0 var(--nexus-fill); }
+.scen .t { font-weight: 500; }
+.scen .s { grid-column: 1 / -1; font-size: .82rem; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fit { font-size: .78rem; color: var(--muted); align-self: center; white-space: nowrap; }
+.fit[data-f="ready"] { color: var(--ok); }
+.fit[data-f="needs_setup"] { color: var(--hold); }
+.runs a, .runs .grp { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 .5rem; padding: .4rem .6rem; border-radius: 8px; text-decoration: none; }
+.runs a[aria-current="page"] { background: var(--raised); box-shadow: inset 2px 0 0 var(--support-fill); }
+.runs .id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runs .st { font-size: .8rem; display: inline-flex; gap: .3rem; align-items: center; white-space: nowrap; }
+.runs .when { grid-column: 1 / -1; font-size: .78rem; color: var(--muted); }
+.empty-side { font-size: .88rem; color: var(--muted); margin: 0; padding: 0 .6rem; }
+.more { margin: .4rem .6rem 0; }
+
+/* state glyph colours (shape + word + colour) */
+.sg { display: inline-flex; gap: .3rem; align-items: center; }
+.sg[data-s="submitted"], .sg[data-s="working"], .sg[data-s="running"] { color: var(--finance); }
+.sg[data-s="input-required"] { color: var(--ink); }
+.sg[data-s="input-required"] svg.i { color: var(--hold); }
+.sg[data-s="completed"] { color: var(--ok); }
+.sg[data-s="rejected"], .sg[data-s="failed"], .sg[data-s="terminated"], .sg[data-s="timed_out"] { color: var(--bad); }
+.sg[data-s="canceled"], .sg[data-s="none"] { color: var(--muted); }
+
+/* ---------- run view ---------- */
+.run { padding: 1.1rem 1.6rem 1rem; height: 100%; display: flex; flex-direction: column; }
+.run > * { flex: none; }
+.runhead { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem 1.5rem; align-items: start; }
+.runhead .wf { font-size: .95rem; font-weight: 400; color: var(--muted); overflow-wrap: anywhere; }
+.ticket { grid-column: 1; margin: .2rem 0 0; font-size: 1.32rem; font-weight: 300; letter-spacing: -.012em; line-height: 1.25; max-width: 60ch; text-wrap: balance; }
+.ticket::before { content: "\201C"; } .ticket::after { content: "\201D"; }
+.meta { grid-column: 1; display: flex; flex-wrap: wrap; gap: .25rem 1.1rem; font-size: .9rem; color: var(--muted); margin-top: .4rem; }
+.meta b { color: var(--ink); font-weight: 500; }
+.links { grid-column: 2; grid-row: 1 / span 3; display: flex; flex-direction: column; gap: .4rem; align-items: stretch; }
+.lbtn { display: inline-flex; gap: .5rem; align-items: center; padding: .4rem .75rem; border: 1px solid var(--rule); border-radius: 8px; text-decoration: none; background: var(--panel); font-size: .9rem; white-space: nowrap; transition: border-color 120ms; }
+.lbtn:hover { border-color: var(--nexus-fill); }
+.lbtn .sw { width: .55rem; height: .55rem; border-radius: 50%; flex: none; }
+.lbtn svg.i { color: var(--muted); }
+
+/* hero: state track + facts */
+.hero { margin-top: .9rem; padding-bottom: 1rem; border-bottom: 1px solid var(--rule); container-type: inline-size; }
+.herofoot { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .8rem 2.5rem; align-items: end; margin-top: .55rem; }
+.track { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .25rem; font-size: .88rem; }
+.track li { display: inline-flex; align-items: center; gap: .3rem; color: var(--faint); }
+.track li + li::before { content: ""; width: 1.4rem; height: 1px; background: var(--rule); margin-right: .25rem; }
+.track li.past { color: var(--muted); }
+.track li.past + li::before { background: var(--muted); }
+.track li.passed-over { text-decoration: line-through; text-decoration-color: var(--faint); }
+.track li.now { color: var(--ink); font-weight: 600; }
+.track .alt { color: var(--faint); font-weight: 400; }
+/* The A2A state itself is the headline: light weight, very large, tight tracking. */
+.statebig { margin: .2rem 0 0; font-size: min(5.1rem, 11.4cqi); white-space: nowrap; line-height: .98; font-weight: 300; letter-spacing: -.045em; position: relative; display: inline-block; padding-bottom: .17em; color: var(--ink); }
+.statebig::after { content: ""; position: absolute; left: .04em; right: 0; bottom: 0; height: 7px; border-radius: 4px; background: var(--finance-fill); }
+.statebig[data-s="input-required"]::after { background: repeating-linear-gradient(135deg, var(--hold) 0 11px, var(--well) 11px 17px); box-shadow: 0 0 22px rgb(195 255 98 / .28); }
+.statebig[data-s="completed"]::after { background: var(--g-go); box-shadow: 0 0 22px rgb(31 241 165 / .35); }
+.statebig[data-s="rejected"]::after, .statebig[data-s="failed"]::after { background: var(--g-stop); box-shadow: 0 0 22px rgb(255 85 85 / .3); }
+.statebig[data-s="canceled"]::after { background: var(--faint); }
+.statebig[data-s="none"] { color: var(--muted); font-weight: 200; }
+.statebig[data-s="none"]::after { background: repeating-linear-gradient(90deg, var(--rule) 0 10px, transparent 10px 16px); }
+.statebig.enter { animation: grow 520ms var(--ease); }
+@keyframes grow { from { font-weight: 100; letter-spacing: .01em; opacity: .2; transform: translateX(-.08em); } to { font-weight: 300; letter-spacing: -.045em; opacity: 1; transform: none; } }
+.statesub { margin: 0; color: var(--muted); max-width: 60ch; font-size: 1.02rem; }
+.facts { display: grid; grid-template-columns: repeat(3, auto); gap: 0 2.2rem; margin: 0; }
+.facts > div { display: grid; gap: .15rem; align-content: start; }
+.facts dt { font-size: .82rem; color: var(--muted); white-space: nowrap; }
+.facts dd { margin: 0; font-size: 2.2rem; font-weight: 300; letter-spacing: -.03em; line-height: 1.05; display: flex; align-items: center; gap: .5rem; white-space: nowrap; }
+.facts dd small { font-size: .82rem; font-weight: 500; letter-spacing: 0; }
+.facts .zero { color: var(--muted); }
+/* the "is any Support compute alive" lamp: mint glow, or an empty dashed square */
+.lamp { width: .5em; height: .5em; border-radius: 3px; background: transparent; outline: 1.5px dashed var(--dead); outline-offset: -1.5px; transition: background 900ms, box-shadow 600ms; flex: none; }
+.lamp.lit { background: var(--alive); outline-color: transparent; box-shadow: var(--lit-glow); }
+.facts .held { color: var(--nexus); }
+.facts .held small { color: var(--bad); }
+
+/* stepper */
+.steps { list-style: none; margin: 1.1rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: .35rem; }
+.steps li { display: inline-flex; align-items: center; gap: .45rem; padding: .3rem .75rem .3rem .35rem; border-radius: 999px; font-size: .88rem; color: var(--muted); border: 1px solid transparent; }
+.steps .n { display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%; font-weight: 600; font-size: .78rem; box-shadow: inset 0 0 0 1px var(--rule); flex: none; }
+.steps li.done { color: var(--ink); padding: .3rem .15rem; }
+.steps li.done .lab { display: none; }
+.steps li.done .n { background: var(--raised); color: var(--ok); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 40%, transparent); }
+.steps li.skipped .n { box-shadow: inset 0 0 0 1px var(--rule); background: repeating-linear-gradient(135deg, transparent 0 3px, var(--rule) 3px 4px); }
+.steps li.skipped .lab { display: none; }
+.steps li.current { color: var(--ink); border-color: var(--nexus-fill); background: var(--nexus-tint); font-weight: 500; }
+.steps li.current .n { background: var(--nexus-fill); color: var(--on-uv); box-shadow: none; }
+.steps li.blocked { border-color: var(--bad); }
+.steps li.blocked .n { box-shadow: inset 0 0 0 1.5px var(--bad); color: var(--bad); }
+.steps li.manual { cursor: pointer; }
+.steps li.alldone { color: var(--ok); font-weight: 600; padding-left: .4rem; }
+
+/* ---------- lanes ---------- */
+.run > .lanes { flex: 1 1 0; min-height: 16rem; }
+.lanes { position: relative; margin-top: 1.1rem; background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; overflow-y: auto; overscroll-behavior: contain; }
+.follow { position: sticky; bottom: .6rem; display: none; margin: 0 auto; width: max-content; z-index: 6; box-shadow: var(--lift); background: var(--raised); }
+.lanes.paused .follow { display: flex; }
+.lhead, .row { display: grid; grid-template-columns: var(--cols); }
+.lhead { border-bottom: 1px solid var(--rule); position: sticky; top: 0; z-index: 5; background: var(--panel); }
+.lhead > div { padding: .7rem .8rem .65rem; }
+.lhead .ln { display: grid; gap: .1rem; }
+.lhead .ln b { font-weight: 400; font-size: 1.3rem; letter-spacing: -.02em; display: inline-flex; gap: .45rem; align-items: center; line-height: 1.15; }
+.lhead .ln b svg.i { width: .85em; height: .85em; }
+.lhead .ln span { font-size: .8rem; color: var(--muted); }
+.lhead .sup { box-shadow: inset 0 2px 0 var(--support-fill); }
+.lhead .fin { box-shadow: inset 0 2px 0 var(--finance-fill); }
+.lhead .sup b { color: var(--support); }
+.lhead .fin b { color: var(--finance); }
+.lhead .seamh { text-align: center; background: var(--band); box-shadow: var(--band-edge), inset 0 2px 0 var(--purple); color: var(--nexus); font-size: .74rem; line-height: 1.3; padding-inline: .2rem; white-space: nowrap; }
+.lhead .seamh b { display: block; font-size: 1.3rem; font-weight: 400; letter-spacing: -.02em; color: var(--ink); line-height: 1.15; }
+.lhead .railh { padding: 0; writing-mode: vertical-rl; transform: rotate(180deg); font-size: .7rem; color: var(--faint); text-align: center; align-self: center; justify-self: center; }
+.lempty { padding: 2.5rem 1.5rem; text-align: center; color: var(--muted); }
+
+.row { --wy: 1.05rem; }
+.row > div { min-width: 0; }
+.c-time { padding: .5rem .5rem .5rem .8rem; font-size: .8rem; color: var(--faint); text-align: right; white-space: nowrap; }
+/* The compute rail. Alive: a mint bar with a glow. Scaled to zero: an empty dashed lane. */
+.c-rail { background: transparent; position: relative; transition: background-color 900ms linear, box-shadow 600ms; }
+.c-rail.lit { background-color: var(--alive); box-shadow: var(--lit-glow); z-index: 1; }
+.c-rail.off {
+  background:
+    repeating-linear-gradient(180deg, var(--dead) 0 5px, transparent 5px 10px) left top / 1.5px 100% no-repeat,
+    repeating-linear-gradient(180deg, var(--dead) 0 5px, transparent 5px 10px) right top / 1.5px 100% no-repeat,
+    var(--well);
+}
+.c-rail.none { background: linear-gradient(90deg, transparent calc(50% - .5px), var(--rule) calc(50% - .5px), var(--rule) calc(50% + .5px), transparent calc(50% + .5px)); }
+.c-rail.cut::after { content: ""; position: absolute; left: -3px; right: -3px; bottom: 0; height: 3px; background: var(--bad); box-shadow: 0 0 10px var(--bad); }
+.c-rail.lit.ignite { animation: ignite 600ms ease-out; }
+@keyframes ignite { from { box-shadow: 0 0 0 1px var(--alive), 0 0 36px var(--alive); } }
+/* The Nexus seam: one continuous purple-to-UV band (fixed attachment keeps the gradient whole
+   across rows), with the held-open call as a glowing core line. */
+.c-seam { background: var(--band) fixed; box-shadow: var(--band-edge); position: relative; }
+.c-seam.held::after { content: ""; position: absolute; left: calc(50% - 2px); width: 4px; top: 0; bottom: 0; background: var(--g-nexus) fixed; box-shadow: var(--held-glow); }
+.c-seam.held-top::after { top: var(--wy); border-radius: 2px 2px 0 0; }
+.c-seam.held-end::after { bottom: calc(100% - var(--wy) - 2px); border-radius: 0 0 2px 2px; }
+.c-seam.held-top.held-end::after { top: calc(var(--wy) - 5px); bottom: calc(100% - var(--wy) - 7px); border-radius: 2px; }
+.c-seam.held.live-edge::after { animation: pulse 2.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .5; } }
+.c-sup, .c-fin { padding: .36rem .8rem; }
+.row + .row > .c-sup, .row + .row > .c-fin, .row + .row > .c-time { border-top: 1px solid var(--hair); }
+
+.ev { position: relative; padding-left: 1.6rem; }
+.ev .g { position: absolute; left: 0; top: .1em; width: 1.1rem; display: inline-grid; place-items: center; }
+.ev .tt { font-weight: 500; }
+.ev .dd { font-size: .86rem; color: var(--muted); overflow-wrap: anywhere; margin-left: .55rem; }
+.ev .ag { font-weight: 600; }
+.ev .ident { display: block; margin-left: 0; font-size: .76rem; color: var(--faint); }
+.sup-ev .g { color: var(--support); }
+.fin-ev .g { color: var(--finance); }
+.cmp-ev .tt { font-weight: 400; }
+.cmp-ev .g { color: var(--alive); }
+.cmp-ev.drain .g { color: var(--faint); }
+.cmp-ev.killed .g, .cmp-ev.killed .tt { color: var(--bad); }
+.wci-ev .g, .wci-ev .tt { color: var(--nexus); }
+.hum-ev .g { color: var(--ok); }
+.hum-ev.reject .g { color: var(--bad); }
+.nx-ev .g { color: var(--nexus); }
+.nx-ev.bad .g, .nx-ev.bad .tt { color: var(--bad); }
+.ev[data-state="input-required"] .g { color: var(--hold); }
+.ev[data-state="completed"] .g { color: var(--ok); }
+.ev[data-state="rejected"] .g, .ev[data-state="failed"] .g { color: var(--bad); }
+.ev a.deep { text-decoration: none; color: var(--muted); margin-left: .25rem; opacity: 0; transition: opacity 120ms; }
+.ev a.deep:hover { color: var(--nexus); }
+.row:hover a.deep, .row:focus-within a.deep { opacity: 1; }
+.row.new { animation: flash 900ms ease-out; }
+@keyframes flash { from { background-color: var(--nexus-tint); } }
+.ev .lane { display: none; font-size: .74rem; font-weight: 600; margin-right: .3rem; }
+.sup-ev .lane, .nx-ev .lane { color: var(--support); }
+.cmp-ev .lane { color: var(--ok); }
+.fin-ev .lane, .hum-ev .lane { color: var(--finance); }
+.wci-ev .lane { color: var(--nexus); }
+
+/* Crossing rows: a Nexus call that crosses the seam. The held-open line leaves an outgoing
+   call's wire downwards and joins the answer's wire from above, so the outgoing label sits
+   above its wire and the answer's label below its wire: neither ever sits on the line. */
+.row.cross .c-sup, .row.cross .c-fin, .row.stub .c-sup { position: relative; }
+.row.cross { min-height: 3.1rem; }
+.row.cross.out { --wy: 2.15rem; min-height: 3.3rem; }
+.wire { position: absolute; top: var(--wy); height: 2px; background: var(--wire); box-shadow: 0 0 6px rgb(142 123 255 / .55); }
+.c-sup .wire { right: 0; width: 1.6rem; }
+.c-fin .wire { left: 0; width: 1.6rem; }
+.c-seam .wire { left: 0; right: 0; }
+.wire.bad { background: repeating-linear-gradient(90deg, var(--bad) 0 5px, transparent 5px 8px); box-shadow: none; }
+.c-seam .lab { position: absolute; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - .4rem); top: calc(var(--wy) + .4rem); text-align: center; font-size: .72rem; color: var(--nexus); font-weight: 500; line-height: 1.15; z-index: 2; }
+.c-seam .lab .id { font-size: .95em; color: var(--ink); }
+.row.cross.out .c-seam .lab { top: .3rem; }
+.c-seam .lab.bad { color: var(--bad); }
+.arrow-r::after, .arrow-l::after { content: ""; position: absolute; top: -4px; border: 5px solid transparent; }
+.arrow-r::after { right: -2px; border-left: 7px solid var(--wire); border-right: 0; }
+.arrow-l::after { left: -2px; border-right: 7px solid var(--wire); border-left: 0; }
+.row.cross .c-sup .ev, .row.stub .c-sup .ev { padding-right: 1.9rem; }
+.row.cross .c-fin .ev { padding-left: 1.4rem; }
+.row.disco .c-seam .lab { top: .45rem; }
+/* A stub (attempt failed, started) can fall inside a held stretch: its label is a tag pinned
+   on the line, on a solid ground, centred on its own wire. */
+.row.stub .c-seam .lab, .row.now .c-seam .lab { top: calc(var(--wy) - .62rem) !important; background: var(--panel); border: 1px solid color-mix(in srgb, var(--nexus-fill) 70%, transparent); border-radius: 999px; padding: .08rem .45rem; }
+.row.stub .c-seam .lab.bad, .row.now .c-seam .lab.bad { border-color: color-mix(in srgb, var(--bad) 70%, transparent); }
+.row.stub .c-seam .wire { right: 50%; }
+.row.stub .c-seam .wire.from-seam { left: 0; right: 50%; }
+
+/* gap band and the live "now" row */
+.row.gap .c-sup, .row.gap .c-fin { padding: .9rem .8rem; }
+.gapnote { font-size: .9rem; color: var(--muted); display: flex; gap: .5rem; align-items: center; }
+.gapnote b { color: var(--ink); font-weight: 600; }
+.row.gap .c-sup { background: repeating-linear-gradient(135deg, transparent 0 10px, var(--hair) 10px 11px); }
+.row.gap .c-time { font-weight: 600; color: var(--ink); }
+.row.now .c-time { color: var(--nexus); font-weight: 600; }
+.row.now .c-fin { padding-block: .5rem; }
+.livedot { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; background: var(--nexus); box-shadow: 0 0 8px var(--nexus-fill); margin-right: .3rem; vertical-align: .05em; animation: pulse 2s ease-in-out infinite; }
+
+/* approval card (in Finance's lane, on the live "now" row) */
+.approval { container-type: inline-size; margin: .2rem 0 .6rem; border: 1px solid color-mix(in srgb, var(--hold) 30%, var(--rule)); border-left: 0; border-radius: 12px; background: var(--raised); position: relative; overflow: hidden; box-shadow: 0 0 0 1px rgb(0 0 0 / .2), 0 12px 32px rgb(0 0 0 / .35); }
+.approval::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background: repeating-linear-gradient(135deg, var(--hold) 0 7px, var(--well) 7px 11px); }
+.approval .in { padding: .75rem 1rem .8rem 1.4rem; display: grid; gap: .55rem; }
+.approval h3 { margin: 0; font-size: 1.35rem; font-weight: 400; letter-spacing: -.02em; line-height: 1.2; display: flex; gap: .5rem; align-items: center; }
+.approval h3 svg.i { color: var(--hold); }
+.approval p { margin: 0; max-width: 58ch; }
+.akv { display: flex; flex-wrap: wrap; gap: .15rem 1.1rem; margin: 0; font-size: .9rem; }
+.akv > div { display: flex; gap: .35rem; align-items: baseline; }
+.akv dt { font-size: .8rem; color: var(--muted); }
+.akv dd { margin: 0; font-weight: 600; white-space: nowrap; }
+.drainok { display: flex; gap: .55rem; align-items: center; font-size: .82rem; color: var(--muted); }
+.form { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(7rem, 1.4fr) auto; gap: .5rem; align-items: end; }
+@container (max-width: 36rem) { .form { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); } .form .acts { grid-column: 1 / -1; } .form .acts { flex-wrap: nowrap; } .form .acts .btn { flex: 1 1 0; min-width: 0; padding-inline: .5rem; font-size: .92rem; } }
+.form label, .field { display: grid; gap: .2rem; font-size: .8rem; color: var(--muted); }
+input[type="text"], input[type="number"], select, .form input { width: 100%; min-width: 0; border: 1px solid var(--rule); border-radius: 8px; padding: .45rem .6rem; background: var(--well); color: var(--ink); font-size: .95rem; transition: border-color 120ms; }
+input:hover, select:hover { border-color: var(--faint); }
+input:focus-visible, select:focus-visible { border-color: var(--nexus-fill); outline-offset: 1px; }
+.acts { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.approval.done { animation: shrink 250ms ease-in forwards; }
+@keyframes shrink { to { opacity: 0; transform: scaleY(.6); } }
+.approval .err { color: var(--bad); font-size: .85rem; }
+
+/* reply + report */
+.reply { margin: .35rem 0 .5rem; padding: .75rem .95rem; border-radius: 10px; background: var(--support-tint); box-shadow: inset 2px 0 0 var(--support-fill); max-width: 62ch; }
+.reply p { margin: 0; }
+.reply .who { font-size: .8rem; color: var(--support); margin-bottom: .2rem; }
+.report { margin: 1.1rem 0 0; display: grid; grid-auto-flow: column; grid-auto-columns: auto; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.report > div { padding: .85rem 1.05rem; border-right: 1px solid var(--rule); }
+.report > div:last-child { border-right: 0; }
+.report dt { font-size: .8rem; color: var(--muted); }
+.report dd { margin: .2rem 0 0; font-size: 1.5rem; font-weight: 300; letter-spacing: -.02em; line-height: 1.15; overflow-wrap: break-word; }
+.report dd .id { font-size: .62em; font-weight: 500; letter-spacing: 0; }
+.q15 { margin: .7rem 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .5rem; font-size: .88rem; color: var(--muted); list-style: none; padding: 0; }
+.q15 li { display: inline-flex; gap: .35rem; align-items: baseline; }
+.q15 li + li::before { content: ""; width: 1.2rem; height: 2px; border-radius: 1px; background: var(--g-nexus); align-self: center; margin-right: .2rem; }
+.q15 b { color: var(--ink); font-weight: 600; }
+.q15 .lead { color: var(--ink); font-weight: 500; }
+.q15 .lead::before { display: none; }
+
+/* scenario card + empty states */
+.card-view { padding: 1.6rem 1.6rem 3rem; max-width: 62rem; }
+.card-view h1 { margin: 0; font-size: 2.6rem; font-weight: 300; line-height: 1.08; letter-spacing: -.035em; text-wrap: balance; }
+.card-view .lede { font-size: 1.15rem; max-width: 60ch; margin: .6rem 0 0; color: var(--muted); }
+.card-view .facts-row { display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; margin-top: .8rem; color: var(--muted); font-size: .9rem; align-items: center; }
+.card-view .facts-row b { color: var(--ink); font-weight: 500; }
+.card-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.2rem 1.6rem; margin-top: 1.5rem; }
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 1.05rem 1.15rem; }
+.panel h2 { font-size: 1.2rem; font-weight: 400; letter-spacing: -.015em; margin: 0 0 .7rem; }
+.pre { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.pre li { display: grid; grid-template-columns: 1.2rem minmax(0, 1fr); gap: .1rem .5rem; align-items: start; }
+.pre li > svg.i { margin-top: .2em; }
+.pre li.ok > svg.i { color: var(--ok); }
+.pre li.bad > svg.i { color: var(--bad); }
+.pre .fixer { grid-column: 2; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.opts { display: grid; gap: .8rem; }
+.opts .seg { width: max-content; max-width: 100%; }
+.opts .seg button { padding: .25rem .9rem; }
+.startbar { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; margin-top: 1.3rem; }
+.startbar .why { color: var(--muted); font-size: .9rem; }
+.btn.start { font-size: 1.05rem; padding: .7rem 1.35rem; }
+.plan { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; counter-reset: p; }
+.plan li { counter-increment: p; display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); gap: 0 .5rem; }
+.plan li::before { content: counter(p); display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%; font-weight: 600; font-size: .78rem; box-shadow: inset 0 0 0 1px var(--rule); color: var(--muted); }
+.plan .k { font-size: .76rem; color: var(--faint); margin-left: .4rem; }
+.plan .talk { grid-column: 2; color: var(--muted); font-size: .88rem; }
+.leftovers { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.leftovers li { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center; justify-content: space-between; padding: .55rem .75rem; border: 1px solid var(--rule); border-radius: 10px; background: var(--raised); }
+.welcome { padding: 3.2rem 1.6rem; max-width: 46rem; }
+.welcome h1 { font-size: 2.8rem; font-weight: 300; letter-spacing: -.035em; margin: 0 0 .7rem; line-height: 1.08; }
+.welcome p { font-size: 1.1rem; max-width: 58ch; color: var(--muted); }
+.welcome .acts { margin-top: 1.3rem; }
+
+/* ---------- presenter notes ---------- */
+.notes { border-left: 1px solid var(--rule); padding: 1.2rem 1.15rem 2rem; background: var(--well); }
+.notes .say { font-size: 1.18rem; line-height: 1.5; font-weight: 400; margin: 0 0 1.1rem; max-width: 40ch; }
+.notes .point { font-size: .94rem; margin: 0 0 1rem; color: var(--ink); }
+.notes .do { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 1.1rem; }
+.notes .story { font-size: .9rem; color: var(--muted); margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+.notes .story p { margin: 0 0 .5rem; }
+.notes .stepname { font-size: .85rem; color: var(--muted); margin: -.3rem 0 .6rem; }
+:root[data-route="notes"] .stack, :root[data-route="notes"] .side, :root[data-route="notes"] .main, :root[data-route="notes"] .banners { display: none; }
+:root[data-route="notes"] .shell { grid-template-columns: minmax(0, 1fr) !important; }
+:root[data-route="notes"] .notes { display: block !important; border: 0; padding: 2rem 2.5rem; font-size: 1.25rem; max-width: 64rem; background: var(--page); }
+:root[data-route="notes"] .notes .say { font-size: 2rem; font-weight: 300; letter-spacing: -.015em; line-height: 1.35; max-width: 34ch; }
+
+/* ---------- stack sheet ---------- */
+dialog { color: var(--ink); }
+dialog::backdrop { background: rgb(0 0 0 / .6); }
+.sheet { margin: 0 0 0 auto; height: 100%; max-height: 100%; width: min(44rem, 100%); max-width: 100%; border: 0; padding: 0; background: var(--page); box-shadow: var(--lift); }
+.sheet[open] { display: flex; flex-direction: column; animation: slidein 220ms var(--ease); }
+@keyframes slidein { from { transform: translateX(2rem); opacity: 0; } }
+.sheet header { display: flex; align-items: center; gap: 1rem; padding: .95rem 1.2rem; border-bottom: 1px solid var(--rule); background: var(--panel); }
+.sheet header h2 { margin: 0; font-size: 1.5rem; font-weight: 300; letter-spacing: -.02em; flex: 1; }
+.sheet .body { overflow-y: auto; padding: 1.1rem 1.2rem 3rem; display: grid; gap: 1.7rem; align-content: start; }
+.sheet h3 { margin-bottom: .6rem; }
+.sheet .sub { margin: -.3rem 0 .7rem; color: var(--muted); font-size: .88rem; max-width: 62ch; }
+.plist { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.plist > li { background: var(--panel); padding: .6rem .8rem; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem .8rem; align-items: center; }
+.plist .nm { font-weight: 500; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.plist .mk { font-size: .78rem; color: var(--muted); grid-column: 1; overflow-wrap: anywhere; }
+.plist .ctl { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.plist .ctl select { width: auto; padding: .25rem .4rem; font-size: .85rem; }
+.plist .why { grid-column: 1 / -1; font-size: .82rem; color: var(--muted); }
+.plist .log { grid-column: 1 / -1; margin: .3rem 0 0; max-height: 14rem; overflow: auto; font-family: var(--mono); font-size: .76rem; background: var(--well); border: 1px solid var(--rule); border-radius: 8px; padding: .5rem .6rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pstate { display: inline-flex; gap: .3rem; align-items: center; font-size: .8rem; font-weight: 600; }
+.pstate::before { content: ""; width: .55rem; height: .55rem; border-radius: 50%; }
+.pstate[data-s="running"] { color: var(--ok); } .pstate[data-s="running"]::before { background: var(--ok); box-shadow: 0 0 6px rgb(31 241 165 / .55); }
+.pstate[data-s="stopped"], .pstate[data-s="unavailable"] { color: var(--muted); } .pstate[data-s="stopped"]::before, .pstate[data-s="unavailable"]::before { box-shadow: none; outline: 1.5px dashed var(--dead); outline-offset: -1.5px; }
+.pstate[data-s="exited"], .pstate[data-s="failed"] { color: var(--bad); } .pstate[data-s="exited"]::before, .pstate[data-s="failed"]::before { box-shadow: inset 0 0 0 2px var(--bad); }
+.pstate[data-s="external"] { color: var(--nexus); } .pstate[data-s="external"]::before { box-shadow: inset 0 0 0 2px var(--nexus); }
+.pstate[data-s="succeeded"] { color: var(--ok); } .pstate[data-s="succeeded"]::before { background: var(--ok); border-radius: 2px; }
+.recipes { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .7rem; }
+.recipe { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: .8rem .9rem; display: grid; gap: .45rem; align-content: start; }
+.recipe b { font-weight: 500; }
+.recipe ol { margin: 0; padding-left: 1.2rem; font-family: var(--mono); font-size: .76rem; color: var(--muted); }
+.recipe .btn { justify-self: start; }
+
+/* confirm dialog */
+.confirm { border: 0; border-radius: 14px; padding: 0; width: min(30rem, calc(100% - 2rem)); background: var(--raised); box-shadow: var(--lift); }
+.confirm form { padding: 1.25rem 1.35rem 1.15rem; display: grid; gap: .85rem; }
+.confirm h2 { margin: 0; font-size: 1.4rem; font-weight: 400; letter-spacing: -.02em; display: flex; gap: .5rem; align-items: center; }
+.confirm p { margin: 0; color: var(--muted); }
+.confirm .acts { justify-content: flex-end; }
+
+/* toasts */
+.toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: 70; display: grid; gap: .5rem; width: min(26rem, calc(100% - 2rem)); pointer-events: none; }
+.toast { pointer-events: auto; background: var(--raised); border: 1px solid var(--rule); border-left: 3px solid var(--nexus-fill); border-radius: 10px; padding: .65rem .85rem; box-shadow: var(--lift); font-size: .92rem; animation: toastin 200ms var(--ease); }
+.toast[data-level="ok"] { border-left-color: var(--ok); }
+.toast[data-level="warn"] { border-left-color: var(--hold); }
+.toast[data-level="error"] { border-left-color: var(--bad); }
+.toast p { margin: 0; }
+.toast .hint { color: var(--muted); font-size: .85rem; margin-top: .15rem; }
+@keyframes toastin { from { transform: translateY(.5rem); opacity: 0; } }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1180px) {
+  /* Narrower screens: normal page flow; the lanes keep their own scroll. */
+  body { display: block; height: auto; }
+  .run { height: auto; }
+  .main { overflow: visible; }
+  .shell, :root[data-notes="off"] .shell { grid-template-columns: 15rem minmax(0, 1fr); }
+  .side { overflow: visible; }
+  .run > .lanes { flex: none; max-height: 78vh; }
+  .notes { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rule); overflow: visible; }
+  .card-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .shell, :root[data-notes="off"] .shell, :root[data-projector="on"] .shell { grid-template-columns: minmax(0, 1fr); }
+  .side { border-right: 0; border-bottom: 1px solid var(--rule); }
+}
+@media (max-width: 640px) {
+  .stack { padding: .5rem 1rem; gap: .45rem .7rem; }
+  .brand { font-size: 1.1rem; }
+  .brand .full { display: none; }
+  .shape, .build, .pips .pip:not(.summary) { display: none; }
+  .pip.summary { display: inline-flex; }
+  .tools { margin-left: auto; }
+  .tools .wide { display: none; }
+  .navbtn { display: inline-flex; }
+  .seg button { padding: .18rem .55rem; }
+  .banner { padding: .55rem 1rem; }
+  .side { display: none; position: fixed; inset: 0; z-index: 40; background: var(--page); padding: 1rem 1rem 3rem; overflow-y: auto; border: 0; }
+  :root[data-drawer="open"] .side { display: flex; }
+  .side .drawer-close { display: inline-flex; align-self: flex-end; }
+  .run { padding: 1rem 1rem 2rem; }
+  .runhead { grid-template-columns: minmax(0, 1fr); }
+  .ticket { font-size: 1.25rem; }
+  .links { grid-column: 1; grid-row: auto; flex-direction: row; flex-wrap: wrap; margin-top: .6rem; }
+  .herofoot { grid-template-columns: minmax(0, 1fr); }
+  .facts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 1rem; }
+  .facts dt { white-space: normal; }
+  .facts dd { font-size: 1.7rem; }
+  .statebig { font-size: min(3.6rem, 12.4cqi); }
+  .statebig::after { height: 5px; }
+  .track li.far { display: none; }
+  .steps li:not(.current) .lab { display: none; }
+  .steps li:not(.current) { padding: .2rem; }
+  .run > .lanes { max-height: none; overflow: visible; }
+  .lhead { display: none; }
+  .row { grid-template-columns: 6px minmax(0, 1fr); }
+  .row.cross, .row.cross.out { min-height: 0; }
+  .row > .c-time, .row > .c-seam { display: none; }
+  .row > .c-sup:empty, .row > .c-fin:empty { display: none; }
+  .row > .c-sup, .row > .c-fin { grid-column: 2; }
+  .row > .c-rail { grid-row: 1 / span 2; }
+  .c-sup { box-shadow: inset 2px 0 0 var(--support-fill); }
+  .c-fin { box-shadow: inset 2px 0 0 var(--finance-fill); }
+  .ev .lane { display: inline; }
+  .row.cross .c-sup .ev, .row.cross .c-fin .ev, .row.stub .c-sup .ev { padding: 0 0 0 1.6rem; }
+  .row.cross .wire, .row.stub .wire { display: none; }
+  .row.cross .c-sup::after, .row.stub .c-sup::after { content: attr(data-hop); display: block; margin-top: .35rem; padding: .3rem .55rem; border-radius: 6px; background: var(--band); box-shadow: inset 2px 0 0 var(--purple); font-size: .8rem; font-weight: 500; color: var(--nexus); }
+  .row.now .c-time { display: none; }
+  /* The approval card becomes a bottom sheet so it stays reachable while the lanes scroll. */
+  .approval { position: fixed; left: .5rem; right: .5rem; bottom: .5rem; z-index: 30; margin: 0; box-shadow: 0 -8px 40px rgb(0 0 0 / .6), 0 0 0 1px color-mix(in srgb, var(--hold) 35%, transparent); max-height: 60vh; overflow-y: auto; }
+  .approval .in { gap: .4rem; }
+  .approval h3 { font-size: 1.2rem; }
+  .approval .drainok { display: none; }
+  body:has(.approval:not(.done)) { padding-bottom: 17rem; }
+  .form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .form .acts { grid-column: 1 / -1; flex-wrap: nowrap; }
+  .form .acts .btn { flex: 1 1 0; min-width: 0; }
+  .notes { padding: 1rem; }
+  .card-view, .welcome { padding: 1.2rem 1rem 2.5rem; }
+  .card-view h1 { font-size: 2rem; }
+  .welcome h1 { font-size: 2.1rem; }
+  .sheet .body { padding: 1rem 1rem 3rem; }
+  .plist > li { grid-template-columns: minmax(0, 1fr); }
+  .plist .ctl { grid-column: 1; grid-row: auto; justify-content: flex-start; }
+  .report { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report > div { border-bottom: 1px solid var(--rule); }
+}
+.side .drawer-close { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- mockup-only markup (the real page uses .pip .dot, .steps .n and links) ---------- */
+.pip::before { content: ""; width: .55rem; height: .55rem; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px rgb(31 241 165 / .55); flex: none; }
+.pip[data-s="zero"]::before { background: none; border-radius: 2px; box-shadow: none; outline: 1.5px dashed var(--dead); outline-offset: -1.5px; }
+.pip[data-s="down"]::before { background: none; box-shadow: inset 0 0 0 2px var(--bad); }
+.steps { counter-reset: s; }
+.steps li { counter-increment: s; }
+.steps li::before { content: counter(s); display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%; font-weight: 600; font-size: .78rem; box-shadow: inset 0 0 0 1px var(--rule); flex: none; }
+.steps li.done { font-size: 0; gap: 0; }
+.steps li.done::before { content: "\2713"; font-size: .78rem; background: var(--raised); color: var(--ok); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 40%, transparent); }
+.steps li.current::before { background: var(--nexus-fill); color: var(--on-uv); box-shadow: none; }
+.scen button { width: 100%; text-align: left; border: 0; background: none; color: inherit; border-radius: 8px; padding: .45rem .6rem; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 .5rem; }
+.scen button:hover { background: var(--panel); }
+.scen button[aria-current="true"] { background: var(--raised); box-shadow: inset 2px 0 0 var(--nexus-fill); }
+.notes .cmd { font-family: var(--mono); font-size: .8rem; background: var(--well); border: 1px solid var(--rule); border-radius: 8px; padding: .5rem .65rem; overflow-wrap: anywhere; }
+.report { display: none; }
+.report.on { display: grid; }
+.row.disco .c-sup .wire { width: 1.2rem; }
+@media (max-width: 640px) {
+  .pips .pip[data-key] { display: inline-flex; }
+  .steps li:not(.current) { font-size: 0; gap: 0; }
+  .steps li:not(.current)::before { font-size: .78rem; }
+}
+</style>
+</head>
+<body>
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-headset" viewBox="0 0 20 20"><path d="M4 11V9a6 6 0 0 1 12 0v2"/><rect x="3" y="11" width="3" height="5" rx="1"/><rect x="14" y="11" width="3" height="5" rx="1"/><path d="M15.5 16c0 1.5-2 2-4 2"/></symbol>
+  <symbol id="i-ledger" viewBox="0 0 20 20"><rect x="4" y="2.5" width="12" height="15" rx="1.5"/><path d="M7 6.5h6M7 9.5h6M7 12.5h3.5"/></symbol>
+  <symbol id="i-seam" viewBox="0 0 20 20"><path d="M10 2v16"/><path d="M3 8h11l-2.5-2.5M17 12H6l2.5 2.5"/></symbol>
+  <symbol id="i-think" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M7.5 10h.01M10 10h.01M12.5 10h.01" stroke-width="2.2"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 20 20"><path d="M12.5 3.5a3.5 3.5 0 0 0-3.3 4.6L3.5 13.8l2.7 2.7 5.7-5.7a3.5 3.5 0 0 0 4.6-3.3l-2 2-2.3-.4-.4-2.3z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 20 20"><path d="M6 4l10 6-10 6z"/></symbol>
+  <symbol id="i-power" viewBox="0 0 20 20"><path d="M10 3v6"/><path d="M5.6 6a6 6 0 1 0 8.8 0"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 20 20"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4 6.5 6.5 0 1 0 16 12.5z"/></symbol>
+  <symbol id="i-person" viewBox="0 0 20 20"><circle cx="10" cy="6.5" r="3"/><path d="M4 17c.8-3.3 3.2-5 6-5s5.2 1.7 6 5"/></symbol>
+  <symbol id="i-hold" viewBox="0 0 20 20"><path d="M10 2.5l7.5 7.5-7.5 7.5L2.5 10z"/><path d="M8.2 7.5v5M11.8 7.5v5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><path d="M4 10.5l4 4 8-9"/></symbol>
+  <symbol id="i-x" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5L5 15"/></symbol>
+  <symbol id="i-start" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2" fill="currentColor"/></symbol>
+  <symbol id="i-signal" viewBox="0 0 20 20"><path d="M3 10h9"/><path d="M9 6l4 4-4 4"/><path d="M16 4v12"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 20 20"><path d="M11 4h5v5M16 4l-7 7"/><path d="M14 12v3.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7.5a1 1 0 0 1 1-1h3.5"/></symbol>
+  <symbol id="i-notes" viewBox="0 0 20 20"><path d="M5 3.5h10v13H5z"/><path d="M7.5 7h5M7.5 10h5M7.5 13h3"/></symbol>
+  <symbol id="i-screen" viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="10" rx="1"/><path d="M7 17h6M10 14v3"/></symbol>
+  <symbol id="i-contrast" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 20 20"><path d="M4 16l6-6M13 3.5a3.5 3.5 0 0 0-2.6 5.8L4 15.7 5.3 17l6.4-6.4A3.5 3.5 0 0 0 16.5 7l-2 1-1.5-1.5 1-2A3.4 3.4 0 0 0 13 3.5z"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.5v7M8 8.5h3a1.2 1.2 0 0 1 0 2.4H9a1.2 1.2 0 0 0 0 2.4h3"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 20 20"><path d="M6 15.5h8.5a3.5 3.5 0 0 0 .3-7A5 5 0 0 0 5.2 9.6 3 3 0 0 0 6 15.5z"/></symbol>
+</svg>
+
+<header class="stack" aria-label="Stack">
+  <span class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>AgentCore demo console</span>
+  <div class="seg" role="group" aria-label="Temporal profile">
+    <button aria-pressed="true">local</button><button aria-pressed="false">kind</button><button aria-pressed="false">eks-pf</button>
+  </div>
+  <div class="shape"><span>Support <b>serverless, WCI emulator</b></span><span>Model <b>scripted</b></span></div>
+  <ul class="pips" aria-label="Components">
+    <li class="pip" data-s="up" data-key>Temporal</li>
+    <li class="pip" data-s="up">Web UI</li>
+    <li class="pip" data-s="up">Nexus endpoint</li>
+    <li class="pip" data-s="up" data-key>Finance <span class="n">1</span></li>
+    <li class="pip" data-s="zero" id="pip-support" data-key>Support <span class="n" id="pip-support-n">0</span></li>
+    <li class="pip" data-s="up">AgentCore app <span class="n" id="pip-ping">Healthy</span></li>
+    <li class="pip" data-s="up">WCI emulator</li>
+    <li class="pip" data-s="up">Payments</li>
+  </ul>
+  <span class="build"><span class="muted">Build</span> <span class="id">4ee7f87</span> <span class="muted">current, pinned</span></span>
+  <div class="tools">
+    <button class="tbtn" type="button"><svg class="i"><use href="#i-wrench"/></svg>Manage stack</button>
+    <button class="tbtn" type="button" id="t-notes" aria-pressed="true" aria-label="Presenter notes" title="Presenter notes (N)"><svg class="i"><use href="#i-notes"/></svg><kbd>N</kbd></button>
+    <button class="tbtn" type="button" id="t-proj" aria-pressed="false" aria-label="Projector mode" title="Projector mode (P)"><svg class="i"><use href="#i-screen"/></svg><kbd>P</kbd></button>
+    <button class="tbtn" type="button" id="t-theme" aria-label="Theme: dark" title="Theme: dark"><svg class="i"><use href="#i-contrast"/></svg></button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="side" aria-label="Scenarios and runs">
+    <section>
+      <h2>Scenarios</h2>
+      <ul class="scen">
+        <li><button><span class="t">Case A</span><span class="fit" data-f="ready">ready</span><span class="s">$40 headphones, auto-approved</span></button></li>
+        <li><button><span class="t">Case B</span><span class="fit" data-f="ready">ready</span><span class="s">$450 laptop, a human approves</span></button></li>
+        <li><button><span class="t">Crash demo</span><span class="fit">needs plain worker</span><span class="s">Kill the worker mid-thought</span></button></li>
+        <li><button><span class="t">Serverless, invoke-local</span><span class="fit" data-f="ready">ready</span><span class="s">You start each AgentCore lifetime</span></button></li>
+        <li><button aria-current="true"><span class="t">Serverless, the server's WCI</span><span class="fit" data-f="ready">ready</span><span class="s">Temporal starts the worker when work arrives</span></button></li>
+        <li><button><span class="t">On AgentCore in AWS</span><span class="fit">eks-pf only</span><span class="s"><span class="cost"><svg class="i"><use href="#i-cloud"/></svg>Calls AWS</span></span></button></li>
+        <li><button><span class="t">Failure demo</span><span class="fit" data-f="ready">ready</span><span class="s">Finance disappears mid-call</span></button></li>
+        <li><button><span class="t">The hop with no AI</span><span class="fit" data-f="ready">ready</span><span class="s">Smoke caller and Agent Card</span></button></li>
+        <li><button><span class="t">Load</span><span class="fit" data-f="ready">ready</span><span class="s">Up to 20 conversations at once</span></button></li>
+      </ul>
+    </section>
+    <section>
+      <h2>Runs</h2>
+      <ul class="runs">
+        <li><a href="#" aria-current="page"><span class="id">support-2077-wci-k3f9</span><span class="st" id="run-st"><svg class="i" style="color:var(--hold)"><use href="#i-hold"/></svg>waiting</span><span class="when">Case B, started 14:02</span></a></li>
+        <li><a href="#"><span class="id">support-2077-sl-k2wq</span><span class="st"><svg class="i" style="color:var(--bad)"><use href="#i-x"/></svg>rejected</span><span class="when">Case B, 13:51</span></a></li>
+        <li><a href="#"><span class="id">support-1042-k2t0</span><span class="st"><svg class="i" style="color:var(--ok)"><use href="#i-check"/></svg>completed</span><span class="when">Case A, 13:44</span></a></li>
+        <li><a href="#"><span class="id">load-1793500000</span><span class="st"><svg class="i" style="color:var(--ok)"><use href="#i-check"/></svg>10 of 10</span><span class="when">Load, ping, 13:30</span></a></li>
+      </ul>
+    </section>
+  </nav>
+
+  <main class="run" id="run">
+    <div class="runhead">
+      <span class="wf id">support-2077-wci-k3f9</span>
+      <p class="ticket">Order #2077: my laptop arrived with a cracked screen. I want a refund.</p>
+      <div class="meta">
+        <span>Case B, the server's WCI starts the worker</span>
+        <span>Queue <b class="id">support-tq</b></span>
+        <span>Pinned to <b class="id">support-supervisor:4ee7f87</b></span>
+        <span>A2A mode <b>tool</b></span>
+      </div>
+      <div class="links">
+        <a class="lbtn" href="http://127.0.0.1:8233/namespaces/agents/workflows/support-2077-wci-k3f9" target="_blank" rel="noopener"><span class="sw" style="background:var(--support)"></span>Support in Temporal UI<svg class="i"><use href="#i-ext"/></svg></a>
+        <a class="lbtn" href="http://127.0.0.1:8233/namespaces/agent-services/workflows/a2a-task-support-2077-wci-k3f9" target="_blank" rel="noopener"><span class="sw" style="background:var(--finance)"></span>Finance task in Temporal UI<svg class="i"><use href="#i-ext"/></svg></a>
+      </div>
+    </div>
+
+    <section class="hero" aria-label="A2A task state">
+      <div>
+        <ol class="track" id="track" aria-label="A2A task states">
+          <li class="past far">submitted</li><li class="past">working</li><li class="now">input-required</li><li>completed <span class="alt">or rejected, failed</span></li>
+        </ol>
+        <p class="statebig" id="statebig" data-s="input-required" aria-live="polite">input-required</p>
+      </div>
+      <div class="herofoot">
+      <p class="statesub" id="statesub">Finance's agent recommends the refund, but $450 is over the $100 auto-approve limit, so a person must decide.</p>
+      <dl class="facts">
+        <div><dt>Support workers running</dt><dd><span class="lamp" id="lamp"></span><span id="f-workers">0</span></dd></div>
+        <div><dt>Nexus call held open</dt><dd class="held" id="f-held">2:14</dd></div>
+        <div><dt>Lifetimes</dt><dd id="f-life">1</dd></div>
+      </dl>
+      </div>
+    </section>
+
+    <ol class="steps" id="steps" aria-label="Guided steps"></ol>
+
+    <section class="lanes" id="lanes" aria-label="Both workflows over time">
+      <div class="lhead" aria-hidden="true">
+        <div></div>
+        <div class="railh">compute</div>
+        <div class="ln sup"><b><svg class="i"><use href="#i-headset"/></svg>Support</b><span>namespace <span class="id">agents</span></span></div>
+        <div class="seamh"><b>Nexus</b><span class="id">finance-agent</span></div>
+        <div class="ln fin"><b><svg class="i"><use href="#i-ledger"/></svg>Finance</b><span>namespace <span class="id">agent-services</span></span></div>
+      </div>
+      <div id="rows"></div>
+      <button class="tbtn follow" type="button" id="follow">Follow newest</button>
+    </section>
+
+    <dl class="report" id="report" aria-label="Report">
+      <div><dt>Lifetimes</dt><dd>2</dd></div>
+      <div><dt>Build IDs</dt><dd><span class="id">4ee7f87</span></dd></div>
+      <div><dt>Approval wait</dt><dd id="r-wait">2:14</dd></div>
+      <div><dt>Approval to reply</dt><dd>1.1 s</dd></div>
+      <div><dt>Refund</dt><dd><span class="id">R-10016</span></dd></div>
+    </dl>
+  </main>
+
+  <aside class="notes" aria-label="Presenter notes">
+    <h2>Say</h2>
+    <p class="say" id="say">Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh worker to finish the reply.</p>
+    <h2>Point at</h2>
+    <p class="point" id="point">The empty dashed rail on the left: no Support worker exists. The glowing line in the Nexus band: the server is holding Support's call to Finance open.</p>
+    <h2>Same thing from a terminal</h2>
+    <div class="cmd" id="cmd">make approve WF=support-2077-wci-k3f9 APPROVER=dana.finance</div>
+    <p class="story">Story: v0.7 serverless shape and v0.13 scale to zero. Ledger 72: the console never queries Support; it reads history.</p>
+  </aside>
+</div>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const $ = (s) => document.querySelector(s);
+  const UI = "http://127.0.0.1:8233";
+  const WF = "support-2077-wci-k3f9";
+  const supLink = `${UI}/namespaces/agents/workflows/${WF}`;
+  const finLink = `${UI}/namespaces/agent-services/workflows/a2a-task-${WF}`;
+  const ID1 = "4711@laptop/agentcore-lifetime-1";
+  const ID2 = "4711@laptop/agentcore-lifetime-2";
+
+  // Lane rows (the /api/runs/{wf}/rows shape, already paired for crossings).
+  const rows = [
+    { t: 0.00, lane: "support", g: "i-start", title: "Ticket received", detail: "Workflow started on support-tq; nothing is polling yet" },
+    { t: 0.02, lane: "wci", g: "i-signal", title: "Server invokes AgentCore", detail: "WCI: InvokeWorker through the local emulator" },
+    { t: 0.41, lane: "compute", g: "i-power", title: "Lifetime 1 starts and polls", ident: ID1 },
+    { t: 0.52, lane: "disco", title: "Reads Finance's Agent Card", op: "get_agent_card" },
+    { t: 0.60, lane: "support", g: "i-think", agent: "Support Supervisor", title: "thinks", ident: ID1 },
+    { t: 0.95, lane: "support", g: "i-think", agent: "Order Lookup agent", title: "thinks" },
+    { t: 1.30, lane: "support", g: "i-tool", title: "lookup_order", detail: "order 2077: laptop, $450.00, delivered damaged" },
+    { t: 1.98, lane: "support", g: "i-think", agent: "Return Policy agent", title: "thinks" },
+    { t: 2.66, lane: "support", g: "i-tool", title: "get_return_policy", detail: "damaged on arrival: full refund" },
+    { t: 3.35, lane: "support", g: "i-think", agent: "Support Supervisor", title: "decides to ask Finance" },
+    { t: 3.70, lane: "cross-out", sup: "Asks Finance for a refund", supd: "via the ask_finance_agent tool", op: "send_message", fin: "A2A task started", find: "working; refund order 2077 $450" },
+    { t: 4.80, lane: "finance", g: "i-think", agent: "Finance Refund agent", title: "thinks" },
+    { t: 5.85, lane: "finance", g: "i-tool", title: "fraud_score and refund_history", detail: "risk LOW; no earlier refunds" },
+    { t: 6.90, lane: "finance", g: "i-think", agent: "Finance Refund agent", title: "recommends approval" },
+    { t: 6.95, lane: "finance", g: "i-hold", title: "Finance asks a human", detail: "input-required; approval timer 24h", approval: true },
+    { t: 26.96, lane: "compute", g: "i-power", cls: "drain", title: "Lifetime 1 idle for 20 s, draining", ident: ID1 },
+    { t: 26.99, lane: "compute", g: "i-power", cls: "drain", title: "Lifetime 1 drained", detail: "AgentCore app Healthy; no Support code runs anywhere" },
+  ];
+  const afterApprove = [
+    { dt: 0.00, lane: "human", g: "i-person", title: "dana.finance approved", detail: "“photos checked”" },
+    { dt: 0.07, lane: "finance", g: "i-tool", title: "Payments: refund order 2077 $450.00", detail: "issue_refund; refund R-10016" },
+    { dt: 0.12, lane: "cross-back", fin: "A2A task completed", find: "approved_by dana.finance", op: "send_message", sup: "Finance answers", supd: "completed, refund R-10016" },
+    { dt: 0.17, lane: "wci", g: "i-signal", title: "Server invokes AgentCore", detail: "WCI: task-add-signal, then InvokeWorker (+0.06 s)" },
+    { dt: 0.62, lane: "compute", g: "i-power", title: "Lifetime 2 starts and polls", ident: ID2, life: 2 },
+    { dt: 0.70, lane: "support", g: "i-think", agent: "Support Supervisor", title: "writes the reply", ident: ID2 },
+    { dt: 1.05, lane: "support", g: "i-check", title: "Reply sent", reply: true },
+  ];
+
+  // [short label for the stepper, full title for the tooltip and notes]
+  const steps = [
+    ["Start", "Start Case B on support-tq"], ["Lifetime 1", "The WCI starts lifetime 1"],
+    ["A human is asked", "Finance asks a human"], ["Compute drains", "Support's compute drains"],
+    ["Approve the refund", "Approve the refund"], ["Lifetime 2", "The WCI starts lifetime 2"],
+    ["Reply", "Support replies with the refund ID"], ["Report", "Read the report"],
+  ];
+  const notes = {
+    4: { say: "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh worker to finish the reply.",
+         point: "The empty dashed rail on the left: no Support worker exists. The glowing line in the Nexus band: the server is holding Support's call to Finance open.",
+         cmd: `make approve WF=${WF} APPROVER=dana.finance` },
+    7: { say: "Finance's answer landed in Support's history. The server saw work for a version with no worker, invoked AgentCore, and lifetime 2 finished the reply on the same pinned build.",
+         point: "The rail glows mint again as lifetime 2. The report: two lifetimes, one Build ID, about a second from approval to reply.",
+         cmd: `uv run --frozen python scripts/serverless_report.py ${WF}` },
+  };
+
+  let state = { step: 4, live: { held: 134, wait: 134 }, approved: false, lifeLit: false };
+  const drainT = 26.99, lit1 = [0.41, 26.99];
+
+  // ----- rendering helpers -----
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const icon = (id) => `<svg class="i"><use href="#${id}"/></svg>`;
+  const fmtT = (t) => t < 60 ? `+${t.toFixed(t < 10 ? 2 : 1)} s` : `+${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, "0")}`;
+  const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const deep = (href) => `<a class="deep" href="${href}" target="_blank" rel="noopener" aria-label="Open in Temporal UI">${icon("i-ext")}</a>`;
+
+  function ev(r, kind) {
+    const laneWord = { sup: "Support", fin: "Finance", cmp: "Support compute", wci: "Temporal server", hum: "Finance approver" }[kind];
+    const title = r.agent ? `<span class="ag">${esc(r.agent)}</span> ${esc(r.title)}` : esc(r.title);
+    const link = kind === "fin" || kind === "hum" ? finLink : supLink;
+    return `<div class="ev ${kind}-ev ${r.cls || ""}"><span class="g">${icon(r.g)}</span>` +
+      `<span class="tt"><span class="lane">${laneWord}</span>${title}${deep(link)}</span>` +
+      (r.detail ? `<span class="dd">${esc(r.detail)}</span>` : "") +
+      (r.ident ? `<span class="dd ident id">${esc(r.ident)}</span>` : "") + `</div>`;
+  }
+  function railClass(t, live2) {
+    if (live2 !== undefined && t >= live2) return "lit";
+    if (t < lit1[0]) return "none";
+    return t <= lit1[1] ? "lit" : "off";
+  }
+  function seamClass(t, from, to) {
+    if (t < from) return "";
+    if (to !== null && t > to) return "";
+    let c = "held";
+    if (t === from) c += " held-top";
+    if (to !== null && t === to) c += " held-end";
+    return c;
+  }
+
+  let heldTo = null, life2At = undefined, approveAt = null;
+  const heldFrom = 3.70;
+
+  function rowHTML(r, isNew) {
+    const rc = railClass(r.t, life2At);
+    const sc = seamClass(r.t, heldFrom, heldTo);
+    const tcell = `<div class="c-time">${fmtT(r.t)}</div><div class="c-rail ${rc}"></div>`;
+    const cls = `row${isNew ? " new" : ""}`;
+    if (r.lane === "cross-out" || r.lane === "cross-back") {
+      const out = r.lane === "cross-out";
+      const sup = `<div class="ev sup-ev"><span class="g">${icon("i-seam")}</span><span class="tt"><span class="lane">Support</span>${esc(r.sup)}${deep(supLink)}</span><span class="dd">${esc(r.supd)}</span></div>`;
+      const fin = `<div class="ev fin-ev"><span class="g">${icon(out ? "i-start" : "i-check")}</span><span class="tt"><span class="lane">Finance</span>${esc(r.fin)}${deep(finLink)}</span><span class="dd">${esc(r.find)}</span></div>`;
+      const hop = out ? "Nexus send_message to Finance, held open by the server" : "Nexus send_message completes back to Support";
+      return `<div class="${cls} cross ${out ? "out" : "back"}" role="listitem">${tcell}` +
+        `<div class="c-sup" data-hop="${hop}">${sup}<span class="wire ${out ? "" : "arrow-l"}"></span></div>` +
+        `<div class="c-seam ${sc}"><span class="wire"></span><span class="lab"><span class="id">${r.op}</span><br>${out ? "to Finance" : "answer"}</span></div>` +
+        `<div class="c-fin">${fin}<span class="wire ${out ? "arrow-r" : ""}"></span></div></div>`;
+    }
+    if (r.lane === "disco") {
+      return `<div class="${cls} cross disco" role="listitem">${tcell}` +
+        `<div class="c-sup" data-hop="Nexus get_agent_card (discovery)"><div class="ev sup-ev"><span class="g">${icon("i-seam")}</span><span class="tt"><span class="lane">Support</span>${esc(r.title)}${deep(supLink)}</span><span class="dd">sync call, answered by Finance's handler</span></div><span class="wire"></span></div>` +
+        `<div class="c-seam ${sc}"><span class="lab"><span class="id">${r.op}</span></span></div><div class="c-fin"></div></div>`;
+    }
+    let sup = "", fin = "";
+    if (r.lane === "support") sup = ev(r, "sup");
+    if (r.lane === "compute") sup = ev(r, "cmp");
+    if (r.lane === "wci") sup = ev(r, "wci");
+    if (r.lane === "finance") fin = ev(r, "fin");
+    if (r.lane === "human") fin = ev(r, "hum");
+    if (r.reply) sup += `<div class="reply"><div class="who">Reply to the customer</div><p>I'm sorry your laptop arrived with a cracked screen. Finance approved a refund of $450.00 to your original payment method (refund R-10016). You'll see it within 3 to 5 business days.</p></div>`;
+    return `<div class="${cls}" role="listitem">${tcell}<div class="c-sup">${sup}</div><div class="c-seam ${sc}"></div><div class="c-fin">${fin}</div></div>`;
+  }
+
+  function gapHTML(from, to, live) {
+    const secs = live ? state.live.wait + (to - from) * 0 : to - from;
+    const dark = railClass(from + 0.001, life2At) === "off";
+    const what = dark
+      ? `<b id="gap-clock">${clock(live ? state.live.wait - 20 : secs)}</b> with no Support compute. The conversation is in history; nothing is billed.`
+      : `<b>${Math.round(secs)} s</b>: lifetime 1 stays up for the 20 s debounce, then drains`;
+    const sc = seamClass(from + 0.001, heldFrom, heldTo);
+    return `<div class="row gap" role="listitem"><div class="c-time">${live ? "now" : ""}</div><div class="c-rail ${railClass(from + 0.001, life2At)}"></div>` +
+      `<div class="c-sup"><div class="gapnote">${icon(dark ? "i-power" : "i-hold")}<span>${what}</span></div></div><div class="c-seam ${sc}${live ? " live-edge" : ""}"></div><div class="c-fin">${live && !state.approved ? approvalHTML() : ""}</div></div>`;
+  }
+
+  function approvalHTML() {
+    return `<form class="approval" id="approval" aria-label="Approval">
+      <div class="in">
+        <h3>${icon("i-hold")}Finance asks a human</h3>
+        <p>Recommend approve: the laptop arrived damaged; no earlier refunds.</p>
+        <dl class="akv">
+          <div><dt>Amount</dt><dd>$450.00</dd></div>
+          <div><dt>Auto-approve limit</dt><dd>$100.00</dd></div>
+          <div><dt>Risk</dt><dd>LOW</dd></div>
+          <div><dt>Finance gives up</dt><dd>in 24 h</dd></div>
+        </dl>
+        <div class="form">
+          <label>Approver<input name="approver" value="dana.finance" autocomplete="off"></label>
+          <label>Comment<input name="comment" value="photos checked" autocomplete="off"></label>
+          <div class="acts">
+          <button class="btn ok" type="submit" id="approve">${icon("i-check")}Approve refund</button>
+          <button class="btn no" type="button" id="reject">${icon("i-x")}Reject refund</button>
+          </div>
+        </div>
+        <div class="drainok"><span class="lamp"></span><span>Support has no compute right now. Approving signals the A2A task in agent-services, and the server brings Support back.</span></div>
+      </div></form>`;
+  }
+
+  const rowsEl = $("#rows");
+  rowsEl.setAttribute("role", "list");
+  // The lanes follow the newest row; scrolling up pauses that until "Follow newest" is pressed.
+  const lanesEl = $("#lanes");
+  lanesEl.addEventListener("scroll", () => {
+    const atEnd = lanesEl.scrollHeight - lanesEl.scrollTop - lanesEl.clientHeight < 24;
+    lanesEl.classList.toggle("paused", !atEnd);
+  }, { passive: true });
+  $("#follow").addEventListener("click", () => { lanesEl.classList.remove("paused"); lanesEl.scrollTop = lanesEl.scrollHeight; });
+  const extra = [];
+
+  function render(newFrom = Infinity) {
+    let html = "";
+    const all = rows.concat(extra);
+    all.forEach((r, i) => {
+      const prev = all[i - 1];
+      if (prev && r.t - prev.t > 4 && !(approveAt !== null && r.t === approveAt)) html += gapHTML(prev.t, r.t, false);
+      if (approveAt !== null && r.t === approveAt) html += gapHTML(drainT, approveAt, false).replace('id="gap-clock"', "");
+      html += rowHTML(r, i >= newFrom);
+    });
+    if (!state.approved) html += gapHTML(drainT, drainT + 1, true);
+    rowsEl.innerHTML = html;
+    if (!lanesEl.classList.contains("paused")) lanesEl.scrollTop = lanesEl.scrollHeight;
+    const form = $("#approval");
+    if (form) {
+      form.addEventListener("submit", (e) => { e.preventDefault(); decide(); });
+      $("#reject").addEventListener("click", () => decide());
+    }
+  }
+
+  function renderSteps() {
+    $("#steps").innerHTML = steps.map(([short, full], i) =>
+      `<li class="${i < state.step ? "done" : i === state.step ? "current" : ""}" title="${esc(full)}"${i === state.step ? ' aria-current="step"' : ""}>${esc(short)}</li>`).join("");
+    const n = notes[state.step];
+    if (n) { $("#say").textContent = n.say; $("#point").textContent = n.point; $("#cmd").textContent = n.cmd; }
+  }
+
+  function setState(s, sub) {
+    const big = $("#statebig");
+    big.textContent = s; big.dataset.s = s;
+    big.classList.remove("enter"); void big.offsetWidth; big.classList.add("enter");
+    $("#statesub").textContent = sub;
+    const lis = $("#track").children;
+    lis[2].className = "past"; lis[3].className = "now";
+    lis[3].innerHTML = `${s} <span class="alt"></span>`;
+  }
+
+  function decide() {
+    if (state.approved) return;
+    state.approved = true;
+    const form = $("#approval");
+    if (form) form.classList.add("done");
+    approveAt = drainT + state.live.wait - 20;
+    $("#r-wait").textContent = clock(state.live.wait);
+    let i = 0;
+    const tick = () => {
+      const r = afterApprove[i];
+      const row = { ...r, t: +(approveAt + r.dt).toFixed(2) };
+      if (r.lane === "cross-back") heldTo = row.t;
+      if (r.life) { life2At = row.t; $("#lamp").classList.add("lit"); $("#f-workers").textContent = "1"; $("#f-life").textContent = "2";
+        const p = $("#pip-support"); p.dataset.s = "up"; $("#pip-support-n").textContent = "1"; $("#pip-ping").textContent = "HealthyBusy"; state.step = 6; renderSteps(); }
+      if (r.lane === "finance" && i === 1) { state.step = 5; renderSteps(); }
+      if (r.lane === "cross-back") { setState("completed", "Approved by dana.finance. Finance issued refund R-10016 and answered Support's held call."); $("#f-held").textContent = clock(state.live.held + 1); $("#run-st").innerHTML = `${icon("i-check")}completed`; $("#run-st").style.color = "var(--ok)"; }
+      extra.push(row);
+      render(rows.length + extra.length - 1);
+      i += 1;
+      if (i < afterApprove.length) setTimeout(tick, 520);
+      else { state.step = 7; renderSteps(); $("#report").classList.add("on"); }
+    };
+    setTimeout(tick, 260);
+  }
+
+  // live clocks while waiting
+  setInterval(() => {
+    if (state.approved) return;
+    state.live.held += 1; state.live.wait += 1;
+    $("#f-held").textContent = clock(state.live.held);
+    const g = $("#gap-clock"); if (g) g.textContent = clock(state.live.wait - 20);
+  }, 1000);
+
+  // toggles
+  const notesBtn = $("#t-notes"), projBtn = $("#t-proj"), themeBtn = $("#t-theme");
+  const toggleNotes = () => { const on = root.dataset.notes !== "off"; root.dataset.notes = on ? "off" : "on"; notesBtn.setAttribute("aria-pressed", String(!on)); };
+  const toggleProj = () => { const on = root.dataset.projector === "on"; root.dataset.projector = on ? "off" : "on"; projBtn.setAttribute("aria-pressed", String(!on)); };
+    // Dark is the default with no preference set (BRAND.md); light only when chosen.
+  const setTheme = (t) => { t = t === "light" ? "light" : "dark"; root.dataset.theme = t; themeBtn.setAttribute("aria-label", `Theme: ${t}`); themeBtn.title = `Theme: ${t}`; };
+  notesBtn.addEventListener("click", toggleNotes);
+  projBtn.addEventListener("click", toggleProj);
+  themeBtn.addEventListener("click", () => setTheme(root.dataset.theme === "light" ? "dark" : "light"));
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "n" || e.key === "N") toggleNotes();
+    if (e.key === "p" || e.key === "P") toggleProj();
+  });
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) setTheme(q.get("theme"));
+  if (q.get("notes") === "off") toggleNotes();
+  if (q.get("projector") === "on") toggleProj();
+
+  renderSteps();
+  render();
+  if (q.get("approved") === "1") { state.live.wait = 134; decide(); }
+})();
+</script>
+</body>
+</html>

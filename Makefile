@@ -57,7 +57,7 @@ PYTEST := $(UV) pytest
         agentcore-network agentcore-logs flow-report \
         check-quotas render-config pause resume eks-kubeconfig eks-env eks-status \
         eks-temporal eks-rds-ca create-db-user rds-snapshot route53-alias finance-image finance-deploy \
-        finance-scale failure load ui-shot refund-idempotency
+        finance-scale failure load ui-shot refund-idempotency console console-shots
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -465,6 +465,19 @@ worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(
 agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPORAL_TLS_CLIENT_CERT_PATH = $(CURDIR)/.certs/eks/agentcore-worker/tls.crt
 agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(CURDIR)/.certs/eks/agentcore-worker/tls.key
 endif
+
+# --- v1.0: demo console (docs/console/DESIGN.md; services/demo-console) ---------------
+# One web page drives and watches every scenario. It uses the same envconfig profile as
+# every target here (TEMPORAL_PROFILE=local|kind|kind-plaintext|eks-pf) and starts laptop
+# processes as `make -s <target>` children. AWS-backed actions stay off unless
+# CONSOLE_ALLOW_AWS=1. Binds 127.0.0.1 only.
+CONSOLE_PORT ?= 8099
+
+console: ## Demo console on http://127.0.0.1:8099 (TEMPORAL_PROFILE=local|kind|kind-plaintext|eks-pf; CONSOLE_ALLOW_AWS=1 enables AWS-backed actions)
+	$(UV) python -m demo_console --port $(CONSOLE_PORT)
+
+console-shots: ## Screenshots of the console's fixture views (dark/light, 1440x900 + 390x844) -> .temporal/console/shots/ (no Temporal needed)
+	scripts/console-shot.sh --all
 
 verify: ## Run scripts/verify/$(TAG).sh, e.g. make verify TAG=v0.1-scaffold
 	scripts/verify/$(TAG).sh

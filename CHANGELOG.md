@@ -2,6 +2,41 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## Unreleased: demo console (toward v1.0.0)
+
+A web **demo console** on <http://127.0.0.1:8099> (`make console`) that drives every scenario
+and shows it live: Support (`agents`) and Finance (`agent-services`) as two lanes, the Nexus
+`send_message` crossing the seam between them, the A2A task state as the headline
+(`working → input-required → completed/rejected/failed`), and Support's compute as a rail that
+lights up per Worker or AgentCore lifetime and goes empty when it drains. The page has deep
+links to the Web UI on :8233. New workspace member `services/demo-console` (package
+`demo_console`; Starlette + uvicorn, already in `uv.lock`). No change to Support, Finance or the
+contract; Build ID unchanged (`4ee7f87`). Design and API contract: `docs/console/DESIGN.md`;
+look: `docs/console/BRAND.md`; story: `docs/story/console.md`.
+
+- Profiles: `local` (dev server; scripted or live models), `kind`, `kind-plaintext`, `eks-pf`.
+  Uses the same envconfig as `make`. Outside `local` it strips `TEMPORAL_TLS`/`TEMPORAL_ADDRESS`,
+  and it never passes the parent make's `MAKEFLAGS` to children. It detects a profile mismatch
+  from the port-forward pidfiles.
+- Process control: the dev server (`WCI=0|1`), payments-mock, the Finance, Support and smoke
+  Workers, the AgentCore app and the WCI emulator. Each runs as `make -s <target>` in its own
+  process group, is recorded under `.temporal/console/`, and is adopted again after a console
+  restart. Stack recipes: local plain, local invoke-local, local WCI emulator, kind laptop
+  side, teardown. One-shot jobs: nexus-endpoint, register-version, invoke-local, smoke, card,
+  load, wci-history, and the kind cluster lifecycle (confirm first).
+- Cost gate on every action (`free | tokens | aws`). AWS-backed actions (EKS failure demo,
+  CloudWatch drain confirm, `--agentcore-auto`) need `CONSOLE_ALLOW_AWS=1`.
+- Ledger 72 enforced: the console never queries a Support Workflow (a query on `support-tq`
+  would wake an AgentCore session); Support's state comes from history and describe only.
+  A unit test checks every route.
+- `make console-shots` / `scripts/console-shot.sh`: headless Chrome over the DevTools protocol;
+  fixture views at 1440×900 and 390×844, dark and light, into `.temporal/console/shots/`.
+  `?fixture=<name>` and `?demo=1` (a recorded Case B replay) work without Temporal.
+- Tests: 95 unit tests (fakes only: no AWS, no cluster) and an integration test on the
+  two-namespace dev server that drives Case A, Case B approve and reject, and a 409 through the
+  console's API with scripted in-process Workers. The kind and eks-pf paths are covered by unit
+  tests only; they need a real run after `make resume`.
+
 ## v0.13-scale-to-zero
 
 Case B **entirely in the cloud**: Support on AgentCore (VPC), Finance on EKS. Finance waits in

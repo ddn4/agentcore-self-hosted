@@ -1,0 +1,26 @@
+2026-11-02 11:14:31,944 INFO support_agent.agentcore: AgentCore app: deployment=support-supervisor build=4ee7f87 queue=support-tq model=global.anthropic.claude-opus-5-5 debounce=20s
+2026-11-02 11:14:32,571 INFO support_agent.agentcore: lifetime 1: connected to 127.0.0.1:7233 namespace agents (plaintext)
+2026-11-02 11:14:32,571 INFO support_agent.agentcore: lifetime 1: polling agents/support-tq as support-supervisor:4ee7f87 (PINNED), debounce 20s, identity 89516@laptop/agentcore-lifetime-1
+2026-11-02 11:15:01,909 INFO support_agent.agentcore: lifetime 1: idle for 20s (9 activities ran); draining
+2026-11-02 11:15:01,911 INFO support_agent.agentcore: lifetime 1: drained
+2026-11-02 11:15:01,912 INFO support_agent.agentcore: worker lifetime 1 over; async task released
+2026-11-02 11:17:13,287 INFO support_agent.agentcore: lifetime 2: connected to 127.0.0.1:7233 namespace agents (plaintext)
+2026-11-02 11:17:13,287 INFO support_agent.agentcore: lifetime 2: polling agents/support-tq as support-supervisor:4ee7f87 (PINNED), debounce 20s, identity 89516@laptop/agentcore-lifetime-2
+2026-11-02 11:17:33,631 INFO support_agent.agentcore: lifetime 2: idle for 20s (1 activities ran); draining
+2026-11-02 11:17:33,635 INFO support_agent.agentcore: lifetime 2: drained
+2026-11-02 11:17:33,635 INFO support_agent.agentcore: worker lifetime 2 over; async task released
+2026-11-02 11:17:36,612 INFO support_agent.agentcore: lifetime 3: connected to 127.0.0.1:7233 namespace agents (plaintext)
+2026-11-02 11:17:36,612 INFO support_agent.agentcore: lifetime 3: polling agents/support-tq as support-supervisor:4ee7f87 (PINNED), debounce 20s, identity 89516@laptop/agentcore-lifetime-3
+2026-11-02 11:18:08,097 INFO support_agent.agentcore: lifetime 3: idle for 20s (9 activities ran); draining
+2026-11-02 11:18:08,101 INFO support_agent.agentcore: lifetime 3: drained
+2026-11-02 11:18:08,101 INFO support_agent.agentcore: worker lifetime 3 over; async task released
+2026-11-02 11:18:16,438 INFO support_agent.agentcore: lifetime 4: connected to 127.0.0.1:7233 namespace agents (plaintext)
+2026-11-02 11:18:16,438 INFO support_agent.agentcore: lifetime 4: polling agents/support-tq as support-supervisor:4ee7f87 (PINNED), debounce 20s, identity 89516@laptop/agentcore-lifetime-4
+2026-11-02 11:18:36,770 INFO support_agent.agentcore: lifetime 4: idle for 20s (1 activities ran); draining
+2026-11-02 11:18:36,774 INFO support_agent.agentcore: lifetime 4: drained
+2026-11-02 11:18:36,774 INFO support_agent.agentcore: worker lifetime 4 over; async task released
+2026-11-02 11:18:41,551 INFO support_agent.agentcore: lifetime 5: connected to 127.0.0.1:7233 namespace agents (plaintext)
+2026-11-02 11:18:41,551 INFO support_agent.agentcore: lifetime 5: polling agents/support-tq as support-supervisor:4ee7f87 (PINNED), debounce 20s, identity 89516@laptop/agentcore-lifetime-5
+2026-11-02 11:19:01,579 INFO support_agent.agentcore: lifetime 5: idle for 20s (3 activities ran); draining
+2026-11-02 11:19:01,583 INFO support_agent.agentcore: lifetime 5: drained
+2026-11-02 11:19:01,583 INFO support_agent.agentcore: worker lifetime 5 over; async task released

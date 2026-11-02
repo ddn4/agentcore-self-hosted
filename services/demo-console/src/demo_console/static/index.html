@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentCore demo console</title>
+<meta name="description" content="Drive and watch the self-hosted Temporal + AgentCore demo: Support asks Finance for a refund over Nexus, and a human approves.">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#141414">
+<link rel="preload" href="vendor/fonts/hanken-grotesk-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='1' width='4' height='14' rx='1' fill='%230066FF'/%3E%3Crect x='6.5' y='1' width='3' height='14' rx='1' fill='%23444CE7'/%3E%3Crect x='11' y='1' width='4' height='14' rx='1' fill='%23FF6BFF'/%3E%3C/svg%3E">
+<script>
+  // Theme and layout flags before first paint (no flash). Storage may be blocked: ignore.
+  // Dark is the default whatever the OS prefers (docs/console/BRAND.md); light only when chosen.
+  (function () {
+    var d = document.documentElement, q = new URLSearchParams(location.search), s = {};
+    try { s = JSON.parse(localStorage.getItem("console.ui") || "{}") || {}; } catch (e) { s = {}; }
+    d.dataset.theme = (q.get("theme") || s.theme) === "light" ? "light" : "dark";
+    d.dataset.projector = q.get("projector") || s.projector || "off";
+    // On the projector the notes are off unless turned on there (they belong on #/notes).
+    d.dataset.notes = q.get("notes") || (d.dataset.projector === "on" ? s.projectorNotes || "off" : s.notes || "on");
+  })();
+</script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-headset" viewBox="0 0 20 20"><path d="M4 11V9a6 6 0 0 1 12 0v2"/><rect x="3" y="11" width="3" height="5" rx="1"/><rect x="14" y="11" width="3" height="5" rx="1"/><path d="M15.5 16c0 1.5-2 2-4 2"/></symbol>
+  <symbol id="i-ledger" viewBox="0 0 20 20"><rect x="4" y="2.5" width="12" height="15" rx="1.5"/><path d="M7 6.5h6M7 9.5h6M7 12.5h3.5"/></symbol>
+  <symbol id="i-seam" viewBox="0 0 20 20"><path d="M10 2v16"/><path d="M3 8h11l-2.5-2.5M17 12H6l2.5 2.5"/></symbol>
+  <symbol id="i-think" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M7.5 10h.01M10 10h.01M12.5 10h.01" stroke-width="2.2"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 20 20"><path d="M12.5 3.5a3.5 3.5 0 0 0-3.3 4.6L3.5 13.8l2.7 2.7 5.7-5.7a3.5 3.5 0 0 0 4.6-3.3l-2 2-2.3-.4-.4-2.3z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 20 20"><path d="M6 4l10 6-10 6z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="1.5"/></symbol>
+  <symbol id="i-power" viewBox="0 0 20 20"><path d="M10 3v6"/><path d="M5.6 6a6 6 0 1 0 8.8 0"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 20 20"><path d="M11 2.5L4.5 11h5l-1 6.5L15.5 9h-5z"/></symbol>
+  <symbol id="i-person" viewBox="0 0 20 20"><circle cx="10" cy="6.5" r="3"/><path d="M4 17c.8-3.3 3.2-5 6-5s5.2 1.7 6 5"/></symbol>
+  <symbol id="i-hold" viewBox="0 0 20 20"><path d="M10 2.5l7.5 7.5-7.5 7.5L2.5 10z"/><path d="M8.2 7.5v5M11.8 7.5v5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><path d="M4 10.5l4 4 8-9"/></symbol>
+  <symbol id="i-x" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5L5 15"/></symbol>
+  <symbol id="i-broken" viewBox="0 0 20 20"><path d="M11.5 3.7A6.5 6.5 0 0 1 16.3 8.5M16.3 11.5a6.5 6.5 0 0 1-4.8 4.8M8.5 16.3a6.5 6.5 0 0 1-4.8-4.8M3.7 8.5a6.5 6.5 0 0 1 4.8-4.8"/></symbol>
+  <symbol id="i-start" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2" fill="currentColor"/></symbol>
+  <symbol id="i-dot" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4.5" fill="currentColor"/></symbol>
+  <symbol id="i-ring" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4.5"/></symbol>
+  <symbol id="i-signal" viewBox="0 0 20 20"><path d="M3 10h9"/><path d="M9 6l4 4-4 4"/><path d="M16 4v12"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l2.5 1.5"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 20 20"><path d="M5 2.5h10v15l-2-1.3-1.5 1.3-1.5-1.3-1.5 1.3L7 16.2l-2 1.3z"/><path d="M7.5 7h5M7.5 10h5"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 20 20"><path d="M11 4h5v5M16 4l-7 7"/><path d="M14 12v3.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7.5a1 1 0 0 1 1-1h3.5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 20 20"><rect x="7" y="7" width="9.5" height="9.5" rx="1.5"/><path d="M13 7V4.5A1 1 0 0 0 12 3.5H4.5a1 1 0 0 0-1 1V12a1 1 0 0 0 1 1H7"/></symbol>
+  <symbol id="i-log" viewBox="0 0 20 20"><path d="M4 4.5h12M4 8h12M4 11.5h8M4 15h10"/></symbol>
+  <symbol id="i-notes" viewBox="0 0 20 20"><path d="M5 3.5h10v13H5z"/><path d="M7.5 7h5M7.5 10h5M7.5 13h3"/></symbol>
+  <symbol id="i-screen" viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="10" rx="1"/><path d="M7 17h6M10 14v3"/></symbol>
+  <symbol id="i-contrast" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 20 20"><path d="M4 16l6-6M13 3.5a3.5 3.5 0 0 0-2.6 5.8L4 15.7 5.3 17l6.4-6.4A3.5 3.5 0 0 0 16.5 7l-2 1-1.5-1.5 1-2A3.4 3.4 0 0 0 13 3.5z"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.5v7M8 8.5h3a1.2 1.2 0 0 1 0 2.4H9a1.2 1.2 0 0 0 0 2.4h3"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 20 20"><path d="M6 15.5h8.5a3.5 3.5 0 0 0 .3-7A5 5 0 0 0 5.2 9.6 3 3 0 0 0 6 15.5z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 20 20"><path d="M3.5 6h13M3.5 10h13M3.5 14h13"/></symbol>
+  <symbol id="i-close" viewBox="0 0 20 20"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></symbol>
+  <symbol id="i-down" viewBox="0 0 20 20"><path d="M10 4v11M5.5 10.5L10 15l4.5-4.5"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 20 20"><path d="M10 3l7.5 13h-15z"/><path d="M10 8v3.5M10 14h.01" stroke-width="2"/></symbol>
+  <symbol id="i-replay" viewBox="0 0 20 20"><path d="M4 10a6 6 0 1 0 1.8-4.3"/><path d="M4 3.5v3h3"/></symbol>
+</svg>
+
+<a class="skip" href="#main">Skip to the run</a>
+<header class="stack" id="stackbar" aria-label="Stack"></header>
+<div class="banners" id="banners" aria-live="polite"></div>
+
+<div class="shell" id="shell">
+  <nav class="side" id="side" aria-label="Scenarios and runs">
+    <section aria-labelledby="h-scen">
+      <h2 id="h-scen">Scenarios</h2>
+      <ul class="scen" id="scenarios"></ul>
+    </section>
+    <section aria-labelledby="h-runs">
+      <h2 id="h-runs">Runs</h2>
+      <ul class="runs" id="runs"></ul>
+    </section>
+  </nav>
+
+  <main class="main" id="main" tabindex="-1"></main>
+
+  <aside class="notes" id="notes" aria-label="Presenter notes"></aside>
+</div>
+
+<dialog class="sheet" id="sheet" aria-labelledby="sheet-title"></dialog>
+<dialog class="confirm" id="confirm" aria-labelledby="confirm-title"></dialog>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<noscript><p class="noscript">The demo console needs JavaScript. The same actions are available as make targets: see README.md.</p></noscript>
+</body>
+</html>

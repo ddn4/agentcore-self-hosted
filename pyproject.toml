@@ -10,6 +10,7 @@ dependencies = [
     "finance-agent",
     "payments-mock",
     "finance-a2a-api",
+    "demo-console",
 ]
 
 [dependency-groups]
@@ -35,6 +36,7 @@ finance-agent = { workspace = true }
 payments-mock = { workspace = true }
 finance-a2a-api = { workspace = true }
 demo-testing = { workspace = true }
+demo-console = { workspace = true }
 
 [tool.ruff]
 target-version = "py312"
@@ -71,4 +73,4 @@ markers = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["support_agent", "finance_agent", "finance_a2a_api", "payments_mock", "demo_testing"]
+known-first-party = ["support_agent", "finance_agent", "finance_a2a_api", "payments_mock", "demo_testing", "demo_console"]
