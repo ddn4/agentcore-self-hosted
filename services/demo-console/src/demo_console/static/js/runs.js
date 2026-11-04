@@ -4,7 +4,7 @@ import { h, hhmm, icon, stateGlyph } from "./format.js";
 
 const SCEN_WORD = {
   "case-a": "Case A", "case-b": "Case B", crash: "Crash demo", "serverless-b": "Case B, invoke-local",
-  "wci-b": "Case B, WCI", "cloud-b": "Case B, AgentCore", failure: "Failure demo", load: "Load",
+  "wci-b": "Case B, WCI", failure: "Failure demo", load: "Load",
 };
 
 const ANSWERED = new Set(["completed", "rejected", "failed", "canceled"]);

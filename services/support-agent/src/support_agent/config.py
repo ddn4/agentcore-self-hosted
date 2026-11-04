@@ -100,7 +100,7 @@ def build_id() -> str:
 
 def _build_id_files() -> list[Path]:
     here = Path(__file__).resolve().parent
-    # Bundle layout (make agentcore-bundle): <root>/BUILD_ID, <root>/support_agent/config.py
+    # A BUILD_ID file next to the package or inside it (runtime env wins).
     return [here.parent / "BUILD_ID", here / "BUILD_ID"]
 
 

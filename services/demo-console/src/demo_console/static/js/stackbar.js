@@ -48,7 +48,7 @@ export function renderStackBar(state) {
   const el = document.getElementById("stackbar");
   const cfg = state.config || {};
   const stack = state.stack;
-  const profiles = cfg.profiles || ["local", "kind", "kind-plaintext", "eks-pf"];
+  const profiles = cfg.profiles || ["local", "kind", "kind-plaintext"];
   const comps = stack?.components || [];
   const counted = comps.filter((c) => !notNeeded(c, stack?.shape));
   const upCount = counted.filter((c) => c.status === "up" || c.status === "zero" || c.status === "external").length;

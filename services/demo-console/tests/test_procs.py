@@ -144,8 +144,6 @@ async def test_profiles_and_certs(tmp_path: Path, runner: FakeRunner) -> None:
     cert.mkdir(parents=True)
     (cert / "tls.crt").write_text("x")
     assert kind.describe("worker-support")["status"] == "stopped"
-    eks = manager(tmp_path, runner, profile="eks-pf")
-    assert "certs-pull TEMPORAL_PROFILE=eks-pf" in eks.describe("agentcore-local")["why"]
 
 
 class DevServerRunner(FakeRunner):
@@ -166,7 +164,7 @@ class DevServerRunner(FakeRunner):
 async def test_dev_server_via_script(tmp_path: Path) -> None:
     runner = DevServerRunner(tmp_path / ".temporal")
     procs = manager(tmp_path, runner)
-    with pytest.raises(ProcessError, match="never aws"):
+    with pytest.raises(ProcessError, match="wci must be 0 or 1"):
         await procs.start("dev-server", wci=2)
     body = await procs.start("dev-server", wci=1)
     argv, env = runner.ran[-1]

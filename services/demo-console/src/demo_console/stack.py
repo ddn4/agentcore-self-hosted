@@ -1,4 +1,4 @@
-"""The live stack as one snapshot (DESIGN.md 5.1 ``StackSnapshot``), with no AWS call.
+"""The live stack as one snapshot (DESIGN.md 5.1 ``StackSnapshot``).
 
 Temporal (system info, Nexus endpoint, Worker Deployment, pollers), the laptop ports
 (AgentCore app ``/ping``, payments ``/healthz``, emulator TCP), pidfiles (profile detection),
@@ -107,7 +107,7 @@ def ping_status(body: Any) -> str | None:
 
 
 def compute_kind(version: dict[str, Any] | None) -> str:
-    """``none`` | ``local-wci`` (placeholder ARN) | ``agentcore-aws`` | ``unknown``.
+    """``none`` | ``local-wci`` (placeholder ARN) | ``unknown``.
 
     Read from the version's compute config providers.
     """
@@ -119,8 +119,6 @@ def compute_kind(version: dict[str, Any] | None) -> str:
     text = repr(providers)
     if "support_supervisor_local" in text or ("0" * 12) in text:
         return "local-wci"
-    if "agentcore" in text.lower():
-        return "agentcore-aws"
     return "unknown"
 
 
@@ -391,7 +389,7 @@ class StackProbe:
 
         wci_file = self.procs.dev_server_wci()
         if s.profile == "local":
-            wci_mode = {"1": "emulator", "local": "emulator", "aws": "aws"}.get(
+            wci_mode = {"1": "emulator", "local": "emulator"}.get(
                 wci_file or "", "off" if wci_file is not None else None
             )
         else:
@@ -416,9 +414,7 @@ class StackProbe:
         agentcore_up = 8080 in ports and laptop["ping"] is not None
         emulator_up = s.emulator_port in ports
 
-        if s.profile == "eks-pf" and compute == "agentcore-aws":
-            shape = "agentcore-aws"
-        elif wci_mode == "emulator" and compute == "local-wci" and (emulator_up or agentcore_up):
+        if wci_mode == "emulator" and compute == "local-wci" and (emulator_up or agentcore_up):
             shape = "serverless-wci"
         elif agentcore_up:
             shape = "serverless-invoke"
@@ -495,7 +491,6 @@ class StackProbe:
             build_id=build.value,
             current_build=current,
             compute=compute,
-            allow_aws=s.allow_aws,
             managed=dict.fromkeys(self.procs.records, True),
             shape=shape,
         )
@@ -577,7 +572,7 @@ class StackProbe:
             if n_fin and "worker-finance" not in self.procs.records:
                 fin["status"] = "external"
         out.append(fin)
-        serverless = shape in ("serverless-invoke", "serverless-wci", "agentcore-aws")
+        serverless = shape in ("serverless-invoke", "serverless-wci")
         n_support = n_ver if serverless else n_dev
         queue = VERSIONED_TQ if serverless else DEV_TQ
         if n_support:
@@ -597,34 +592,23 @@ class StackProbe:
         if not serverless:
             sup["process"] = "worker-support"
         out.append(sup)
-        if s.profile != "eks-pf" or agentcore_up or "agentcore-local" in self.procs.records:
-            ping = laptop["ping"]
-            if ping == "HealthyBusy":
-                detail = f"HealthyBusy (lifetime {app['lifetime'] or '?'} running)"
-            elif ping:
-                detail = f"{ping} (idle)"
-            else:
-                detail = "not running on :8080"
-            out.append(
-                {
-                    "id": "agentcore",
-                    "label": "AgentCore app",
-                    "status": proc_status(agentcore_up, "agentcore-local"),
-                    "detail": detail,
-                    "group": "support",
-                    "process": "agentcore-local",
-                }
-            )
-        if s.profile == "eks-pf" and not s.allow_aws:
-            out.append(
-                {
-                    "id": "agentcore-aws",
-                    "label": "AgentCore (AWS)",
-                    "status": "unknown",
-                    "detail": "not checked (AWS)",
-                    "group": "support",
-                }
-            )
+        ping = laptop["ping"]
+        if ping == "HealthyBusy":
+            detail = f"HealthyBusy (lifetime {app['lifetime'] or '?'} running)"
+        elif ping:
+            detail = f"{ping} (idle)"
+        else:
+            detail = "not running on :8080"
+        out.append(
+            {
+                "id": "agentcore",
+                "label": "AgentCore app",
+                "status": proc_status(agentcore_up, "agentcore-local"),
+                "detail": detail,
+                "group": "support",
+                "process": "agentcore-local",
+            }
+        )
         if local:
             out.append(
                 {

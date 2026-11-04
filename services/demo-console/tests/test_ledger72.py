@@ -1,7 +1,7 @@
 """Ledger 72: the console never queries a Support Workflow (DESIGN.md 4.3).
 
 A query on a SupportSupervisorWorkflow on support-tq makes the WCI start an AgentCore session
-(paid on EKS), and hangs when nothing polls. Every RunView and every route is built here
+and hangs when nothing polls. Every RunView and every route is built here
 against FakeGateway, which records each call: none may be a query in namespace ``agents``.
 """
 

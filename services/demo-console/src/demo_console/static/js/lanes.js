@@ -19,7 +19,7 @@ const GLYPH = {
   "signal.approve": "person", "signal.reject": "person", "refund.issued": "receipt",
   "lifetime.start": "power", "lifetime.connected": "power", "lifetime.idle": "power",
   "lifetime.drained": "power", "lifetime.released": "power", "lifetime.killed": "bolt",
-  "wci.signal": "signal", "wci.invoke": "signal", "wci.failed": "warn", "session.start": "cloud",
+  "wci.signal": "signal", "wci.invoke": "signal", "wci.failed": "warn",
 };
 const STATE_ICON = { submitted: "ring", working: "dot", "input-required": "hold", completed: "check", rejected: "x", failed: "broken", canceled: "ring" };
 

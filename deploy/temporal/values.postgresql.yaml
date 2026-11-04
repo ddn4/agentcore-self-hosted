@@ -6,9 +6,8 @@
 #
 # kind: the in-cluster postgres:16 from deploy/kind/postgres.yaml, password auth via
 # the Secret temporal-db-secret (key `password`, random, created by scripts/kind.sh).
-# EKS (v0.11) overrides connectAddr, user and tls (RDS CA) in values.eks.yaml.
-# numHistoryShards is IMMUTABLE after the first start: 4 on kind (values.kind.yaml),
-# 512 on EKS (ADR-0006). The value here is the chart's own default.
+# numHistoryShards is IMMUTABLE after the first start: 4 on kind (values.kind.yaml).
+# The value here is the chart's own default.
 server:
   config:
     persistence:

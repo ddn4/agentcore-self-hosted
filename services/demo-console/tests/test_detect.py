@@ -45,11 +45,10 @@ async def test_kind_mtls_vs_plaintext(tmp_path: Path) -> None:
     assert (await detect(tmp_path, lambda pid: True, probe_plain)).detected == "kind-plaintext"
 
 
-async def test_eks(tmp_path: Path) -> None:
+async def test_eks_pidfiles_are_ignored(tmp_path: Path) -> None:
+    """The EKS profile is gone: a leftover eks-pf pidfile detects nothing."""
     pidfiles(tmp_path, eks_pf_frontend=301)
-    found = await detect(tmp_path, lambda pid: pid == 301, probe_mtls)
-    assert found.detected == "eks-pf"
-    assert found.port_forward == {"kind": "eks", "frontend": True, "web": False}
+    assert (await detect(tmp_path, lambda pid: pid == 301, probe_mtls)).detected is None
 
 
 def test_mismatch_text() -> None:

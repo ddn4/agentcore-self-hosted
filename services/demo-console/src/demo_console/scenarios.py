@@ -290,8 +290,7 @@ class StackFacts:
     dev_server_wci: str | None = None
     build_id: str | None = None
     current_build: str | None = None
-    compute: str | None = None  # none | local-wci | agentcore-aws | unknown
-    allow_aws: bool = False
+    compute: str | None = None  # none | local-wci | unknown
     managed: dict[str, bool] = field(default_factory=dict)
     shape: str = "unknown"
 
@@ -311,17 +310,12 @@ def _cmd_fix(command: str) -> dict[str, Any]:
 def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
     """One precondition evaluated now; ``None`` when it does not apply on this profile."""
     local = f.profile == "local"
-    eks = f.profile == "eks-pf"
     build = f.build_id or "<build>"
     if pid == "temporal":
         fix = (
             _proc_fix("dev-server", "Start dev server")
             if local
-            else _cmd_fix(
-                "make resume && make pf TEMPORAL_PROFILE=eks-pf"
-                if eks
-                else f"make pf TEMPORAL_PROFILE={f.profile}"
-            )
+            else _cmd_fix(f"make pf TEMPORAL_PROFILE={f.profile}")
         )
         return {"id": pid, "label": "Temporal is up", "ok": f.temporal_up, "fix": fix}
     if pid == "endpoint":
@@ -344,12 +338,11 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
                 "ok": ok,
                 "fix": _proc_fix("worker-finance", "Start Finance worker"),
             }
-        command = "make finance-scale N=2" if eks else "make kind-workers FINANCE_MODEL=scripted"
         return {
             "id": pid,
             "label": "A Finance worker polls agent-services-tq",
             "ok": f.finance_pollers > 0,
-            "fix": _cmd_fix(command),
+            "fix": _cmd_fix("make kind-workers FINANCE_MODEL=scripted"),
         }
     if pid == "payments":
         if not local:
@@ -400,21 +393,15 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
             "ok": bool(f.build_id),
             "fix": _cmd_fix("TEMPORAL_BUILD_ID=<id> make console  # or commit uv.lock"),
         }
-    if pid in ("version", "version-current", "version-wci", "version-aws"):
+    if pid in ("version", "version-current", "version-wci"):
         current = bool(f.build_id) and f.current_build == f.build_id
-        want = {"version-wci": "local-wci", "version-aws": "agentcore-aws"}.get(pid)
+        want = "local-wci" if pid == "version-wci" else None
         if pid == "version" and f.shape == "serverless-wci":
             want = "local-wci"
         ok = current and (want is None or f.compute == want)
-        suffix_text = {
-            "local-wci": " with local WCI compute",
-            "agentcore-aws": " with AgentCore compute",
-        }.get(want or "", "")
-        if eks:
-            fix = _cmd_fix("make register-version-aws CLOUD=1 TEMPORAL_PROFILE=eks-pf")
-        else:
-            mode = "--local-wci" if want == "local-wci" else "--poller"
-            fix = _action_fix("register-version", "Register version", mode=mode)
+        suffix_text = " with local WCI compute" if want == "local-wci" else ""
+        mode = "--local-wci" if want == "local-wci" else "--poller"
+        fix = _action_fix("register-version", "Register version", mode=mode)
         return {
             "id": pid,
             "label": f"support-supervisor:{build} is current{suffix_text}",
@@ -422,13 +409,6 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
             "fix": fix,
         }
     if pid == "serverless-compute":
-        if eks:
-            return {
-                "id": pid,
-                "label": "AgentCore compute on the current version",
-                "ok": f.compute == "agentcore-aws",
-                "fix": _cmd_fix("make register-version-aws CLOUD=1 TEMPORAL_PROFILE=eks-pf"),
-            }
         return {
             "id": pid,
             "label": "AgentCore app on :8080",
@@ -442,18 +422,11 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
             "ok": f.smoke_pollers > 0,
             "fix": _proc_fix("worker-smoke", "Start smoke worker"),
         }
-    if pid == "aws":
-        return {
-            "id": pid,
-            "label": "AWS actions allowed (CONSOLE_ALLOW_AWS=1)",
-            "ok": f.allow_aws,
-            "fix": _cmd_fix("TEMPORAL_PROFILE=eks-pf CONSOLE_ALLOW_AWS=1 make console"),
-        }
     raise KeyError(f"unknown precondition {pid!r}")
 
 
 def is_serverless_shape(shape: str) -> bool:
-    return shape in ("serverless-invoke", "serverless-wci", "agentcore-aws")
+    return shape in ("serverless-invoke", "serverless-wci")
 
 
 def default_queue(scenario: Scenario, shape: str) -> str | None:

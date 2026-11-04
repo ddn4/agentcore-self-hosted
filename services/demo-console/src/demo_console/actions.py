@@ -1,8 +1,7 @@
 """Actions: one-shot jobs, recipes and the cost gate (DESIGN.md 2.3, 4.5, 5.5).
 
-Every action has a cost (``free`` | ``tokens`` | ``aws``). ``tokens`` needs ``confirm: true``;
-``aws`` also needs the console to run with ``CONSOLE_ALLOW_AWS=1`` (else ``403 aws_disabled``).
-Long kind lifecycle jobs need ``confirm`` too. Commands are ``make -s <target>`` so the Makefile
+Every action has a cost (``free`` | ``tokens``). ``tokens`` needs ``confirm: true``; long kind
+lifecycle jobs need ``confirm`` too. Commands are ``make -s <target>`` so the Makefile
 stays the source of truth; invoke-local and the ping are done in-process (plain HTTP).
 """
 
@@ -11,11 +10,10 @@ from __future__ import annotations
 import asyncio
 import random
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from typing import Any
 
-from demo_console.cloud import AwsDisabled, CloudAdapter, failure_argv
 from demo_console.jobs import Job, JobLog, JobStore
 from demo_console.procs import ProcessError, ProcessManager
 from demo_console.scenarios import suffix
@@ -23,7 +21,7 @@ from demo_console.settings import DEPLOYMENT_NAME, Settings
 from demo_console.stack import HttpProbe, StackProbe, ping_status
 
 KIND = ("kind", "kind-plaintext")
-ALL = ("local", "kind", "kind-plaintext", "eks-pf")
+ALL = ("local", "kind", "kind-plaintext")
 RECIPES = {
     "local-plain": ("local",),
     "local-invoke": ("local",),
@@ -84,7 +82,7 @@ SPECS: dict[str, ActionSpec] = {
                 {
                     "id": "mode",
                     "type": "choice",
-                    "choices": ["--poller", "--local-wci", "--agentcore-auto"],
+                    "choices": ["--poller", "--local-wci"],
                     "default": "--poller",
                 }
             ],
@@ -97,32 +95,19 @@ SPECS: dict[str, ActionSpec] = {
         ActionSpec(
             "load",
             "Start N conversations",
-            ("local", *KIND, "eks-pf"),
+            ALL,
             [
                 {"id": "n", "type": "number", "default": 10, "min": 1, "max": 20},
                 {"id": "kind", "type": "choice", "choices": ["ping", "case-a"], "default": "ping"},
             ],
         ),
         ActionSpec("wci-history", "Show the WCI's history", ALL, needs_build=True),
-        ActionSpec(
-            "failure",
-            "Failure demo on EKS (scale Finance to 0 and back)",
-            ("eks-pf",),
-            [{"id": "workflow_id", "type": "text", "default": None}],
-        ),
-        ActionSpec(
-            "drain-cloudwatch",
-            "Confirm the drain in CloudWatch",
-            ("eks-pf",),
-            [{"id": "workflow_id", "type": "text", "default": None}],
-            needs_build=True,
-        ),
         ActionSpec("kind-up", "Create the kind cluster", KIND, long=True),
         ActionSpec("kind-temporal", "Install Temporal on kind", KIND, long=True),
         ActionSpec("kind-workers", "Finance + payments pods (scripted)", KIND, long=True),
-        ActionSpec("certs-pull", "Pull client certificates", (*KIND, "eks-pf"), long=True),
-        ActionSpec("pf", "Port-forward Temporal", (*KIND, "eks-pf"), long=True),
-        ActionSpec("pf-stop", "Stop the port-forwards", (*KIND, "eks-pf"), long=True),
+        ActionSpec("certs-pull", "Pull client certificates", KIND, long=True),
+        ActionSpec("pf", "Port-forward Temporal", KIND, long=True),
+        ActionSpec("pf-stop", "Stop the port-forwards", KIND, long=True),
         ActionSpec("kind-down", "Delete the kind cluster", KIND, long=True),
     )
 }
@@ -136,19 +121,12 @@ class ActionService:
         jobs: JobStore,
         stack: StackProbe,
         http: HttpProbe,
-        cloud: CloudAdapter,
-        *,
-        on_cloudwatch: Callable[[str, dict[str, Any]], None] | None = None,
-        run_started_at: Callable[[str], Awaitable[float | None]] | None = None,
     ) -> None:
         self.settings = settings
         self.procs = procs
         self.jobs = jobs
         self.stack = stack
         self.http = http
-        self.cloud = cloud
-        self._on_cloudwatch = on_cloudwatch
-        self._run_started_at = run_started_at
 
     # --- descriptions ------------------------------------------------------------------------
 
@@ -157,13 +135,6 @@ class ActionService:
         return (snap.get("model") or {}).get("mode") == "live"
 
     def cost(self, spec: ActionSpec, params: dict[str, Any]) -> str:
-        p = self.settings.profile
-        if spec.id in ("failure", "drain-cloudwatch"):
-            return "aws"
-        if p == "eks-pf" and spec.id in ("certs-pull", "pf", "pf-stop", "load"):
-            return "aws"
-        if spec.id == "register-version" and params.get("mode") == "--agentcore-auto":
-            return "aws"
         if spec.id == "start-recipe" and params.get("variant") == "live":
             return "tokens"
         if spec.id == "load" and params.get("kind") == "case-a" and self._model_live():
@@ -179,8 +150,6 @@ class ActionService:
         return out
 
     def _default_mode(self) -> str:
-        if self.settings.profile == "eks-pf":
-            return "--agentcore-auto"
         snap = self.stack.last or {}
         if (snap.get("wci") or {}).get("mode") == "emulator":
             return "--local-wci"
@@ -191,23 +160,17 @@ class ActionService:
             return f"Not on profile {self.settings.profile}."
         if spec.needs_build and not self.stack.facts.build_id:
             return "No Build ID. Commit uv.lock, or start with TEMPORAL_BUILD_ID=<id>."
-        if self.cost(spec, params) == "aws" and not self.settings.allow_aws:
-            return "Calls AWS: start the console with CONSOLE_ALLOW_AWS=1."
         return None
 
     def make_text(self, spec: ActionSpec, params: dict[str, Any]) -> str:
         p = params
         texts = {
             "start-recipe": f"(recipe {p.get('recipe')}: see the job log for each make target)",
-            "register-version": f"make register-version MODE={p.get('mode')}"
-            + (" CLOUD=1" if p.get("mode") == "--agentcore-auto" else ""),
+            "register-version": f"make register-version MODE={p.get('mode')}",
             "load": f"make load N={p.get('n')} LOAD_KIND={p.get('kind')}",
             "wci-history": f"make wci-history BUILD={self.stack.facts.build_id or '<build>'}",
             "invoke-local": "TEMPORAL_BUILD_ID="
             f"{self.stack.facts.build_id or '<build>'} make invoke-local",
-            "failure": f"make failure WF={p.get('workflow_id') or '<wf>'}",
-            "drain-cloudwatch": "uv run python -m demo_testing.agentcore_logs wait-drained "
-            f"{p.get('workflow_id') or '<wf>'}",
             "kind-temporal": f"make kind-temporal KIND_TLS={self._kind_tls()}",
             "kind-workers": "make kind-workers FINANCE_MODEL=scripted",
             "smoke": "make smoke",
@@ -272,18 +235,8 @@ class ActionService:
         return params
 
     def gate(self, cost: str, confirm: bool, *, long: bool = False, what: str = "") -> None:
-        if cost == "aws" and not self.settings.allow_aws:
-            raise ActionError(
-                "aws_disabled",
-                f"{what or 'This action'} calls AWS.",
-                "Start the console with CONSOLE_ALLOW_AWS=1 to allow AWS actions.",
-            )
-        if (cost in ("tokens", "aws") or long) and not confirm:
-            note = {
-                "tokens": "costs Bedrock tokens",
-                "aws": "calls AWS",
-                "free": "takes several minutes",
-            }[cost]
+        if (cost == "tokens" or long) and not confirm:
+            note = {"tokens": "costs Bedrock tokens", "free": "takes several minutes"}[cost]
             raise ActionError(
                 "confirm_required", f"{what or 'This action'} {note}.", "Send confirm: true."
             )
@@ -334,10 +287,7 @@ class ActionService:
             case "nexus-endpoint":
                 return await cmd("make", "-s", "nexus-endpoint")
             case "register-version":
-                argv = ["make", "-s", "register-version", f"MODE={params['mode']}"]
-                if params["mode"] == "--agentcore-auto":
-                    argv.append("CLOUD=1")
-                return await cmd(*argv)
+                return await cmd("make", "-s", "register-version", f"MODE={params['mode']}")
             case "smoke":
                 return await cmd("make", "-s", "smoke", f"WF=smoke-1042-{suffix()}")
             case "card":
@@ -348,9 +298,6 @@ class ActionService:
                 )
             case "wci-history":
                 return await cmd("make", "-s", "wci-history", f"BUILD={build}")
-            case "failure":
-                wf = params.get("workflow_id") or f"support-1042-failure-{suffix()}"
-                return await cmd(*failure_argv(wf))
             case "kind-up" | "kind-down" | "certs-pull" | "pf" | "pf-stop":
                 return await cmd("make", "-s", spec.id)
             case "kind-temporal":
@@ -370,13 +317,6 @@ class ActionService:
             case "agentcore-ping":
                 return await self.jobs.run_body(
                     spec.id, "make agentcore-ping", self._ping_body, cost=cost
-                )
-            case "drain-cloudwatch":
-                wf = params.get("workflow_id")
-                if not wf:
-                    raise ActionError("invalid_param", "drain-cloudwatch needs workflow_id.")
-                return await self.jobs.run_body(
-                    spec.id, make, lambda log: self._drain(log, wf, build), cost=cost, params=params
                 )
             case "start-recipe":
                 recipe = params["recipe"]
@@ -425,22 +365,6 @@ class ActionService:
         state = ping_status(ping[1]) if ping else None
         log.line(f"/ping -> {state or 'not answering'}")
         return {"ping": state}
-
-    async def _drain(self, log: JobLog, wf: str, build: str | None) -> dict[str, Any]:
-        since = await self._run_started_at(wf) if self._run_started_at else None
-        since_ms = int(((since or time.time() - 3600) - 5) * 1000)
-        log.line(f"waiting for {wf}'s AgentCore sessions to drain (CloudWatch)")
-        try:
-            sessions = await self.cloud.wait_drained(wf, since_ms, build)
-        except AwsDisabled as err:
-            raise RuntimeError(str(err)) from err
-        released = [s["released_iso"] for s in sessions if s.get("released_iso")]
-        result = {"sessions": sessions, "drained_at": max(released) if released else None}
-        for s in sessions:
-            log.line(f"session {s['session']}: lifetimes {s['lifetimes']}, drained {s['drained']}")
-        if self._on_cloudwatch:
-            self._on_cloudwatch(wf, result)
-        return result
 
     # --- recipes (DESIGN.md 2.3) ---------------------------------------------------------------
 

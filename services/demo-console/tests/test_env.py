@@ -21,7 +21,7 @@ def test_local_keeps_plaintext(tmp_path: Path) -> None:
     assert env["TEMPORAL_CONFIG_FILE"] == str(tmp_path / "config" / "temporal.toml")
 
 
-@pytest.mark.parametrize("profile", ["kind", "kind-plaintext", "eks-pf"])
+@pytest.mark.parametrize("profile", ["kind", "kind-plaintext"])
 def test_other_profiles_strip_the_dev_server_vars(tmp_path: Path, profile: str) -> None:
     settings = make_settings(tmp_path, profile=profile, TEMPORAL_NAMESPACE="default")
     for env in (settings.child_env(None), settings.temporal_env()):
@@ -37,22 +37,26 @@ def test_relative_config_file_is_made_absolute(tmp_path: Path) -> None:
 
 
 def test_from_env_precedence(tmp_path: Path) -> None:
-    s = Settings.from_env(root=tmp_path, env={"TEMPORAL_PROFILE": "kind", "CONSOLE_ALLOW_AWS": "1"})
-    assert s.profile == "kind" and s.allow_aws and s.port == 8099
-    assert Settings.from_env(root=tmp_path, profile="eks-pf", env={}).profile == "eks-pf"
+    s = Settings.from_env(root=tmp_path, env={"TEMPORAL_PROFILE": "kind"})
+    assert s.profile == "kind" and s.port == 8099
+    assert Settings.from_env(root=tmp_path, profile="kind-plaintext", env={}).profile == (
+        "kind-plaintext"
+    )
     assert Settings.from_env(root=tmp_path, env={}).profile == "local"
-    assert Settings.from_env(root=tmp_path, profile="eks-pf", env={}).debounce_s == 30.0
+    assert Settings.from_env(root=tmp_path, env={}).debounce_s == 20.0
     assert (
         Settings.from_env(root=tmp_path, env={"AGENTCORE_DEBOUNCE_SECONDS": "5"}).debounce_s == 5.0
     )
     with pytest.raises(ValueError, match="unknown profile"):
         Settings.from_env(root=tmp_path, env={"TEMPORAL_PROFILE": "prod"})
+    with pytest.raises(ValueError, match="unknown profile"):
+        Settings.from_env(root=tmp_path, env={"TEMPORAL_PROFILE": "eks-pf"})
 
 
 def test_config_body(tmp_path: Path) -> None:
     body = make_settings(tmp_path).config_body()
-    assert body["profiles"] == ["local", "kind", "kind-plaintext", "eks-pf"]
-    assert body["ui_base"] == "http://127.0.0.1:8233" and body["allow_aws"] is False
+    assert body["profiles"] == ["local", "kind", "kind-plaintext"]
+    assert body["ui_base"] == "http://127.0.0.1:8233" and "allow_aws" not in body
     assert body["default_approver"] == "dana.finance" and body["auto_approve_limit_usd"] == 100
 
 

@@ -9,12 +9,9 @@
 # v0.7: WCI=1 (make dev-server WCI=1) also enables the Worker Controller Instance, which the
 # dev server contains (ledger 23). `start-dev` takes only --dynamic-config-value KEY=VALUE
 # (no file, no constraints), so it applies to EVERY namespace here; the "agents only"
-# constraint is first verified on kind (v0.9). Modes:
-#   WCI=1 | WCI=local  the WCI's AWS SDK is pointed at scripts/agentcore_emulator.py
-#                      (AWS_ENDPOINT_URL, dummy credentials, no shared AWS config), and the
-#                      role/External ID requirement is off: nothing can reach AWS.
-#   WCI=aws            real AWS from the caller's environment (v0.8: AWS_PROFILE=temporal-dev-wci);
-#                      require_role_and_external_id stays at its default (true).
+# constraint is first verified on kind (v0.9). WCI=1 (or WCI=local) points the WCI's AWS SDK at
+# scripts/agentcore_emulator.py (AWS_ENDPOINT_URL, dummy credentials, no shared AWS config), and the role/External ID
+# requirement is off: nothing can reach AWS.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -37,19 +34,17 @@ WCI="${WCI:-0}"
 envs=()
 case "$WCI" in
   0|"") ;;
-  1|local|aws)
+  1|local)
     args+=(--dynamic-config-value workercontroller.enabled=true
            --dynamic-config-value 'workercontroller.compute_providers.enabled=["aws-agentcore"]'
            --dynamic-config-value 'workercontroller.scaling_algorithms.enabled=["no-sync"]')
-    if [[ "$WCI" != aws ]]; then
-      args+=(--dynamic-config-value workercontroller.compute_providers.aws.require_role_and_external_id=false)
-      envs=(-u AWS_PROFILE -u AWS_SESSION_TOKEN
-            AWS_ENDPOINT_URL="http://127.0.0.1:${AGENTCORE_EMULATOR_PORT:-4599}"
-            AWS_ACCESS_KEY_ID=local-emulator AWS_SECRET_ACCESS_KEY=local-emulator
-            AWS_REGION="${AWS_REGION:-us-east-1}" AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null)
-    fi
+    args+=(--dynamic-config-value workercontroller.compute_providers.aws.require_role_and_external_id=false)
+    envs=(-u AWS_PROFILE -u AWS_SESSION_TOKEN
+          AWS_ENDPOINT_URL="http://127.0.0.1:${AGENTCORE_EMULATOR_PORT:-4599}"
+          AWS_ACCESS_KEY_ID=local-emulator AWS_SECRET_ACCESS_KEY=local-emulator
+          AWS_REGION="${AWS_REGION:-us-east-1}" AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null)
     ;;
-  *) echo "WCI must be 0, 1/local or aws (got '$WCI')" >&2; exit 2 ;;
+  *) echo "WCI must be 0 or 1/local (got '$WCI')" >&2; exit 2 ;;
 esac
 launch=(env ${envs[@]+"${envs[@]}"} temporal "${args[@]}")
 

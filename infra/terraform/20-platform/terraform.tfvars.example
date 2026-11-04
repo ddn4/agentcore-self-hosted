@@ -1,5 +1,0 @@
-# Copy to terraform.auto.tfvars (gitignored). Required: the laptop's public IP as a /32
-# (curl -s https://checkip.amazonaws.com). Never commit the real address.
-public_access_cidrs = ["<laptop-public-ip>/32"]
-# node_instance_type = "m6i.xlarge"              # ADR-0006 fallback (amd64)
-# node_ami_type      = "AL2023_x86_64_STANDARD"

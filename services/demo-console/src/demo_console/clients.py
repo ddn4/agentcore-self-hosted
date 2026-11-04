@@ -3,7 +3,7 @@
 ``Clients`` connects lazily (1 s -> 10 s back-off) with the same envconfig as make and offers
 exactly the calls the console makes. Namespace ``agents`` goes through ``AgentsClient``, which
 has no query path at all: **ledger 72**, a query on a Support Workflow on ``support-tq`` makes
-the WCI start an AgentCore session (a paid one on EKS) and hangs when nothing polls. Support's
+the WCI start an AgentCore session and hangs when nothing polls. Support's
 state comes from ``fetch_history`` and ``describe`` only. Queries are allowed in
 ``agent-services`` (Finance's ``get_task``), always with a short RPC timeout.
 """

@@ -16,7 +16,7 @@ from typing import Final
 
 from demo_console import __version__
 
-PROFILES: Final[tuple[str, ...]] = ("local", "kind", "kind-plaintext", "eks-pf")
+PROFILES: Final[tuple[str, ...]] = ("local", "kind", "kind-plaintext")
 #: Env vars the Makefile unexports outside ``local``.
 LOCAL_ONLY_ENV: Final[tuple[str, ...]] = ("TEMPORAL_TLS", "TEMPORAL_ADDRESS")
 #: A parent make's own state; never passed on to the console's ``make -s <target>`` children.
@@ -53,9 +53,7 @@ def repo_root(start: Path | None = None) -> Path:
 
 
 def debounce_for(profile: str, env: Mapping[str, str]) -> float:
-    """AgentCore debounce: ``AGENTCORE_DEBOUNCE_SECONDS`` locally (20), 30 s in the cloud."""
-    if profile == "eks-pf":
-        return 30.0
+    """AgentCore debounce: ``AGENTCORE_DEBOUNCE_SECONDS`` (default 20)."""
     raw = env.get("AGENTCORE_DEBOUNCE_SECONDS", "").strip()
     try:
         return float(raw) if raw else 20.0
@@ -72,7 +70,6 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = DEFAULT_PORT
     ui_base: str = UI_BASE
-    allow_aws: bool = False
     agentcore_url: str = AGENTCORE_URL
     payments_url: str = PAYMENTS_URL
     emulator_port: int = EMULATOR_PORT
@@ -96,7 +93,6 @@ class Settings:
             root=(root or repo_root()).resolve(),
             profile=chosen,
             port=port or int(env.get("CONSOLE_PORT", DEFAULT_PORT)),
-            allow_aws=env.get("CONSOLE_ALLOW_AWS", "") == "1",
             agentcore_url=env.get("AGENTCORE_URL", AGENTCORE_URL),
             base_env=env,
         )
@@ -123,7 +119,7 @@ class Settings:
 
     @property
     def tls(self) -> bool:
-        return self.profile in ("kind", "eks-pf")
+        return self.profile == "kind"
 
     # --- environments ------------------------------------------------------------------
 
@@ -163,7 +159,6 @@ class Settings:
             "profile": self.profile,
             "profiles": list(PROFILES),
             "ui_base": self.ui_base,
-            "allow_aws": self.allow_aws,
             "console_version": __version__,
             "debounce_s": self.debounce_s,
             "auto_approve_limit_usd": AUTO_APPROVE_LIMIT_USD,

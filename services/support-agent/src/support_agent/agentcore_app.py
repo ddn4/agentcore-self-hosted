@@ -21,15 +21,15 @@ whatever happened (drained, crashed, could not connect), so ``/ping`` returns to
 Follows samples-python ``bedrock_agentcore/strands_agent/agentcore_worker.py`` and the
 docs page "Serverless Workers on Amazon Bedrock AgentCore Runtime - Python SDK"
 (runtime handler). Differences, each for this demo: the connection comes from
-envconfig with optional mTLS from Secrets Manager (runbook 5.3) instead of an API
-key; the model is pinned (``config.build_strands_plugin``, ADR-0001) instead of the
-sample's bare ``StrandsPlugin()``; there is a connect timeout; the WCI payload is
-checked against this Worker's version; the guard and Worker lifetime live in a small
-class (``AgentCoreWorkerHost``) so tests can drive them with a fake app.
+envconfig (mTLS client cert from local files on kind) instead of an API key; the
+model is pinned (``config.build_strands_plugin``, ADR-0001) instead of the sample's
+bare ``StrandsPlugin()``; there is a connect timeout; the WCI payload is checked
+against this Worker's version; the guard and Worker lifetime live in a small class
+(``AgentCoreWorkerHost``) so tests can drive them with a fake app.
 
 Run locally: ``make agentcore-local`` (needs ``TEMPORAL_BUILD_ID``, which the Makefile
-takes from ``scripts/build-id.sh``). In the CodeZip bundle the entrypoint file
-``agentcore_worker.py`` imports ``app`` from here and calls :func:`main`.
+takes from ``scripts/build-id.sh``); the local WCI reaches it through
+``scripts/agentcore_emulator.py``.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from temporalio.client import Client, Plugin
 from temporalio.service import TLSConfig
 
-from support_agent import config, mtls
+from support_agent import config
 from support_agent.activity_tracker import ActivityTracker
 from support_agent.worker_factory import build_versioned_worker
 
@@ -199,8 +199,7 @@ async def run_worker(
     connect: Callable[[Sequence[Plugin], float], Awaitable[Client]] = connect_with_timeout,
     debounce: float | None = None,
 ) -> None:
-    """One Worker lifetime: mTLS (if configured), connect, poll until idle, drain."""
-    mtls.load_mtls_into_env()
+    """One Worker lifetime: connect, poll until idle, drain."""
     debounce = config.debounce_seconds() if debounce is None else debounce
     client = await connect(plugins(), config.connect_timeout_seconds())
     log.info("lifetime %d: connected to %s", lifetime, describe_connection(client))

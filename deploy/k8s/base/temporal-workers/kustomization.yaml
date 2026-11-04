@@ -1,5 +1,5 @@
-# Team Finance's runtime on Kubernetes (runbook 7b.1-7b.7). Shared by overlays/kind
-# (v0.9) and overlays/eks (v0.11). Images are bare names; overlays set name/tag.
+# Team Finance's runtime on Kubernetes (runbook 7b.1-7b.7), used by overlays/kind and
+# overlays/kind-scripted. Images are bare names; overlays set name/tag.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

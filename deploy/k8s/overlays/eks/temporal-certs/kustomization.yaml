@@ -1,7 +1,0 @@
-# EKS (plan v0.11): the v0.9 server and client certificates, unchanged ("same values, different
-# backend"). The frontend cert's SANs already cover the Route 53 name the NLB alias serves
-# (temporal-frontend.temporal-customer-support.internal) and the in-cluster names Finance dials.
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - ../../../base/temporal-certs

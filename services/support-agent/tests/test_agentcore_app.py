@@ -48,7 +48,6 @@ def _env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TEMPORAL_BUILD_ID", "abc1234")
     monkeypatch.delenv("TEMPORAL_DEPLOYMENT_NAME", raising=False)
     monkeypatch.delenv("TEMPORAL_TASK_QUEUE", raising=False)
-    monkeypatch.delenv("TEMPORAL_MTLS_SECRET_ID", raising=False)
 
 
 async def test_ack_is_immediate_and_names_the_version() -> None:

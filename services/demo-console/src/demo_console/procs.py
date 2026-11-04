@@ -5,7 +5,7 @@ per-identity client certs), spawned in its own session and recorded under
 ``.temporal/console/procs/<name>.json``; on startup every record whose process group is still
 alive is adopted, so a console restart loses nothing. Processes started elsewhere show up as
 ``external`` (their port answers or their task queue has pollers) and are never stopped.
-Never cluster or AWS resources: on kind and eks-pf only the laptop-side Support processes.
+Never cluster resources: on kind only the laptop-side Support processes.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from demo_console.settings import (
     Settings,
 )
 
-ALL_PROFILES = ("local", "kind", "kind-plaintext", "eks-pf")
+ALL_PROFILES = ("local", "kind", "kind-plaintext")
 STOP_GRACE_S = 8.0
 
 
@@ -57,7 +57,7 @@ class ProcSpec:
     needs: tuple[str, ...] = ()
     #: ``namespace/task-queue`` whose pollers reveal an external instance.
     polls: str | None = None
-    #: Per-profile client certificate directory the make target uses (kind / eks-pf).
+    #: Per-profile client certificate directory the make target uses (kind).
     certs: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -90,7 +90,7 @@ SPECS: dict[str, ProcSpec] = {
             {"scripted": "worker-support-scripted", "live": "worker-support"},
             profiles=ALL_PROFILES,
             polls=f"{AGENTS_NS}/{DEV_TQ}",
-            certs={"kind": ".certs/laptop-support", "eks-pf": ".certs/eks/laptop-support"},
+            certs={"kind": ".certs/laptop-support"},
         ),
         ProcSpec(
             "worker-support-versioned",
@@ -99,7 +99,7 @@ SPECS: dict[str, ProcSpec] = {
             profiles=ALL_PROFILES,
             needs=("build_id",),
             polls=f"{AGENTS_NS}/{VERSIONED_TQ}",
-            certs={"kind": ".certs/agentcore-worker", "eks-pf": ".certs/eks/agentcore-worker"},
+            certs={"kind": ".certs/agentcore-worker"},
         ),
         ProcSpec(
             "agentcore-local",
@@ -108,7 +108,7 @@ SPECS: dict[str, ProcSpec] = {
             ports=(8080,),
             profiles=ALL_PROFILES,
             needs=("build_id",),
-            certs={"kind": ".certs/agentcore-worker", "eks-pf": ".certs/eks/agentcore-worker"},
+            certs={"kind": ".certs/agentcore-worker"},
         ),
         ProcSpec(
             "agentcore-emulator",
@@ -277,8 +277,7 @@ class ProcessManager:
             return "No Build ID. Commit uv.lock, or start with TEMPORAL_BUILD_ID=<id>."
         cert_dir = spec.certs.get(profile)
         if cert_dir and not (self.settings.root / cert_dir / "tls.crt").is_file():
-            pull = "make certs-pull" + (" TEMPORAL_PROFILE=eks-pf" if profile == "eks-pf" else "")
-            return f"No client certificate in {cert_dir}/ ({pull})."
+            return f"No client certificate in {cert_dir}/ (make certs-pull)."
         return None
 
     def _external(self, spec: ProcSpec) -> bool:
@@ -338,7 +337,7 @@ class ProcessManager:
         return [self.describe(name) for name in SPECS]
 
     def dev_server_wci(self) -> str | None:
-        """``.temporal/dev-server.wci`` while the dev server runs: ``0``, ``1``, ``aws``."""
+        """``.temporal/dev-server.wci`` while the dev server runs: ``0`` or ``1``."""
         if self._dev_server_pid() is None:
             return None
         try:
@@ -415,7 +414,7 @@ class ProcessManager:
             raise ProcessError("precondition_failed", f"{spec.label} is already running.")
         if name == "dev-server":
             if wci not in (0, 1):
-                raise ProcessError("invalid_param", "wci must be 0 or 1 (never aws).")
+                raise ProcessError("invalid_param", "wci must be 0 or 1.")
             return await self._start_dev_server(wci)
         target = spec.targets[variant]
         log = self.log_path(name)

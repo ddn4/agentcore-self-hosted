@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # Small load test against Support's serverless version (plan v0.13; runbook Phase 8 step 6).
-#   scripts/demo/load.sh [N]          (make load N=10 TEMPORAL_PROFILE=eks-pf [LOAD_KIND=case-a|ping])
-# Starts N Workflows at once on the versioned queue support-tq (default 10; the runbook's N=50
-# is deferred to v1.2), with nothing but AgentCore able to poll it, and waits for all of them.
-#   LOAD_KIND=case-a (default)  N x Case A (#1042, $40, auto-approved): real Opus 5.5 turns in
-#                               AgentCore and N refunds by Finance on EKS (Bedrock tokens: ~N x 10 calls)
+#   scripts/demo/load.sh [N]          (make load N=10 [LOAD_KIND=case-a|ping])
+# Needs the local serverless shape: make dev-server WCI=1, make agentcore-emulator,
+# make agentcore-local (or -scripted), make register-version MODE=--local-wci, plus Finance.
+# Starts N Workflows at once on the versioned queue support-tq (default 10), with only the
+# AgentCore-shaped Worker able to poll it, and waits for all of them.
+#   LOAD_KIND=case-a (default)  N x Case A (#1042, $40, auto-approved): real model turns
+#                               (Bedrock tokens: ~N x 10 calls) unless the Workers are scripted
 #   LOAD_KIND=ping              N x PingWorkflow (one Activity, no model)
-# Success criteria (runbook 6.3): all N complete; no failed WCI Activity in the window; then
-# every AgentCore session drains (debounce 30 s) and `scripts/agentcore-sessions.sh` returns to
-# 0 once the 120 s idle timeout has passed (the caller runs that; see verify v0.13).
-# Prints: per-Workflow status and duration, WCI InvokeWorker count, AgentCore sessions that ran
-# the load (CloudWatch logs). Cleanup on failure: runbook 6.6 (terminate by query).
+# Success criteria: all N complete and no failed WCI Activity in the window.
+# Prints: per-Workflow status and duration and the WCI InvokeWorker count.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 export TEMPORAL_CONFIG_FILE="${TEMPORAL_CONFIG_FILE:-$PWD/config/temporal.toml}"
@@ -57,9 +56,4 @@ scripts/wci-history.sh "$BUILD" --since "$T0ISO" >"$OUT/wci.log" 2>&1 || true
 inv="$(grep -c 'activity  InvokeWorker$' "$OUT/wci.log" || true)"
 failed="$(grep -c '  failed  ' "$OUT/wci.log" || true)"
 echo "load: WCI InvokeWorker during the load: $inv; failed WCI activities: $failed"
-if [[ "$TEMPORAL_PROFILE" == eks-pf ]]; then
-  uv run --frozen python -m demo_testing.agentcore_logs wait-idle --since "$T0" --build "$BUILD" \
-    --timeout "${LOAD_DRAIN_TIMEOUT:-300}" | tee "$OUT/sessions.log" | tail -1 | sed 's/^/load: AgentCore /'
-  echo "load: every session that ran the load has drained (async task released)"
-fi
 [[ "$completed" == "$N" && "$failed" == 0 ]]

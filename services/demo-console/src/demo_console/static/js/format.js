@@ -87,12 +87,12 @@ export function parseDuration(text) {
   return (Number(m[1] || 0) * 3600) + (Number(m[2] || 0) * 60) + Number(m[3] || 0);
 }
 
-export const COST_LABEL = { free: "Free", tokens: "Uses Bedrock tokens", aws: "Calls AWS" };
+export const COST_LABEL = { free: "Free", tokens: "Uses Bedrock tokens" };
 export function costMark(cost, short = false) {
   if (!cost) return "";
-  const ic = cost === "aws" ? "cloud" : cost === "tokens" ? "coin" : null;
+  const ic = cost === "tokens" ? "coin" : null;
   if (!ic && short) return "";
-  return h`<span class="cost" data-c="${cost}">${ic ? icon(ic) : ""}${short && cost === "aws" ? "AWS" : short && cost === "tokens" ? "Tokens" : COST_LABEL[cost] || cost}</span>`;
+  return h`<span class="cost" data-c="${cost}">${ic ? icon(ic) : ""}${short && cost === "tokens" ? "Tokens" : COST_LABEL[cost] || cost}</span>`;
 }
 
 /** A2A states -> glyph id (DESIGN 3.2: colour + shape + word). */
@@ -112,11 +112,10 @@ export const SHAPE_LABEL = {
   plain: "plain worker",
   "serverless-invoke": "serverless, invoke-local",
   "serverless-wci": "serverless, WCI emulator",
-  "agentcore-aws": "AgentCore in AWS",
   unknown: "not detected",
 };
 
-export const PROFILE_LABEL = { local: "local", kind: "kind", "kind-plaintext": "kind plain", "eks-pf": "eks-pf" };
+export const PROFILE_LABEL = { local: "local", kind: "kind", "kind-plaintext": "kind plain" };
 
 /** Short base-36 suffix for fresh workflow IDs (never 12 digits: scrub-check). */
 export function suffix() {

@@ -8,11 +8,9 @@
   "profiles": [
    "local",
    "kind",
-   "kind-plaintext",
-   "eks-pf"
+   "kind-plaintext"
   ],
   "ui_base": "http://127.0.0.1:8233",
-  "allow_aws": false,
   "console_version": "0.1.0",
   "debounce_s": 20,
   "auto_approve_limit_usd": 100,
@@ -185,8 +183,7 @@
     "profiles": [
      "local",
      "kind",
-     "kind-plaintext",
-     "eks-pf"
+     "kind-plaintext"
     ],
     "fit": "ready",
     "cost": "free",
@@ -297,8 +294,7 @@
     "profiles": [
      "local",
      "kind",
-     "kind-plaintext",
-     "eks-pf"
+     "kind-plaintext"
     ],
     "fit": "ready",
     "cost": "free",
@@ -816,121 +812,6 @@
     "notes": "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh worker to finish the reply."
    },
    {
-    "id": "cloud-b",
-    "title": "Case B on AgentCore in AWS",
-    "summary": "The real thing: Support on AgentCore Runtime, the WCI on EKS, two sessions around a human approval.",
-    "story": {
-     "tag": "v0.13-scale-to-zero",
-     "doc": "docs/story/v0.13-scale-to-zero.md"
-    },
-    "profiles": [
-     "eks-pf"
-    ],
-    "fit": "wrong_profile",
-    "cost": "aws",
-    "cost_note": "AgentCore sessions and Bedrock tokens",
-    "case": "B",
-    "order_id": "2077",
-    "amount_usd": 450.0,
-    "options": [
-     {
-      "id": "a2a_mode",
-      "label": "How Support asks Finance",
-      "type": "choice",
-      "choices": [
-       "tool",
-       "handoff"
-      ],
-      "default": "tool"
-     },
-     {
-      "id": "nexus_send_timeout",
-      "label": "Support's budget for Finance's answer",
-      "type": "duration",
-      "default": "25h"
-     },
-     {
-      "id": "workflow_id",
-      "label": "Workflow ID",
-      "type": "text",
-      "default": "support-2077-v1-k3ff"
-     }
-    ],
-    "preconditions": [
-     {
-      "id": "profile",
-      "label": "Console runs on profile eks-pf",
-      "ok": false,
-      "fix": {
-       "kind": "command",
-       "command": "make resume && make pf TEMPORAL_PROFILE=eks-pf",
-       "label": "Resume AWS, then port-forward"
-      }
-     }
-    ],
-    "steps": [
-     {
-      "id": "resume",
-      "n": 1,
-      "title": "Resume the AWS stack",
-      "kind": "manual",
-      "done_when": "run.started",
-      "talk": "The stack was paused overnight.",
-      "make": "make resume"
-     },
-     {
-      "id": "start",
-      "n": 2,
-      "title": "Start Case B on support-tq",
-      "kind": "action",
-      "done_when": "run.started",
-      "talk": "A customer asks for $450 back on a laptop.",
-      "action": "start-run"
-     },
-     {
-      "id": "input-required",
-      "n": 3,
-      "title": "Finance asks a human",
-      "kind": "watch",
-      "done_when": "task.state==input-required",
-      "talk": "Finance's agent on EKS asks a person."
-     },
-     {
-      "id": "drained",
-      "n": 4,
-      "title": "Support's session drains (estimated)",
-      "kind": "watch",
-      "done_when": "compute.drain==drained",
-      "talk": "The AgentCore session ends. Nothing is billed."
-     },
-     {
-      "id": "approve",
-      "n": 5,
-      "title": "Approve the refund",
-      "kind": "human",
-      "done_when": "task.state in [completed, rejected]",
-      "talk": "I approve as dana.finance."
-     },
-     {
-      "id": "invoke2",
-      "n": 6,
-      "title": "The WCI starts session 2",
-      "kind": "watch",
-      "done_when": "wci.invokes>=2",
-      "talk": "The Nexus completion makes the WCI invoke AgentCore again."
-     },
-     {
-      "id": "reply",
-      "n": 7,
-      "title": "Support replies with the refund ID",
-      "kind": "watch",
-      "done_when": "run.status==COMPLETED",
-      "talk": "Same build, pinned."
-     }
-    ],
-    "notes": "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed."
-   },
-   {
     "id": "failure",
     "title": "Finance disappears mid-call",
     "summary": "Stop the Finance worker after discovery. The Nexus call retries on the server until Finance comes back.",
@@ -939,8 +820,7 @@
      "doc": "docs/story/v0.11-temporal-and-finance-on-eks.md"
     },
     "profiles": [
-     "local",
-     "eks-pf"
+     "local"
     ],
     "fit": "ready",
     "cost": "free",
@@ -1061,8 +941,7 @@
     "profiles": [
      "local",
      "kind",
-     "kind-plaintext",
-     "eks-pf"
+     "kind-plaintext"
     ],
     "fit": "ready",
     "cost": "free",
@@ -1132,8 +1011,7 @@
     },
     "profiles": [
      "local",
-     "kind",
-     "eks-pf"
+     "kind"
     ],
     "fit": "ready",
     "cost": "free",
@@ -1220,8 +1098,7 @@
     "profiles": [
      "local",
      "kind",
-     "kind-plaintext",
-     "eks-pf"
+     "kind-plaintext"
     ],
     "fit": "ready",
     "cost": "free",
@@ -1251,8 +1128,7 @@
     "profiles": [
      "local",
      "kind",
-     "kind-plaintext",
-     "eks-pf"
+     "kind-plaintext"
     ],
     "available": true,
     "why_not": null,
@@ -1280,8 +1156,7 @@
     "profiles": [
      "local",
      "kind",
-     "kind-plaintext",
-     "eks-pf"
+     "kind-plaintext"
     ],
     "available": true,
     "why_not": null,
@@ -1348,8 +1223,7 @@
     "profiles": [
      "local",
      "kind",
-     "kind-plaintext",
-     "eks-pf"
+     "kind-plaintext"
     ],
     "available": true,
     "why_not": null,
@@ -1364,8 +1238,7 @@
     "profiles": [
      "local",
      "kind",
-     "kind-plaintext",
-     "eks-pf"
+     "kind-plaintext"
     ],
     "available": true,
     "why_not": null,
@@ -1380,8 +1253,7 @@
     "profiles": [
      "local",
      "kind",
-     "kind-plaintext",
-     "eks-pf"
+     "kind-plaintext"
     ],
     "available": true,
     "why_not": null,
@@ -1413,39 +1285,12 @@
     "profiles": [
      "local",
      "kind",
-     "kind-plaintext",
-     "eks-pf"
+     "kind-plaintext"
     ],
     "available": true,
     "why_not": null,
     "params": [],
     "make": "make wci-history",
-    "long": false
-   },
-   {
-    "id": "failure",
-    "label": "Failure demo on EKS (scales Finance pods)",
-    "cost": "aws",
-    "profiles": [
-     "eks-pf"
-    ],
-    "available": false,
-    "why_not": "eks-pf only",
-    "params": [],
-    "make": "make failure WF=support-1042-fail",
-    "long": false
-   },
-   {
-    "id": "drain-cloudwatch",
-    "label": "Confirm the drain in CloudWatch",
-    "cost": "aws",
-    "profiles": [
-     "eks-pf"
-    ],
-    "available": false,
-    "why_not": "eks-pf only",
-    "params": [],
-    "make": "uv run python -m demo_testing.agentcore_logs wait-drained WF",
     "long": false
    },
    {
@@ -1628,8 +1473,7 @@
     "ports": [],
     "profiles": [
      "local",
-     "kind",
-     "eks-pf"
+     "kind"
     ],
     "needs": [],
     "managed": true

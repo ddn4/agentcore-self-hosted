@@ -27,7 +27,6 @@ def test_every_catalog_predicate_parses() -> None:
         "crash",
         "serverless-b",
         "wci-b",
-        "cloud-b",
         "failure",
         "smoke",
         "load",
@@ -172,7 +171,7 @@ def test_scenario_json_preconditions_and_fit() -> None:
     )
     assert scenario_json(catalog["case-a"], ready)["fit"] == "ready"
     assert scenario_json(catalog["case-a"], ready, "live")["cost"] == "tokens"
-    assert scenario_json(catalog["cloud-b"], ready)["fit"] == "wrong_profile"
+    assert scenario_json(catalog["wci-b"], StackFacts(profile="kind"))["fit"] == "wrong_profile"
     # kind: no payments precondition (a pod), fixes are commands.
     kind = StackFacts(profile="kind", temporal_up=False)
     body = scenario_json(catalog["case-a"], kind)

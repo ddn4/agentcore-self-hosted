@@ -8,13 +8,13 @@ import { copyBox } from "./ui.js";
 
 const SHORT_TITLE = {
   "case-a": "Case A", "case-b": "Case B", crash: "Crash demo", "serverless-b": "AgentCore, invoke-local",
-  "wci-b": "AgentCore, server's WCI", "cloud-b": "AgentCore in AWS", failure: "Failure demo",
+  "wci-b": "AgentCore, server's WCI", failure: "Failure demo",
   smoke: "The hop with no AI", load: "Load", cleanup: "Leftovers",
 };
 const SUB = {
   "case-a": "$40 headphones, auto-approved", "case-b": "$450 laptop, a human approves",
   crash: "Kill the worker mid-thought", "serverless-b": "You start each AgentCore lifetime",
-  "wci-b": "Temporal starts the worker when work arrives", "cloud-b": "Two AgentCore sessions around a human",
+  "wci-b": "Temporal starts the worker when work arrives",
   failure: "Finance disappears mid-call", smoke: "Smoke caller and Agent Card",
   load: "Up to 20 conversations at once", cleanup: "Runs still waiting for a human",
 };
@@ -114,10 +114,8 @@ export function renderScenarioCard(state, el) {
   const profile = state.config?.profile;
   const wrong = s.fit === "wrong_profile";
   const missing = (s.preconditions || []).filter((p) => !p.ok).length;
-  const awsOff = s.cost === "aws" && !state.config?.allow_aws;
   const why = wrong ? `Switch to ${(s.profiles || []).join(" or ")} to run this. The console is on ${profile}.`
-    : awsOff ? "AWS actions are off. Restart the console with CONSOLE_ALLOW_AWS=1."
-      : missing ? `${missing === 1 ? "One precondition is" : `${missing} preconditions are`} missing. You can start anyway; the run waits for them.` : "";
+    : missing ? `${missing === 1 ? "One precondition is" : `${missing} preconditions are`} missing. You can start anyway; the run waits for them.` : "";
   const startKey = s.case ? `start:${s.id}` : `action:${s.id === "load" ? "load" : "smoke"}`;
   const isCleanup = s.id === "cleanup";
   el.innerHTML = String(h`<article class="card-view" aria-labelledby="sc-title">
@@ -137,7 +135,7 @@ export function renderScenarioCard(state, el) {
           ${(s.options || []).length ? "" : h`<p class="muted">No options.</p>`}</form></section>
     </div>
     <div class="startbar">
-      <button class="btn primary start ${busy[startKey] ? "busy" : ""}" type="button" data-start="${s.id}" ${wrong || awsOff ? "disabled" : ""}>${icon("play")}${startLabel(s, v)}</button>
+      <button class="btn primary start ${busy[startKey] ? "busy" : ""}" type="button" data-start="${s.id}" ${wrong ? "disabled" : ""}>${icon("play")}${startLabel(s, v)}</button>
       ${s.id === "smoke" ? h`<button class="btn ghost ${busy["action:card"] ? "busy" : ""}" type="button" data-card>${icon("ledger")}Fetch the Agent Card</button>` : ""}
       ${why ? h`<span class="why">${why}</span>` : ""}
     </div>

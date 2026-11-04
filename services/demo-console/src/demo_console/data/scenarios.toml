@@ -3,7 +3,7 @@
 # {build} in a make string is Support's resolved Build ID (build-id.sh refuses a dirty tree).
 # Each step's done_when uses the closed predicate vocabulary of DESIGN.md 5.4; a unit test
 # parses every one. {wf} in a make string is the run's workflow ID. Cost per profile:
-# free | tokens | aws (the console turns free into tokens when the model is live).
+# free | tokens (the console turns free into tokens when the model is live).
 # preconditions: ids evaluated by demo_console.scenarios against the live stack;
 # preconditions_serverless replaces them when the queue is support-tq.
 
@@ -12,14 +12,14 @@ id = "case-a"
 title = "Case A: $40 headphones, auto-approved"
 summary = "Support's agents look up the order, ask Finance over Nexus, and Finance approves on its own."
 story = { tag = "v0.5-a2a-over-nexus", doc = "docs/story/v0.5-a2a-over-nexus.md" }
-profiles = ["local", "kind", "kind-plaintext", "eks-pf"]
+profiles = ["local", "kind", "kind-plaintext"]
 case = "A"
 order_id = "1042"
 amount_usd = 40.0
 id_prefix = "support-1042"
 queue = "auto"
-cost = { local = "free", kind = "free", kind-plaintext = "free", eks-pf = "tokens" }
-cost_note = "scripted model locally; Finance on EKS uses Bedrock"
+cost = { local = "free", kind = "free", kind-plaintext = "free" }
+cost_note = "scripted model; Bedrock tokens when the model is live"
 preconditions = ["temporal", "endpoint", "finance", "payments", "support-plain"]
 preconditions_serverless = ["temporal", "endpoint", "finance", "payments", "build-id", "version", "serverless-compute"]
 notes = "Support can't move money, so it asks Finance: a different team's agent, through a published contract and a named endpoint. It isn't a child workflow, and only the contract is shared."
@@ -67,14 +67,14 @@ id = "case-b"
 title = "Case B: $450 laptop, a human approves"
 summary = "Over $100, Finance's agent asks a human. Support can be switched off while it waits."
 story = { tag = "v0.6-human-in-the-loop", doc = "docs/story/v0.6-human-in-the-loop.md" }
-profiles = ["local", "kind", "kind-plaintext", "eks-pf"]
+profiles = ["local", "kind", "kind-plaintext"]
 case = "B"
 order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077"
 queue = "auto"
-cost = { local = "free", kind = "free", kind-plaintext = "free", eks-pf = "tokens" }
-cost_note = "scripted model locally; Finance on EKS uses Bedrock"
+cost = { local = "free", kind = "free", kind-plaintext = "free" }
+cost_note = "scripted model; Bedrock tokens when the model is live"
 preconditions = ["temporal", "endpoint", "finance", "payments", "support-plain"]
 preconditions_serverless = ["temporal", "endpoint", "finance", "payments", "build-id", "version", "serverless-compute"]
 notes = "Over $100, Finance's agent says 'I need a human', and the task goes to input-required. I switch Support off completely. Nothing is lost, and when the approver signals, the conversation picks up again."
@@ -153,7 +153,7 @@ order_id = "1042"
 amount_usd = 40.0
 id_prefix = "support-1042-crash"
 queue = "dev"
-cost = { local = "free", kind = "free", kind-plaintext = "free", eks-pf = "tokens" }
+cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model"
 preconditions = ["temporal", "endpoint", "finance", "payments", "support-plain-managed"]
 notes = "Every model call and tool call is an Activity. I kill the process mid-thought, and it carries on from exactly where it stopped."
@@ -203,7 +203,7 @@ order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077-sl"
 queue = "versioned"
-cost = { local = "free", kind = "free", kind-plaintext = "free", eks-pf = "aws" }
+cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model"
 preconditions = ["temporal", "endpoint", "finance", "payments", "build-id", "agentcore", "version-current"]
 notes = "Support's Worker is now built to die. It starts when invoked, drains when idle, and when Finance answers, a new invocation picks the conversation up, pinned to the exact build."
@@ -288,7 +288,7 @@ order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077-wci"
 queue = "versioned"
-cost = { local = "free", kind = "free", kind-plaintext = "free", eks-pf = "aws" }
+cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model"
 preconditions = ["temporal", "wci", "emulator", "agentcore", "build-id", "version-wci", "finance", "payments", "endpoint"]
 notes = "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh worker to finish the reply."
@@ -355,103 +355,18 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   make = "make wci-history BUILD={build}"
 
 [[scenario]]
-id = "cloud-b"
-title = "Case B on AgentCore in AWS"
-summary = "Support runs in AgentCore sessions; the EKS WCI starts one per piece of work."
-story = { tag = "v0.13-scale-to-zero", doc = "docs/story/v0.13-scale-to-zero.md" }
-profiles = ["eks-pf"]
-case = "B"
-order_id = "2077"
-amount_usd = 450.0
-id_prefix = "support-2077-v1"
-queue = "versioned"
-cost = { local = "aws", kind = "aws", kind-plaintext = "aws", eks-pf = "aws" }
-cost_note = "AgentCore sessions and Bedrock tokens"
-preconditions = ["temporal", "endpoint", "finance", "build-id", "version-aws", "aws"]
-notes = "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh AgentCore session to finish the reply."
-
-  [[scenario.step]]
-  id = "resume"
-  title = "Resume the AWS stack"
-  kind = "manual"
-  done_when = "run.started"
-  talk = "The cluster was paused overnight."
-  make = "make resume && make pf TEMPORAL_PROFILE=eks-pf"
-
-  [[scenario.step]]
-  id = "start"
-  title = "Start Case B on support-tq"
-  kind = "action"
-  action = "start-run"
-  done_when = "run.started"
-  talk = "Nothing is polling Support's queue."
-  make = "TEMPORAL_PROFILE=eks-pf CASE_B_APPROVE=no scripts/demo/case-b.sh {wf}"
-
-  [[scenario.step]]
-  id = "invoke1"
-  title = "The WCI invokes session 1"
-  kind = "watch"
-  done_when = "compute.lifetimes>=1"
-  talk = "The WCI assumed the role and invoked AgentCore. A microVM dials the frontend over mTLS."
-
-  [[scenario.step]]
-  id = "input-required"
-  title = "Finance asks a human"
-  kind = "watch"
-  done_when = "task.state==input-required"
-  talk = "Finance on EKS needs a human."
-
-  [[scenario.step]]
-  id = "drained"
-  title = "Support's session drains"
-  kind = "watch"
-  done_when = "compute.drain==drained"
-  talk = "Estimated from the 30 s debounce; confirm in CloudWatch if you like."
-
-  [[scenario.step]]
-  id = "approve"
-  title = "Approve the refund"
-  kind = "human"
-  action = "approve"
-  done_when = "task.state in [completed, rejected, failed]"
-  talk = "I approve as dana.finance."
-  make = "make approve WF={wf} APPROVER=dana.finance TEMPORAL_PROFILE=eks-pf"
-
-  [[scenario.step]]
-  id = "invoke2"
-  title = "The WCI invokes session 2"
-  kind = "watch"
-  done_when = "compute.lifetimes>=2"
-  talk = "The approval's Nexus completion makes the WCI start a second session."
-
-  [[scenario.step]]
-  id = "reply"
-  title = "Support replies"
-  kind = "watch"
-  done_when = "run.status==COMPLETED"
-  talk = "Same build, pinned."
-
-  [[scenario.step]]
-  id = "report"
-  title = "Read the report"
-  kind = "watch"
-  done_when = "run.closed"
-  talk = "Two sessions, one Build ID."
-  make = "make timeline WF={wf} MERGED=1"
-
-[[scenario]]
 id = "failure"
 title = "Finance disappears mid-call"
 summary = "The Finance worker goes away; Support's Nexus call retries until it comes back."
 story = { tag = "v0.11-temporal-and-finance-on-eks", doc = "docs/story/v0.11-temporal-and-finance-on-eks.md" }
-profiles = ["local", "eks-pf"]
+profiles = ["local"]
 case = "A"
 order_id = "1042"
 amount_usd = 40.0
 id_prefix = "support-1042-failure"
 queue = "dev"
-cost = { local = "free", kind = "free", kind-plaintext = "free", eks-pf = "aws" }
-cost_note = "locally: stops the managed Finance worker; on EKS: kubectl scale (AWS)"
+cost = { local = "free", kind = "free", kind-plaintext = "free" }
+cost_note = "stops and restarts the console-managed Finance worker"
 preconditions = ["temporal", "endpoint", "finance-managed", "payments", "support-plain"]
 notes = "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives."
 
@@ -479,7 +394,6 @@ notes = "Finance's team has an outage. Support's call doesn't fail: the server k
   params = { name = "worker-finance", signal = "TERM" }
   done_when = "process.worker-finance==stopped"
   talk = "Finance goes away. Nobody polls agent-services-tq."
-  make = "make failure WF={wf} TEMPORAL_PROFILE=eks-pf"
 
   [[scenario.step]]
   id = "retrying"
@@ -516,7 +430,7 @@ order_id = "1042"
 amount_usd = 40.0
 id_prefix = "smoke-1042"
 queue = "smoke"
-cost = { local = "free", kind = "free", kind-plaintext = "free", eks-pf = "free" }
+cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "no model on the caller"
 preconditions = ["temporal", "endpoint", "finance", "payments", "smoke-worker"]
 notes = "The Finance team publishes exactly one thing, an A2A-shaped contract. No AI on the caller yet, just the hop."
@@ -544,13 +458,13 @@ id = "load"
 title = "N conversations at once"
 summary = "N Workflows on support-tq with nothing polling; the WCI scales Support up and back to zero."
 story = { tag = "v0.13-scale-to-zero", doc = "docs/story/v0.13-scale-to-zero.md" }
-profiles = ["local", "kind", "kind-plaintext", "eks-pf"]
+profiles = ["local", "kind", "kind-plaintext"]
 case = ""
 order_id = ""
 amount_usd = 0.0
 id_prefix = "load"
 queue = "versioned"
-cost = { local = "free", kind = "free", kind-plaintext = "free", eks-pf = "aws" }
+cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "ping: no model; case-a: model turns"
 preconditions = ["temporal", "build-id", "version", "serverless-compute"]
 notes = "Ten conversations arrive at once. Nothing polls Support's queue until the server's Worker Controller starts capacity, and it all drains back to zero."
@@ -567,15 +481,15 @@ notes = "Ten conversations arrive at once. Nothing polls Support's queue until t
 [[scenario]]
 id = "cleanup"
 title = "Leftovers"
-summary = "Runs still waiting in input-required, e.g. after a resume. Reject or terminate them."
+summary = "Runs still waiting in input-required. Reject or terminate them."
 story = { tag = "v0.13-scale-to-zero", doc = "docs/story/v0.13-scale-to-zero.md" }
-profiles = ["local", "kind", "kind-plaintext", "eks-pf"]
+profiles = ["local", "kind", "kind-plaintext"]
 case = ""
 order_id = ""
 amount_usd = 0.0
 id_prefix = "support"
 queue = "none"
-cost = { local = "free", kind = "free", kind-plaintext = "free", eks-pf = "free" }
+cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "signals and terminations only"
 preconditions = ["temporal"]
 notes = "Housekeeping before the next demo."

@@ -16,11 +16,9 @@ from starlette.staticfiles import StaticFiles
 
 from demo_console.actions import ActionService
 from demo_console.clients import Clients, Gateway
-from demo_console.cloud import CloudAdapter
 from demo_console.events import EventBus
 from demo_console.jobs import JobStore
 from demo_console.lifetimes import WciReader
-from demo_console.payloads import parse_iso
 from demo_console.procs import ProcessManager
 from demo_console.routes import ROUTES, Guard
 from demo_console.runner import AsyncioRunner, CommandRunner
@@ -63,7 +61,6 @@ class Console:
         gateway: Gateway,
         runner: CommandRunner,
         http: HttpProbe,
-        cloud: CloudAdapter,
         catalog: dict[str, Scenario],
         intervals: Intervals | None = None,
         settle_s: float = 10.0,
@@ -72,7 +69,6 @@ class Console:
         self.gateway = gateway
         self.runner = runner
         self.http = http
-        self.cloud = cloud
         self.catalog = catalog
         self.settle_s = settle_s
         self.bus = EventBus()
@@ -89,19 +85,9 @@ class Console:
             self.jobs,
             self.stack,
             http,
-            cloud,
-            on_cloudwatch=lambda wf, result: self.runs.save_record(wf, cloudwatch=result),
-            run_started_at=self._run_started_at,
         )
         self.hub = StreamHub(settings, self.stack, self.runs, self.bus, intervals)
         self.runs.stack_refresh = self.hub.stack_cache.get
-
-    async def _run_started_at(self, workflow_id: str) -> float | None:
-        with contextlib.suppress(Exception):
-            view = await self.runs.view(workflow_id)
-            when = parse_iso(view.get("started_at"))
-            return when.timestamp() if when else None
-        return None
 
     async def startup(self) -> None:
         self.settings.state_dir.mkdir(parents=True, exist_ok=True)
@@ -133,7 +119,6 @@ def create_app(
     clients: Gateway | None = None,
     runner: CommandRunner | None = None,
     http: HttpProbe | None = None,
-    cloud: CloudAdapter | None = None,
     intervals: Intervals | None = None,
     static_dir: Path | None = None,
     settle_s: float = 10.0,
@@ -145,7 +130,6 @@ def create_app(
         gateway,
         runner or AsyncioRunner(),
         http or RealHttp(),
-        cloud or CloudAdapter(settings),
         load_catalog(),
         intervals,
         settle_s,

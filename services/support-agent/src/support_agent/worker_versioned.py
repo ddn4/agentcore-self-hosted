@@ -19,7 +19,7 @@ import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from support_agent import config, mtls
+from support_agent import config
 from support_agent.worker_factory import build_versioned_worker
 
 
@@ -27,7 +27,6 @@ async def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
-    mtls.load_mtls_into_env()
     client = await config.connect(plugins=[config.build_strands_plugin()])
     queue, name, build = config.versioned_task_queue(), config.deployment_name(), config.build_id()
     logging.info(

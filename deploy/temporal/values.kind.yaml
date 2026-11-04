@@ -2,9 +2,9 @@
 server:
   config:
     persistence:
-      numHistoryShards: 4     # plan 3.3: kind 4 (EKS 512, ADR-0006). Immutable.
+      numHistoryShards: 4     # plan 3.3: kind 4. Immutable.
   # One replica each (chart default), small requests so everything fits the colima VM
-  # (6 CPU / 12 GB). EKS sizing lives in values.eks.yaml (2.1 sizing, ADR-0006).
+  # (6 CPU / 12 GB).
   frontend:
     resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
   history:

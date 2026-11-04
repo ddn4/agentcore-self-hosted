@@ -62,7 +62,6 @@ _ORDER = re.compile(r"#\s*(\d+)")
 _LOAD = re.compile(r"^(load-\d+)-\d+$")
 VIEW_TTL_S = 0.8
 QUERY_TIMEOUT_S = 3.0
-DRAIN_MARGIN_S = 10.0
 
 
 def finance_task_id(workflow_id: str) -> str:
@@ -302,7 +301,7 @@ class RunService:
         self.stack_refresh: Callable[[], Awaitable[Any]] | None = None
         self.runs_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- console-side run records (scenario, CloudWatch results) ---------------------------
+    # --- console-side run records (scenario, queue, A2A mode) ------------------------------
 
     @property
     def runs_dir(self) -> Path:
@@ -333,8 +332,6 @@ class RunService:
         if info.task_queue == VERSIONED_TQ:
             if case == "A":
                 return "case-a"
-            if self.settings.profile == "eks-pf":
-                return "cloud-b"
             snap = self.stack.last or {}
             if (snap.get("wci") or {}).get("mode") == "emulator":
                 return "wci-b"
@@ -461,20 +458,6 @@ class RunService:
         if wci_events:
             rows += wci_rows(wci_events, start, closed_at)
 
-        cloud = self.record(wf).get("cloudwatch") or {}
-        for n, sess in enumerate(cloud.get("sessions") or [], 1):
-            at = parse_iso(sess.get("app_start_iso") or sess.get("invoked_iso"))
-            if at is not None:
-                rows.append(
-                    Row(
-                        at,
-                        "compute",
-                        "session.start",
-                        f"AgentCore session {n} starts",
-                        {"source": "cloudwatch", "detail": sess.get("session", "")},
-                    )
-                )
-
         final_rows = finalize(rows, start)
         rows_version = self._version(wf, final_rows)
         view = self._view(
@@ -495,7 +478,6 @@ class RunService:
             app_events=app_events,
             pending=pending,
             wci_events=wci_events,
-            cloud=cloud,
             rows_version=rows_version,
         )
         return view, final_rows
@@ -506,12 +488,8 @@ class RunService:
         serverless: bool,
         lives: list[Lifetime],
         app_events: list[AppEvent],
-        history: WorkflowHistory,
-        desc: DescribeWorkflowExecutionResponse,
         closed: bool,
-        cloud: dict[str, Any],
     ) -> dict[str, Any]:
-        s = self.settings
         snap = self.stack.last or {}
         drain: dict[str, Any] = {"state": "unknown", "at": None, "estimated": False, "source": None}
         running: bool | None = None
@@ -530,27 +508,6 @@ class RunService:
                 "estimated": False,
                 "source": source,
             }
-        elif s.profile == "eks-pf":
-            last_work = _last_support_work(history)
-            pending_wft = desc.HasField("pending_workflow_task")
-            if cloud.get("drained_at"):
-                running = False
-                drain = {
-                    "state": "drained",
-                    "at": cloud["drained_at"],
-                    "estimated": False,
-                    "source": "cloudwatch",
-                }
-            elif last_work is not None:
-                at = last_work + timedelta(seconds=s.debounce_s + DRAIN_MARGIN_S)
-                drained = now() >= at and not pending_wft
-                running = not drained
-                drain = {
-                    "state": "drained" if drained else "running",
-                    "at": iso(at) if drained else None,
-                    "estimated": True,
-                    "source": "estimate",
-                }
         else:
             ping = (snap.get("agentcore_app") or {}).get("status")
             log_end = latest.end if (latest and latest.end_reason == "drained") else None
@@ -645,7 +602,6 @@ class RunService:
         app_events: list[AppEvent],
         pending: list[dict[str, Any]],
         wci_events: list[WciEvent] | None,
-        cloud: dict[str, Any],
         rows_version: int,
     ) -> dict[str, Any]:
         s = self.settings
@@ -696,10 +652,7 @@ class RunService:
             serverless=serverless,
             lives=lives,
             app_events=app_events,
-            history=history,
-            desc=desc,
             closed=status != "RUNNING",
-            cloud=cloud,
         )
         invokes = sum(
             1
@@ -1059,18 +1012,6 @@ def lifetime_label(n: int, life: Lifetime) -> str:
 
 def _row_key(row: dict[str, Any]) -> tuple[Any, ...]:
     return (row.get("at"), row.get("lane"), row.get("kind"), row.get("title"))
-
-
-def _last_support_work(history: WorkflowHistory) -> datetime | None:
-    last = None
-    for e in history.events:
-        if e.event_type in (
-            E.EVENT_TYPE_WORKFLOW_TASK_COMPLETED,
-            E.EVENT_TYPE_ACTIVITY_TASK_COMPLETED,
-            E.EVENT_TYPE_ACTIVITY_TASK_FAILED,
-        ):
-            last = ts(e.event_time)
-    return last
 
 
 def _dur_text(seconds_value: float) -> str:

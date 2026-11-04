@@ -9,7 +9,7 @@ const SHORT = {
   "stop-support": "Stop Support", approve: "Approve", restart: "Restart Support",
   invoke2: "Lifetime 2", reply: "Reply", report: "Report", kill: "Kill worker",
   "stop-finance": "Stop Finance", retry: "Retries", "start-finance": "Start Finance",
-  resume: "Resume AWS", smoke: "Smoke", load: "Load",
+  smoke: "Smoke", load: "Load",
   // The catalog's ids (data/scenarios.toml) where they differ from the short names above.
   approved: "Approved", "restart-support": "Restart Support", retrying: "Retries",
 };

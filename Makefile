@@ -20,7 +20,7 @@ AWS_REGION           ?= us-east-1
 SUPPORT_TASK_QUEUE   ?= support-dev-tq
 SUPPORT_A2A_MODE     ?= tool
 # v0.7: WCI=1 makes `make dev-server` / `dev-server-up` enable the dev server's WCI (local
-# AgentCore emulator; WCI=aws for real AWS at v0.8). Build ID: TEMPORAL_BUILD_ID or build-id.sh.
+# AgentCore emulator). Build ID: TEMPORAL_BUILD_ID or build-id.sh.
 WCI                  ?= 0
 # Never touch the global docker context: every docker/kind call uses this one.
 DOCKER_CONTEXT       ?= colima-agentcore
@@ -28,7 +28,7 @@ DOCKER_CONTEXT       ?= colima-agentcore
 override TEMPORAL_CONFIG_FILE := $(abspath $(TEMPORAL_CONFIG_FILE))
 export
 # The local dev server is plaintext (CLI 1.9.1 otherwise tries TLS). Every other profile
-# (kind, eks-pf) carries its own address and TLS settings: the .env values for the dev
+# (kind, kind-plaintext) carries its own address and TLS settings: the .env values for the dev
 # server must not reach those clients, or TEMPORAL_TLS=false would switch mTLS off.
 ifeq ($(TEMPORAL_PROFILE),local)
 TEMPORAL_TLS         ?= false
@@ -47,17 +47,11 @@ PYTEST := $(UV) pytest
         nexus-endpoint agent-card agent-card-golden smoke task-state card spike-nexus-ts \
         timeline a2a e2e approve reject pending result approval-report \
         spike-nexus-wait build-id agentcore-local agentcore-local-scripted invoke-local \
-        agentcore-ping agentcore-emulator agentcore-bundle agentcore-bundle-test \
+        agentcore-ping agentcore-emulator \
         worker-support-versioned register-version wci-history case-b-serverless \
         case-a-serverless tools kind-up kind-temporal kind-images kind-workers kind-aws-creds \
-        certs-pull pf pf-stop kind-status kind-down cert-renew export-agentcore-cert kind-env env \
-        tools-agentcore tf-static tf-plan tf-apply tf-destroy tf-output guardrails external-id \
-        cfn-template aws-profile invoke-role invoke-role-delete agentcore-build agentcore-deploy \
-        agentcore-status agentcore-down agentcore-sessions register-version-aws \
-        agentcore-network agentcore-logs flow-report \
-        check-quotas render-config pause resume eks-kubeconfig eks-env eks-status \
-        eks-temporal eks-rds-ca create-db-user rds-snapshot route53-alias finance-image finance-deploy \
-        finance-scale failure load ui-shot refund-idempotency console console-shots
+        certs-pull pf pf-stop kind-status kind-down cert-renew kind-env env \
+        tf-destroy failure load ui-shot console console-shots
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -99,13 +93,10 @@ test-live: ## Live Bedrock tests (needs AWS credentials; costs tokens)
 infra-static: ## helm template + kustomize -> kubeconform -strict for everything in deploy/ (no cluster)
 	scripts/infra-static.sh
 
-tools: ## Project-local kubeconform, terraform, tflint in .tools/bin (pinned sha256; no brew)
+tools: ## Project-local kubeconform in .tools/bin (pinned sha256; no brew)
 	scripts/tools.sh
 
-tools-agentcore: tools ## + AgentCore CLI @aws/agentcore 1.0.1 in .tools/agentcore-cli (npm, exact version)
-	scripts/tools.sh agentcore
-
-scrub-check: ## No secrets, account IDs or AWS resource IDs in the tree (gitleaks if installed)
+scrub-check: ## No secrets or AWS account IDs in the tree (gitleaks if installed)
 	scripts/scrub-check.sh
 
 scrub-history: ## Same, over the whole git history (before anything goes public)
@@ -147,7 +138,7 @@ worker-support-scripted: ## Same Support Worker with a scripted model (offline c
 case-a: ## Case A #1042: Supervisor -> sub-agents -> Finance over Nexus (WF=support-1042 SUPPORT_A2A_MODE=tool|handoff)
 	scripts/demo/case-a.sh $(or $(WF),support-1042)
 
-case-b: ## Case B #2077 ($450): Finance waits in input-required (WF=support-2077 CASE_B_WAIT=1; eks-pf: waits for the AgentCore drain, CASE_B_APPROVE=approve|reject|no)
+case-b: ## Case B #2077 ($450): Finance waits in input-required (WF=support-2077 CASE_B_WAIT=1)
 	scripts/demo/case-b.sh $(or $(WF),support-2077)
 
 approve: ## Finance approver approves a task in input-required (WF=support-2077 APPROVER=dana.finance COMMENT=)
@@ -201,21 +192,18 @@ card: ## Standalone Nexus Operation from the CLI: FinanceAgentA2A.get_agent_card
 task-state: ## The A2A task as Finance sees it: get_task in agent-services (WF=support-1042 -> a2a-task-support-1042)
 	scripts/demo/task-state.sh $(or $(WF),support-1042)
 
-timeline: ## Both sides of a Support conversation (WF=support-1042; MERGED=1 adds the wall-clock Support+Finance+WCI+AgentCore slide, redacted)
-	$(UV) python scripts/timeline.py $(or $(WF),support-1042) $(if $(filter 1,$(MERGED)),--merged --agentcore) | scripts/redact.sh
+timeline: ## Both sides of a Support conversation (WF=support-1042; MERGED=1 adds the wall-clock Support+Finance+WCI slide, redacted)
+	$(UV) python scripts/timeline.py $(or $(WF),support-1042) $(if $(filter 1,$(MERGED)),--merged) | scripts/redact.sh
 
 a2a: ## The Supervisor's A2A view: Agent Card, exchanges with Finance, guard re-prompts (WF=support-1042)
 	temporal workflow query --namespace agents --workflow-id $(or $(WF),support-1042) --type a2a -o json \
 	  | jq '.queryResult[0]'
 
-e2e: ## End-to-end Cases against the RUNNING stack of TEMPORAL_PROFILE (make dev + nexus-endpoint first; eks-pf: also AgentCore session counts)
-	RUN_E2E=1 SUPPORT_TASK_QUEUE=$(if $(filter eks-pf,$(TEMPORAL_PROFILE)),support-tq,$(SUPPORT_TASK_QUEUE)) $(PYTEST) -m e2e tests/e2e
+e2e: ## End-to-end Cases against the RUNNING stack of TEMPORAL_PROFILE (make dev + nexus-endpoint first)
+	RUN_E2E=1 $(PYTEST) -m e2e tests/e2e
 
-load: ## v0.13 load test: N Workflows at once on support-tq (N=10 LOAD_KIND=case-a|ping); N=50 is v1.2
+load: ## Load test: N Workflows at once on support-tq via the local WCI (N=10 LOAD_KIND=case-a|ping)
 	scripts/demo/load.sh $(or $(N),10)
-
-refund-idempotency: ## Replay Finance's refund call in payments-mock on EKS: same key -> same refund (WF=support-2077)
-	scripts/refund-idempotency.sh $(or $(WF),support-2077)
 
 ui-shot: ## Headless Chrome screenshot of a Web UI page (PAGE=/nexus OUT=.temporal/ui.png; needs make pf)
 	scripts/ui-screenshot.sh $(or $(PAGE),/nexus) $(or $(OUT),.temporal/ui.png)
@@ -258,17 +246,11 @@ agentcore-ping: ## /ping of the local AgentCore app (Healthy | HealthyBusy)
 agentcore-emulator: ## Local AgentCore API for the dev server's WCI (make dev-server WCI=1) -> :8080
 	$(UV) python scripts/agentcore_emulator.py
 
-agentcore-bundle: ## CodeZip code location in build/agentcore (flat; vendored contract; BUILD_ID)
-	scripts/agentcore-bundle.sh
-
-agentcore-bundle-test: ## Bundle imports and serves in a fresh 3.12 venv; arm64 zip < 250 MB
-	scripts/agentcore-bundle-test.sh
-
 worker-support-versioned: ## Long-lived versioned Support Worker (support-supervisor:<build>, support-tq)
 	TEMPORAL_BUILD_ID="$(BUILD_ID_SH)" $(UV) python -m support_agent.worker_versioned
 
-register-version: ## deployment create -> create-version -> set-current-version (MODE=--poller|--local-wci|--agentcore-auto; CLOUD=1 = from main only)
-	scripts/register-version.sh $(or $(MODE),--local-wci) $(if $(filter 1,$(CLOUD)),--cloud)
+register-version: ## deployment create -> create-version -> set-current-version (MODE=--poller|--local-wci)
+	scripts/register-version.sh $(or $(MODE),--local-wci)
 
 wci-history: ## The dev server's WCI system Workflow for Support's version (BUILD=<build id>)
 	scripts/wci-history.sh $(BUILD)
@@ -279,125 +261,15 @@ case-b-serverless: ## Case B on the versioned queue support-tq (WF=support-2077-
 case-a-serverless: ## Case A on the versioned queue support-tq (WF=support-1042-sl)
 	SUPPORT_TASK_QUEUE=support-tq scripts/demo/case-a.sh $(or $(WF),support-1042-sl)
 
-# --- v0.8: first AWS contact (us-east-1, default SSO profile; go-ahead G5) -------------
-# Terraform per stack under infra/terraform (local state, gitignored). tf-plan writes a saved
-# plan; tf-apply applies exactly that plan. Inputs via TF_VAR_* (e.g. TF_VAR_budget_email,
-# TF_VAR_create_dev_wci_role=true) or a gitignored terraform.auto.tfvars.
+# --- Temporary: the last AWS stack (10-network) is still being torn down. -------------
+# Removed together with infra/terraform/10-network and scripts/tf.sh once it is destroyed.
 STACK ?=
 
-tf-static: ## terraform fmt -check, validate (-backend=false), tflint for every stack (no AWS)
-	scripts/tf.sh static
-
-tf-plan: ## terraform plan for STACK= (writes STACK/tfplan; review it; ARGS= e.g. -target=...)
-	scripts/tf.sh plan $(STACK) $(ARGS)
-
-tf-apply: ## Apply the reviewed saved plan of STACK=
-	scripts/tf.sh apply $(STACK)
-
-tf-destroy: ## Destroy STACK= (guarded; STACK=foundation = 20-platform then 10-network; DRY_RUN=1 = plan -destroy only)
+tf-destroy: ## TEMPORARY: destroy the remaining AWS stack (STACK=10-network); removed after teardown
 	DRY_RUN=$(or $(DRY_RUN),0) scripts/tf.sh destroy $(STACK)
 
-tf-output: ## terraform output of STACK=
-	scripts/tf.sh output $(STACK)
-
-guardrails: ## Plan 00-guardrails (budget USD 200 80%/100% + AgentCore session alarm); then make tf-apply STACK=00-guardrails
-	scripts/tf.sh plan 00-guardrails
-
-external-id: ## Create the External ID secret temporal/agentcore-external-id if absent (never in TF state)
-	scripts/external-id.sh
-
-cfn-template: ## Download + sha256-check + vendor Temporal's self-hosted invocation-role template
-	scripts/cfn-template.sh
-
-aws-profile: ## Append [profile temporal-dev-wci] to ~/.aws/config (backup first; append-only)
-	scripts/aws-profile.sh
-
-invoke-role: ## CFN invocation-role stack trusting temporal-server-wci (IRSA; v0.12); create or update (needs the runtime)
-	scripts/invoke-role.sh create-or-update --temporal-role-arn "$$(scripts/tf.sh output 20-platform -raw temporal_server_wci_role_arn)"
-
-invoke-role-delete: ## Delete the CFN invocation-role stack (Project tag checked)
-	scripts/invoke-role.sh delete
-
-agentcore-build: ## AgentCore CLI synth of the runtime (MODE=PUBLIC|VPC; local packaging check, no AWS)
-	scripts/agentcore-deploy.sh build
-
-agentcore-deploy: ## Bundle + agentcore deploy (MODE=VPC is the demo runtime, v0.12; MODE=PUBLIC the v0.8 probe, ADR-0005)
-	MODE=$(or $(MODE),VPC) scripts/agentcore-deploy.sh deploy
-
-agentcore-network: ## get-agent-runtime: networkConfiguration, role, endpoints of our runtime (redacted)
-	scripts/agentcore-deploy.sh network
-
-agentcore-logs: ## Our runtime's CloudWatch log lines (SINCE=<minutes>, default 30; redacted)
-	scripts/agentcore-deploy.sh logs $(or $(SINCE),30)
-
-flow-report: ## VPC flow logs of the AgentCore ENIs: destinations by kind (SINCE=<minutes>, default 60; AWS Q2)
-	$(UV) python scripts/flow_report.py --since $(or $(SINCE),60)
-
-agentcore-status: ## agentcore status --json (redacted)
-	scripts/agentcore-deploy.sh status
-
-agentcore-down: ## Remove the runtime and the CLI stack AgentCore-AgentcoreDemo-default
-	scripts/agentcore-deploy.sh down
-
-agentcore-sessions: ## New AgentCore sessions of our runtimes in the last 15 min (must be 0 after teardown)
-	scripts/agentcore-sessions.sh
-
-register-version-aws: ## register-version against the real AgentCore endpoint (role + External ID at run time; CLOUD=1)
-	scripts/register-version.sh --agentcore-auto $(if $(filter 1,$(CLOUD)),--cloud)
-
-# --- v0.10: the AWS foundation (10-network, 20-platform; go-ahead G5) -----------------
-# kubectl/helm for EKS use .temporal/kubeconfig-eks (context agentcore-demo-eks), never
-# ~/.kube/config. pause/resume/tf-destroy honour DRY_RUN=1 (read-only).
-check-quotas: ## Read-only pre-flight: VPC/EIP quotas, AZ IDs, node type, endpoints, PG minor, CDKToolkit, IAM simulate
-	scripts/check-quotas.sh
-
-render-config: ## Terraform outputs -> .generated/foundation.{json,env} (gitignored; v0.11/v0.12 inputs)
-	$(UV) python scripts/render-config.py
-
-eks-kubeconfig: ## Write .temporal/kubeconfig-eks (context agentcore-demo-eks); ~/.kube/config untouched
-	scripts/eks.sh kubeconfig
-
-eks-env: ## Print the KUBECONFIG export for kubectl against EKS by hand
-	@scripts/eks.sh env
-
-eks-status: ## Nodes (AZ ID, arch), add-ons, LBC and cert-manager on EKS (redacted)
-	scripts/eks.sh status
-
-# --- v0.11: Temporal and Finance on EKS (plan v0.11; scripts/eks.sh) ------------------
-# Order: eks-rds-ca, create-db-user, rds-snapshot, eks-temporal, route53-alias, then
-# certs-pull/pf with TEMPORAL_PROFILE=eks-pf; finance-image, finance-deploy, nexus-endpoint.
-eks-rds-ca: ## Namespace temporal + Secret rds-ca from the official us-east-1 RDS CA bundle
-	scripts/eks.sh rds-ca
-
-create-db-user: ## RDS role temporal_user: password -> Secrets Manager + k8s Secret temporal-db-secret
-	scripts/create-db-user.sh
-
-rds-snapshot: ## Manual RDS snapshot temporal-pre-<CHANGE>-<ts> before an install/upgrade (CHANGE=)
-	scripts/rds-snapshot.sh $(or $(CHANGE),change)
-
-eks-temporal: ## Chart temporal-1.7.0 on EKS: certs, values (+generated IDs), dry-run=server, install --timeout 900s, NetworkPolicies
-	scripts/eks.sh temporal
-
-route53-alias: ## temporal-frontend.temporal-customer-support.internal -> internal NLB (UPSERT; ARGS=--show|--delete)
-	scripts/route53-alias.sh $(ARGS)
-
-finance-image: ## Build linux/arm64 Finance + payments-mock images and push them to ECR
-	scripts/eks.sh finance-image
-
-finance-deploy: ## Finance (2 pods, IRSA) + payments-mock on EKS via overlays/eks (FINANCE_BEDROCK_MODEL_ID= for the us. fallback)
-	scripts/eks.sh finance-deploy
-
-finance-scale: ## Scale the EKS Finance Deployment (N=0|2)
-	scripts/eks.sh scale-finance $(or $(N),2)
-
-failure: ## Failure demo: Finance to 0 mid-Case A -> pending Nexus op retries -> back to 2 -> completes (WF=)
+failure: ## Failure demo on kind: Finance to 0 mid-Case A -> pending Nexus op retries -> back to 2 -> completes (WF=)
 	scripts/demo/failure.sh $(WF)
-
-pause: ## Nodes to 0 and stop RDS (EKS, NAT, endpoints keep billing; DRY_RUN=1 prints only)
-	DRY_RUN=$(or $(DRY_RUN),0) scripts/pause.sh pause
-
-resume: ## Start RDS and nodes back to 2 (DRY_RUN=1 prints only)
-	DRY_RUN=$(or $(DRY_RUN),0) scripts/pause.sh resume
 
 # --- v0.9: the real server on kind, then mTLS (scripts/kind.sh) -------------------------
 # kubectl/helm/kind use .temporal/kubeconfig-agentcore-demo (never ~/.kube/config) and
@@ -419,14 +291,14 @@ kind-workers: ## Finance (2 pods) + payments-mock + NetworkPolicies (FINANCE_MOD
 kind-aws-creds: ## Laptop SSO credentials -> Secret temporal-workers/aws-creds (Finance on Bedrock)
 	scripts/kind-aws-creds.sh
 
-certs-pull: ## Client certs (operator, agentcore-worker, laptop-support) + CA -> .certs/ (EKS: TEMPORAL_PROFILE=eks-pf -> .certs/eks/)
-	CLUSTER=$(if $(filter eks-pf,$(TEMPORAL_PROFILE)),eks,kind) scripts/certs-pull.sh
+certs-pull: ## Client certs (operator, agentcore-worker, laptop-support) + CA from kind -> .certs/
+	scripts/certs-pull.sh
 
-pf: ## Port-forward frontend -> 127.0.0.1:7233, UI -> http://127.0.0.1:8233 (kind; EKS with TEMPORAL_PROFILE=eks-pf)
-	if [[ "$(TEMPORAL_PROFILE)" == eks-pf ]]; then scripts/eks.sh pf; else scripts/kind.sh pf; fi
+pf: ## Port-forward the kind frontend -> 127.0.0.1:7233, UI -> http://127.0.0.1:8233
+	scripts/kind.sh pf
 
-pf-stop: ## Stop the port-forwards (kind; EKS with TEMPORAL_PROFILE=eks-pf)
-	if [[ "$(TEMPORAL_PROFILE)" == eks-pf ]]; then scripts/eks.sh pf-stop; else scripts/kind.sh pf-stop; fi
+pf-stop: ## Stop the kind port-forwards
+	scripts/kind.sh pf-stop
 
 kind-status: ## Nodes, pods and certificates of the kind cluster
 	scripts/kind.sh status
@@ -445,10 +317,6 @@ env: ## Print the envconfig exports for bare `temporal` commands (eval the outpu
 cert-renew: ## Re-issue a certificate now (NS=temporal CERT=temporal-frontend-tls)
 	scripts/cert-renew.sh $(or $(NS),temporal) $(or $(CERT),temporal-frontend-tls)
 
-export-agentcore-cert: ## agentcore-worker cert -> Secrets Manager (CLUSTER=eks SECRET_ID=temporal/agentcore-worker-mtls CONFIRM=yes; CHECK=1 read-only)
-	scripts/export-agentcore-cert.sh --cluster $(or $(CLUSTER),eks) --secret-id $(or $(SECRET_ID),temporal/agentcore-worker-mtls) \
-	  $(if $(filter 1,$(CHECK)),--check,$(if $(filter yes,$(CONFIRM)),--yes))
-
 # On kind each laptop Worker presents its own client certificate (plan v0.9: one CN per
 # Worker type). The profile's default identity is `operator` (CLI and demo scripts).
 ifeq ($(TEMPORAL_PROFILE),kind)
@@ -457,23 +325,14 @@ agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPOR
 worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_CERT_PATH = $(CURDIR)/.certs/laptop-support/tls.crt
 worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(CURDIR)/.certs/laptop-support/tls.key
 endif
-# v0.11 hybrid demo: the laptop Support Worker on EKS (through `make pf TEMPORAL_PROFILE=eks-pf`)
-# presents laptop-support from the EKS CA, as a plain Worker on support-dev-tq.
-ifeq ($(TEMPORAL_PROFILE),eks-pf)
-worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_CERT_PATH = $(CURDIR)/.certs/eks/laptop-support/tls.crt
-worker-support worker-support-scripted: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(CURDIR)/.certs/eks/laptop-support/tls.key
-agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPORAL_TLS_CLIENT_CERT_PATH = $(CURDIR)/.certs/eks/agentcore-worker/tls.crt
-agentcore-local agentcore-local-scripted worker-support-versioned: export TEMPORAL_TLS_CLIENT_KEY_PATH = $(CURDIR)/.certs/eks/agentcore-worker/tls.key
-endif
 
 # --- v1.0: demo console (docs/console/DESIGN.md; services/demo-console) ---------------
 # One web page drives and watches every scenario. It uses the same envconfig profile as
-# every target here (TEMPORAL_PROFILE=local|kind|kind-plaintext|eks-pf) and starts laptop
-# processes as `make -s <target>` children. AWS-backed actions stay off unless
-# CONSOLE_ALLOW_AWS=1. Binds 127.0.0.1 only.
+# every target here (TEMPORAL_PROFILE=local|kind|kind-plaintext) and starts laptop
+# processes as `make -s <target>` children. Binds 127.0.0.1 only.
 CONSOLE_PORT ?= 8099
 
-console: ## Demo console on http://127.0.0.1:8099 (TEMPORAL_PROFILE=local|kind|kind-plaintext|eks-pf; CONSOLE_ALLOW_AWS=1 enables AWS-backed actions)
+console: ## Demo console on http://127.0.0.1:8099 (TEMPORAL_PROFILE=local|kind|kind-plaintext)
 	$(UV) python -m demo_console --port $(CONSOLE_PORT)
 
 console-shots: ## Screenshots of the console's fixture views (dark/light, 1440x900 + 390x844) -> .temporal/console/shots/ (no Temporal needed)

@@ -200,38 +200,8 @@ async def test_scenario_inference(
     assert (await c.runs.view(sl, fresh=True))["scenario"] == "wci-b"
     c.runs.save_record(sl, scenario="case-b")  # what the console started wins
     assert (await c.runs.view(sl, fresh=True))["scenario"] == "case-b"
-    (tmp_path / "eks").mkdir()
-    eks = console(tmp_path / "eks", gateway, runner, http)
-    eks.settings.profile = "eks-pf"
-    assert (await eks.runs.view(sl))["scenario"] == "cloud-b"
     # a2a-task-<wf> addresses the same run.
     assert (await c.runs.view(f"a2a-task-{a}"))["workflow_id"] == a
-
-
-async def test_eks_drain_is_estimated(
-    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp, load: Load
-) -> None:
-    wf = "support-2077-sl-s1"
-    sup = until(load("serverless-b.support"), E.EVENT_TYPE_NEXUS_OPERATION_STARTED, 1)
-    fin = until(load("serverless-b.finance"), E.EVENT_TYPE_TIMER_STARTED)
-    gateway.add_run(wf, sup, fin)
-    (tmp_path / "eks").mkdir()
-    c = console(tmp_path / "eks", gateway, runner, http)
-    c.settings.profile = "eks-pf"
-    view = await c.runs.view(wf)
-    drain = view["compute"]["drain"]
-    assert drain["state"] == "drained" and drain["estimated"] is True
-    assert drain["source"] == "estimate" and view["compute"]["running"] is False
-    assert view["scenario"] == "cloud-b"
-    # A CloudWatch confirmation (opt-in action) replaces the estimate.
-    c.runs.save_record(wf, cloudwatch={"drained_at": "2026-11-02T16:15:02.000Z", "sessions": []})
-    view = await c.runs.view(wf, fresh=True)
-    assert view["compute"]["drain"] == {
-        "state": "drained",
-        "at": "2026-11-02T16:15:02.000Z",
-        "estimated": False,
-        "source": "cloudwatch",
-    }
 
 
 async def test_rows_after_and_version(

@@ -74,7 +74,6 @@ async def test_agentcore_entrypoint_lifecycle(
     monkeypatch.setenv("TEMPORAL_DEPLOYMENT_NAME", deployment)
     monkeypatch.setenv("TEMPORAL_BUILD_ID", build)
     monkeypatch.setenv("TEMPORAL_TASK_QUEUE", queue)
-    monkeypatch.delenv("TEMPORAL_MTLS_SECRET_ID", raising=False)
 
     async def connect_to_test_server(plugins: list[Plugin] | None = None) -> Client:
         cfg = agents_client.config()

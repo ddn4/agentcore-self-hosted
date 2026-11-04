@@ -9,7 +9,6 @@ import pytest
 
 from demo_console.actions import ActionError
 from demo_console.app import Console, create_app
-from demo_console.cloud import CloudAdapter
 from demo_console.fakes import FakeGateway, FakeHttp, FakeRunner, make_settings
 
 pytestmark = pytest.mark.unit
@@ -21,14 +20,9 @@ def console(
     runner: FakeRunner,
     http: FakeHttp,
     profile: str = "local",
-    allow_aws: bool = False,
-    cloud: CloudAdapter | None = None,
 ) -> Console:
     settings = make_settings(tmp_path, profile=profile, TEMPORAL_BUILD_ID="4ee7f87")
-    settings.allow_aws = allow_aws
-    app = create_app(
-        settings, clients=gateway, runner=runner, http=http, cloud=cloud, static_dir=tmp_path
-    )
+    app = create_app(settings, clients=gateway, runner=runner, http=http, static_dir=tmp_path)
     return app.state.console
 
 
@@ -61,7 +55,7 @@ async def test_register_version_argv_per_mode(
     assert runner.spawned[-1][0] == ["make", "-s", "register-version", "MODE=--poller"]
     with pytest.raises(ActionError) as err:
         await c.actions.run("register-version", {"mode": "--agentcore-auto"}, True)
-    assert err.value.code == "aws_disabled"
+    assert err.value.code == "invalid_param"
     with pytest.raises(ActionError) as err:
         await c.actions.run("register-version", {"mode": "--bogus"}, False)
     assert err.value.code == "invalid_param"
@@ -94,75 +88,6 @@ async def test_load_and_wci_history(
     assert argv == ["make", "-s", "load", "N=3"] and env["LOAD_KIND"] == "ping"
     await c.actions.run("wci-history", {}, False)
     assert runner.spawned[-1][0] == ["make", "-s", "wci-history", "BUILD=4ee7f87"]
-
-
-async def test_eks_failure_and_drain_need_aws(
-    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
-) -> None:
-    c = await ready(console(tmp_path, gateway, runner, http, profile="eks-pf"))
-    with pytest.raises(ActionError) as err:
-        await c.actions.run("failure", {}, True)
-    assert err.value.code == "aws_disabled"
-    assert runner.spawned == []
-    allowed = await ready(
-        console(tmp_path / "aws", gateway, runner, http, profile="eks-pf", allow_aws=True)
-    )
-    with pytest.raises(ActionError) as err:
-        await allowed.actions.run("failure", {"workflow_id": "support-1042-failure-x"}, False)
-    assert err.value.code == "confirm_required"
-    status, job = await allowed.actions.run(
-        "failure", {"workflow_id": "support-1042-failure-x"}, True
-    )
-    assert status == 202 and job["cost"] == "aws"
-    argv, env, _ = runner.spawned[-1]
-    assert argv == ["make", "-s", "failure", "WF=support-1042-failure-x"]
-    assert env["TEMPORAL_PROFILE"] == "eks-pf" and "TEMPORAL_TLS" not in env
-    assert job["command"] == "make failure WF=support-1042-failure-x TEMPORAL_PROFILE=eks-pf"
-    # pf on eks-pf is kubectl to EKS (aws token), so it is gated too.
-    assert allowed.actions.describe("pf")["cost"] == "aws"
-
-
-async def test_drain_cloudwatch_with_fake_logs(
-    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
-) -> None:
-    class Session:
-        session_id = "0123456789abcdef"
-        drained = True
-
-        def first(self, marker: str) -> int | None:
-            return {
-                "app_start": 1793636000000,
-                "invoked": 1793636000100,
-                "released": 1793636050000,
-            }.get(marker)
-
-        def count(self, marker: str) -> int:
-            return 1
-
-    calls: list[tuple[Any, ...]] = []
-
-    def wait_drained(wf: str, since: int, within: float, build: str | None) -> list[Any]:
-        calls.append((wf, since, within, build))
-        return [Session()]
-
-    settings_cloud = CloudAdapter(
-        make_settings(tmp_path / "c", profile="eks-pf"),
-        wait_drained=wait_drained,
-        sessions_for=lambda *a: [],
-    )
-    settings_cloud.settings.allow_aws = True
-    c = await ready(
-        console(
-            tmp_path, gateway, runner, http, profile="eks-pf", allow_aws=True, cloud=settings_cloud
-        )
-    )
-    status, job = await run(
-        c, "drain-cloudwatch", {"workflow_id": "support-2077-v1-ab"}, confirm=True
-    )
-    assert status == 202 and job["status"] == "succeeded"
-    assert calls and calls[0][0] == "support-2077-v1-ab" and calls[0][3] == "4ee7f87"
-    assert job["result"]["drained_at"] == "2026-11-02T16:14:10.000Z"
-    assert c.runs.record("support-2077-v1-ab")["cloudwatch"]["sessions"][0]["session"] == "01234567"
 
 
 async def test_invoke_local_is_synchronous(
@@ -236,7 +161,7 @@ async def test_actions_listing(
     actions = {a["id"]: a for a in c.actions.describe_all()}
     assert actions["register-version"]["params"][0]["default"] == "--poller"
     assert actions["register-version"]["make"] == "make register-version MODE=--poller"
-    assert actions["failure"]["available"] is False and actions["failure"]["cost"] == "aws"
+    assert "failure" not in actions and "drain-cloudwatch" not in actions
     assert actions["kind-down"]["long"] is True
     kind = await ready(console(tmp_path / "k", gateway, runner, http, profile="kind"))
     k = {a["id"]: a for a in kind.actions.describe_all()}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Check the workstation against docs/versions.md (plan section 3.1, v0.1 doctor list).
 # Exit non-zero if a REQUIRED check fails. Optional checks only warn.
-#   DOCTOR_SKIP_AWS=1   skip the AWS identity check (CI never has AWS credentials)
+#   DOCTOR_SKIP_AWS=1   skip the AWS identity check (Bedrock credentials; CI never has them)
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -33,9 +33,6 @@ uv run --no-sync python -c 'from temporalio.strands_agents import StrandsPlugin'
   && ok strands-plugin "temporalio.strands_agents importable" || bad strands-plugin "temporalio.strands_agents not importable"
 
 echo "doctor: later tags (warn only at v0.1)"
-if command -v node >/dev/null; then
-  nv="$(node --version | tr -d v)"; version_ge "$nv" 20.12.0 && ok node "$nv (>= 20.12)" || warn node "$nv < 20.12"
-else warn node "not installed (needed for the AgentCore CLI, v0.8+)"; fi
 command -v kind    >/dev/null && ok kind "$(kind version | awk '{print $2}')" || warn kind "not installed (v0.9)"
 command -v helm    >/dev/null && ok helm "$(helm version --short)" || warn helm "not installed (v0.9)"
 command -v kubectl >/dev/null && ok kubectl "$(kubectl version --client 2>/dev/null | head -1 | awk '{print $3}')" || warn kubectl "not installed (v0.9)"
@@ -43,9 +40,6 @@ command -v docker  >/dev/null && { DOCKER_CONTEXT=colima-agentcore docker info >
   && ok docker "context colima-agentcore reachable" || warn docker "context colima-agentcore not running (needed from v0.9)"; } \
   || warn docker "not installed"
 command -v gitleaks >/dev/null && ok gitleaks "$(gitleaks version)" || warn gitleaks "not installed: scrub-check uses grep only (CI runs gitleaks)"
-[[ -x .tools/bin/terraform ]] && ok terraform "$(.tools/bin/terraform version | head -1) (.tools/bin)" || warn terraform "not installed (make tools)"
-[[ -x .tools/bin/tflint ]] && ok tflint "$(.tools/bin/tflint --version | head -1) (.tools/bin)" || warn tflint "not installed (make tools)"
-command -v agentcore >/dev/null && ok agentcore "$(agentcore --version)" || warn agentcore "not installed (v0.8)"
 
 echo "doctor: AWS"
 if [[ "${DOCTOR_SKIP_AWS:-0}" == "1" ]]; then

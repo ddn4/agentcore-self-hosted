@@ -8,12 +8,6 @@
 #   --local-wci       compute config pointing at the AgentCore API emulator
 #                     (scripts/agentcore_emulator.py; make dev-server WCI=1): the dev server's
 #                     own WCI invokes the local runtime. v0.7, no AWS.
-#   --agentcore ENDPOINT_ARN ROLE_ARN EXTERNAL_ID   real AgentCore (v0.8, v0.12+).
-#   --agentcore-auto  the same, with the endpoint from scripts/agentcore-deploy.sh endpoint-arn,
-#                     the role from scripts/invoke-role.sh arn and the External ID from
-#                     Secrets Manager (scripts/external-id.sh --value). make register-version-aws
-#   --cloud           with --agentcore: refuse unless HEAD is on main (plan 3.3 registration rule;
-#                     no remote yet, so local main).
 # Steps: worker deployment create (if absent) -> create-version (compute modes) ->
 # set-current-version WITHOUT --allow-no-pollers first; if refused, prints the refusal and
 # retries with --allow-no-pollers (Q13 evidence). Every step is echoed.
@@ -24,28 +18,17 @@ export TEMPORAL_PROFILE="${TEMPORAL_PROFILE:-local}"
 NS=agents
 DEPLOYMENT="${TEMPORAL_DEPLOYMENT_NAME:-support-supervisor}"
 BUILD_ID="${TEMPORAL_BUILD_ID:-}"
-MODE="" ENDPOINT_ARN="" ROLE_ARN="" EXTERNAL_ID="" CLOUD=0
+MODE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --build-id) BUILD_ID="$2"; shift 2 ;;
     --poller|--local-wci) MODE="$1"; shift ;;
-    --agentcore) MODE="$1"; ENDPOINT_ARN="$2"; ROLE_ARN="$3"; EXTERNAL_ID="$4"; shift 4 ;;
-    --agentcore-auto)
-      MODE=--agentcore
-      ENDPOINT_ARN="$(scripts/agentcore-deploy.sh endpoint-arn)"
-      ROLE_ARN="$(scripts/invoke-role.sh arn)"
-      EXTERNAL_ID="$(scripts/external-id.sh --value)"
-      shift ;;
-    --cloud) CLOUD=1; shift ;;
-    *) echo "usage: $0 [--build-id ID] --poller|--local-wci|--agentcore ENDPOINT ROLE EXTID [--cloud]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--build-id ID] --poller|--local-wci" >&2; exit 2 ;;
   esac
 done
-[[ -n "$MODE" ]] || { echo "pick a MODE: --poller, --local-wci or --agentcore" >&2; exit 2; }
+[[ -n "$MODE" ]] || { echo "pick a MODE: --poller or --local-wci" >&2; exit 2; }
 BUILD_ID="${BUILD_ID:-$(scripts/build-id.sh)}"
-if [[ $CLOUD -eq 1 ]] && ! git merge-base --is-ancestor HEAD main; then
-  echo "register-version: --cloud refuses: HEAD is not on main (plan 3.3)" >&2; exit 1
-fi
-# Echo each command with ARNs and the External ID masked (scripts/redact.sh), then run it.
+# Echo each command (ARNs masked by scripts/redact.sh), then run it.
 run() { echo "+ $*" | scripts/redact.sh; "$@"; }
 
 # A local endpoint ARN for the emulator: placeholder account, runtime support_supervisor_local,
@@ -85,11 +68,6 @@ case "$MODE" in
     run temporal worker deployment "$(version_verb)" --namespace "$NS" --deployment-name "$DEPLOYMENT" \
       --build-id "$BUILD_ID" --aws-agentcore-endpoint-arn "$(local_endpoint_arn)" \
       --aws-agentcore-skip-role-and-external-id
-    ;;
-  --agentcore)
-    run temporal worker deployment "$(version_verb)" --namespace "$NS" --deployment-name "$DEPLOYMENT" \
-      --build-id "$BUILD_ID" --aws-agentcore-endpoint-arn "$ENDPOINT_ARN" \
-      --aws-agentcore-assume-role-arn "$ROLE_ARN" --aws-agentcore-assume-role-external-id "$EXTERNAL_ID"
     ;;
 esac
 

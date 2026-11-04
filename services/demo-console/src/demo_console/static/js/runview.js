@@ -51,7 +51,7 @@ function follow(lanes) {
 const SCEN_NAME = {
   "case-a": "Case A, auto-approved", "case-b": "Case B, a human approves", crash: "Crash demo",
   "serverless-b": "Case B, AgentCore shape with invoke-local", "wci-b": "Case B, the server's WCI starts the worker",
-  "cloud-b": "Case B on AgentCore in AWS", failure: "Failure demo",
+  failure: "Failure demo",
 };
 
 function scaffold(el, wf) {

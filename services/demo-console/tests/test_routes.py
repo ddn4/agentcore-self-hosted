@@ -111,7 +111,6 @@ async def test_start_run_errors(api: tuple[httpx.AsyncClient, Console]) -> None:
         ({"scenario": "case-a", "nexus_send_timeout": "soon"}, 422, "invalid_param"),
         ({"scenario": "case-a", "workflow_id": "a2a-task-x"}, 422, "invalid_param"),
         ({"scenario": "case-a", "workflow_id": "bad id/with slash"}, 422, "invalid_param"),
-        ({"scenario": "cloud-b"}, 409, "precondition_failed"),
     ]
     for body, status, code in cases:
         resp = await client.post("/api/runs", json=body, headers=HEADERS)
@@ -269,5 +268,5 @@ async def test_processes_and_actions_routes(
     assert jobs[0]["id"] == job.json()["id"]
     one = await client.get(f"/api/jobs/{jobs[0]['id']}")
     assert one.status_code == 200 and one.json()["log_tail"][0] == "$ make nexus-endpoint"
-    gated = await client.post("/api/actions/failure", json={}, headers=HEADERS)
+    gated = await client.post("/api/actions/kind-up", json={}, headers=HEADERS)
     assert gated.status_code == 409  # not on profile local

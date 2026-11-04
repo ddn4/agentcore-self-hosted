@@ -2,7 +2,7 @@
 
 The demo console on http://127.0.0.1:8099 (docs/console/DESIGN.md). Runs from the repo root
 (cert paths in config/temporal.toml are relative to it). TEMPORAL_PROFILE picks the profile
-(local | kind | kind-plaintext | eks-pf); CONSOLE_ALLOW_AWS=1 enables AWS-backed actions.
+(local | kind | kind-plaintext).
 """
 
 from __future__ import annotations
@@ -29,8 +29,7 @@ def main(argv: list[str] | None = None) -> None:
     settings = Settings.from_env(root=root, profile=args.profile, port=args.port)
     app = create_app(settings)
     print(
-        f"demo console: http://127.0.0.1:{args.port}/  (profile {settings.profile}"
-        f"{', AWS actions allowed' if settings.allow_aws else ''})",
+        f"demo console: http://127.0.0.1:{args.port}/  (profile {settings.profile})",
         flush=True,
     )
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning", access_log=False)

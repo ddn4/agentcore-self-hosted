@@ -63,9 +63,7 @@ spec:
   privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
   issuerRef: { name: temporal-ca, kind: ClusterIssuer, group: cert-manager.io }
 ---
-# The AgentCore Worker's identity. Longer lifetime: in the cloud its copy in Secrets
-# Manager is refreshed by hand (runbook 2.6 step 5, scripts/export-agentcore-cert.sh).
-# On kind, Support (the AgentCore-shaped Worker on the laptop) uses it from local files
+# The AgentCore-shaped Worker's identity. On kind, Support (the AgentCore-shaped Worker on the laptop) uses it from local files
 # (make certs-pull -> .certs/agentcore-worker/, TEMPORAL_TLS_CLIENT_*_PATH).
 apiVersion: cert-manager.io/v1
 kind: Certificate

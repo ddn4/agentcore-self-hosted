@@ -25,12 +25,10 @@ const CASE_VERB = { A: "Start Case A", B: "Start Case B" };
 
 /** Start a conversation for a scenario. opts are the scenario card's option values. */
 export async function startRun(scenario, opts = {}) {
-  const versioned = ["serverless-b", "wci-b", "cloud-b"].includes(scenario.id)
-    || (String(scenario.id).startsWith("case-") && /^serverless|agentcore/.test(S().stack?.shape || ""));
+  const versioned = ["serverless-b", "wci-b"].includes(scenario.id)
+    || (String(scenario.id).startsWith("case-") && /^serverless/.test(S().stack?.shape || ""));
   const queue = opts.queue || (versioned ? "versioned" : "dev");
-  const profile = S().config?.profile;
-  let cost = scenario.cost || "free";
-  if (profile === "eks-pf" && queue === "versioned") cost = "aws";
+  const cost = scenario.cost || "free";
   const body = {
     scenario: scenario.id,
     workflow_id: opts.workflow_id || null,

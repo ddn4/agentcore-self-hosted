@@ -17,4 +17,3 @@ repos:
         entry: scripts/scrub-check.sh
         language: system
         pass_filenames: false
-      # terraform fmt is added with infra/ in v0.10.

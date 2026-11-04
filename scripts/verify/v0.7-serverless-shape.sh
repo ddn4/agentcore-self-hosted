@@ -2,7 +2,6 @@
 # Observable acceptance checks for v0.7-serverless-shape (IMPLEMENTATION_PLAN.md v0.7).
 # Output is piped through scripts/redact.sh so it can be pasted into the story doc.
 #   VERIFY_SKIP_CHECK=1      skip step 1 (make check)
-#   VERIFY_SKIP_BUNDLE=1     skip step 11 (bundle test: needs PyPI)
 #   VERIFY_SKIP_BEDROCK=1    skip step 12 (live: one PingWorkflow + Case A on Opus 5.5 via the WCI)
 # Needs a committed tree (scripts/build-id.sh refuses dirty Support inputs). Starts its own dev
 # server (WCI=1: the dev server's WCI, AWS SDK pointed at the local AgentCore emulator; no AWS),
@@ -65,8 +64,8 @@ fi
 
 step "2. offline: entrypoint contract, debounce (fake clock), PingWorkflow on a versioned Worker, Build ID"
 TESTS=(services/support-agent/tests/test_agentcore_app.py services/support-agent/tests/test_activity_tracker.py
-       services/support-agent/tests/test_serverless_worker.py services/support-agent/tests/test_mtls.py
-       tests/test_build_id.py tests/test_agentcore_packaging.py)
+       services/support-agent/tests/test_serverless_worker.py
+       tests/test_build_id.py tests/test_agentcore_emulator.py)
 "${UV[@]}" pytest -q -rA "${TESTS[@]}" 2>&1 | grep -E '^PASSED' | sed -E 's/^PASSED [^:]*::/  /'
 "${UV[@]}" pytest -q "${TESTS[@]}" 2>&1 | tail -1
 
@@ -207,19 +206,6 @@ echo "Worker lifetimes of the AgentCore app (this verify run):"
 lifetime_lines
 wait_ping Healthy 90
 echo "/ping $(ping_status): no Worker left running"
-
-if [[ "${VERIFY_SKIP_BUNDLE:-0}" == "1" ]]; then step "11. CodeZip bundle: SKIPPED"; else
-  step "11. CodeZip bundle: build, fresh 3.12 venv, serve, arm64 size"
-  scripts/agentcore-bundle.sh
-  ls build/agentcore | tr '\n' ' '; echo
-  jq -c '.runtimes[0] | {name, build, entrypoint, runtimeVersion, networkMode, endpoints: (.endpoints | keys), build_id: ([.envVars[] | select(.name=="TEMPORAL_BUILD_ID") | .value][0])}' build/agentcore/agentcore/agentcore.json
-  scripts/agentcore-bundle-test.sh
-  if command -v agentcore >/dev/null 2>&1; then
-    (cd build/agentcore && agentcore --version && agentcore build) || echo "agentcore build failed (recorded)"
-  else
-    echo "agentcore CLI not installed: 'agentcore build' packaging check deferred to v0.8 (plan 2.1 installs it)"
-  fi
-fi
 
 if [[ "${VERIFY_SKIP_BEDROCK:-0}" == "1" ]]; then step "12. live Opus 5.5 through the WCI: SKIPPED (VERIFY_SKIP_BEDROCK=1)"; else
   step "12. live: the real AgentCore app (Opus 5.5) invoked by the WCI: Case A"

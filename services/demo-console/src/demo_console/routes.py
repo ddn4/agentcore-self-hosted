@@ -38,7 +38,6 @@ if TYPE_CHECKING:
 STATUS = {
     "bad_request": 400,
     "forbidden_origin": 403,
-    "aws_disabled": 403,
     "not_found": 404,
     "not_input_required": 409,
     "confirm_required": 409,
@@ -126,8 +125,6 @@ class Guard:
 def unreachable_hint(profile: str) -> str:
     if profile == "local":
         return "Start the dev server (Manage stack), or run make dev-server-up."
-    if profile == "eks-pf":
-        return "Run make resume, then make pf TEMPORAL_PROFILE=eks-pf."
     return f"Run make pf TEMPORAL_PROFILE={profile}."
 
 
@@ -215,9 +212,6 @@ async def list_runs(request: Request) -> Response:
 
 
 def run_cost(c: Console, queue: str) -> str:
-    profile = c.settings.profile
-    if profile == "eks-pf":
-        return "aws" if queue == "versioned" else "tokens"
     model = ((c.stack.last or {}).get("model") or {}).get("mode")
     return "tokens" if model in ("live", "mixed") else "free"
 

@@ -22,16 +22,14 @@ export function toastError(err) {
   else toast(String(err && err.message ? err.message : err), { level: "error" });
 }
 
-/** Ask before anything that costs tokens or calls AWS. Resolves true when confirmed. */
+/** Ask before anything that costs tokens. Resolves true when confirmed. */
 export function confirmDialog({ title, body, cost = null, confirmLabel = "Continue", danger = false, command = null }) {
   const dlg = $("#confirm");
-  const costLine = cost === "aws"
-    ? h`<p>${icon("cloud")} This calls AWS. On a paused stack it fails; on a running one it can cost money.</p>`
-    : cost === "tokens"
-      ? h`<p>${icon("coin")} This uses the live model on Bedrock and costs tokens.</p>`
-      : "";
+  const costLine = cost === "tokens"
+    ? h`<p>${icon("coin")} This uses the live model on Bedrock and costs tokens.</p>`
+    : "";
   dlg.innerHTML = String(h`<form method="dialog">
-    <h2 id="confirm-title">${icon(cost === "aws" ? "cloud" : cost === "tokens" ? "coin" : "warn")}${title}</h2>
+    <h2 id="confirm-title">${icon(cost === "tokens" ? "coin" : "warn")}${title}</h2>
     ${body ? h`<p>${body}</p>` : ""}${costLine}
     ${command ? h`<div class="copy"><code>${command}</code></div>` : ""}
     <div class="acts">
@@ -60,13 +58,8 @@ export const copyBox = (text) => h`<div class="copy"><code>${text}</code><button
  * Handles the server's own 409 confirm_required by asking and retrying once.
  */
 export async function gated({ key, cost = "free", title, body = null, command = null, ok = null, call }) {
-  const cfg = store.state.config || {};
-  if (cost === "aws" && !cfg.allow_aws) {
-    toast("AWS actions are off in this console.", { level: "warn", hint: "Restart it with CONSOLE_ALLOW_AWS=1 make console to allow them." });
-    return null;
-  }
   let confirm = false;
-  if (cost === "tokens" || cost === "aws") {
+  if (cost === "tokens") {
     confirm = await confirmDialog({ title, body, cost, command, confirmLabel: title });
     if (!confirm) return null;
   }

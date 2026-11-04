@@ -183,7 +183,7 @@ def test_compute_kind() -> None:
         compute_kind(
             {"providers": [{"type": "aws-agentcore", "details": {"arn": "runtime/AgentcoreDemo"}}]}
         )
-        == "agentcore-aws"
+        == "unknown"
     )
 
 
@@ -227,37 +227,6 @@ async def test_model_mode_from_managed_variants(
     assert (await p.snapshot())["model"] == {"mode": "scripted", "source": "managed"}
     p.procs.records["worker-support"].variant = "live"
     assert (await p.snapshot())["model"]["mode"] == "mixed"
-
-
-async def test_eks_profile(
-    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
-) -> None:
-    gateway.deployment_info = {
-        "name": "support-supervisor",
-        "current_build": "4ee7f87",
-        "versions": [],
-    }
-    gateway.version_info = {
-        "providers": [
-            {
-                "type": "aws-agentcore",
-                "details": {"arn": "runtime/AgentcoreDemo_default_support_supervisor"},
-            }
-        ]
-    }
-    p = probe(tmp_path, gateway, runner, http, profile="eks-pf")
-    snap = await p.snapshot()
-    assert snap["shape"] == "agentcore-aws" and snap["profile"]["tls"] is True
-    assert comp(snap, "agentcore-aws") == {
-        "id": "agentcore-aws",
-        "label": "AgentCore (AWS)",
-        "status": "unknown",
-        "detail": "not checked (AWS)",
-        "group": "support",
-    }
-    assert "agentcore" not in {c["id"] for c in snap["components"]}
-    assert "payments" not in {c["id"] for c in snap["components"]}
-    assert snap["wci"]["mode"] == "cluster"
 
 
 def test_drained_lifetimes_leave_the_support_count_at_once() -> None:

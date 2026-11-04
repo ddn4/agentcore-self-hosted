@@ -4,7 +4,7 @@ import { enc, get } from "./api.js";
 import { runAction, startProcess, stopProcess } from "./actions.js";
 import { PROFILE_LABEL, ago, costMark, h, icon } from "./format.js";
 import { store } from "./store.js";
-import { confirmDialog, copyBox, toastError } from "./ui.js";
+import { confirmDialog, toastError } from "./ui.js";
 
 const dlg = () => document.getElementById("sheet");
 const openLogs = new Map(); // "proc:<name>" | "job:<id>" -> lines[]
@@ -119,10 +119,8 @@ export function renderSheet(state) {
       <section><h3>One-shot actions</h3>
         <ul class="plist">${oneShots.map((a) => actionItem(a, profile, busy))}</ul></section>
       <section><h3>Cluster</h3>
-        ${profile === "eks-pf" ? h`<p class="sub">The console never starts or pauses AWS. Run these yourself; every one of them calls AWS.</p>
-          <div style="display:grid;gap:.5rem">${copyBox("make resume")}${copyBox("make certs-pull pf TEMPORAL_PROFILE=eks-pf")}${copyBox("make pause")}</div>`
-        : profile.startsWith("kind") ? h`<p class="sub">Docker only, no AWS. Each takes a few minutes; Delete removes the cluster.</p><ul class="plist">${cluster.map((a) => actionItem(a, profile, busy))}</ul>`
-          : h`<p class="sub">On kind or eks-pf, the cluster commands live here. Switch the profile in the stack bar.</p>`}</section>
+        ${profile.startsWith("kind") ? h`<p class="sub">Docker only. Each takes a few minutes; Delete removes the cluster.</p><ul class="plist">${cluster.map((a) => actionItem(a, profile, busy))}</ul>`
+          : h`<p class="sub">On kind, the cluster commands live here. Switch the profile in the stack bar.</p>`}</section>
       <section><h3>Jobs</h3>
         ${(state.jobs || []).length ? h`<ul class="plist">${state.jobs.slice(0, 20).map(jobItem)}</ul>` : h`<p class="muted">No jobs yet. Recipes and one-shot actions show up here with their logs.</p>`}</section>
     </div>`);

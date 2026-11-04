@@ -3,7 +3,6 @@
 - ``.temporal/dev-server.pid`` alive -> ``local``
 - ``.temporal/kind-pf-*.pid`` alive -> ``kind`` or ``kind-plaintext``: a plaintext
   ``GetSystemInfo`` that fails the handshake means mTLS (``kind``)
-- ``.temporal/eks-pf-*.pid`` alive -> ``eks-pf``
 """
 
 from __future__ import annotations
@@ -35,7 +34,7 @@ def _pid(path: Path, alive: PidAlive) -> bool:
 
 
 def pidfile_state(temporal_dir: Path, alive: PidAlive) -> dict[str, bool]:
-    names = ("dev-server", "kind-pf-frontend", "kind-pf-web", "eks-pf-frontend", "eks-pf-web")
+    names = ("dev-server", "kind-pf-frontend", "kind-pf-web")
     return {name: _pid(temporal_dir / f"{name}.pid", alive) for name in names}
 
 
@@ -68,9 +67,6 @@ async def detect(
         if plaintext is True:
             return Detection("kind-plaintext", "kind port-forward, plaintext answers", pf)
         return Detection("kind", "kind port-forward" + (", mTLS" if plaintext is False else ""), pf)
-    if state["eks-pf-frontend"] or state["eks-pf-web"]:
-        pf = {"kind": "eks", "frontend": state["eks-pf-frontend"], "web": state["eks-pf-web"]}
-        return Detection("eks-pf", "EKS port-forward", pf)
     return Detection(None, "no dev server or port-forward pidfile", None)
 
 
@@ -78,7 +74,6 @@ MISMATCH_TEXT = {
     "local": "The dev server is running",
     "kind": "A kind port-forward is running",
     "kind-plaintext": "A kind port-forward (plaintext) is running",
-    "eks-pf": "An EKS port-forward is running",
 }
 
 

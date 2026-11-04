@@ -10,16 +10,14 @@ the Supervisor Workflow scheduled them: who was thinking (``invoke_model
 conversation side by side (what Support sent, what Finance answered) and the
 reply the customer gets. Honours TEMPORAL_PROFILE / TEMPORAL_CONFIG_FILE.
 
-v0.13: ``--merged`` adds one wall-clock "slide" that merges three histories, plus the
-AgentCore sessions: Support (``agents``), Finance's task (``agent-services``), the Worker
-Controller Instance of Support's version (``scripts/wci-history.sh``: ``task-add-signal``,
-``InvokeWorker``), and with ``--agentcore`` each session's start / connect / drain from the
-runtime's CloudWatch logs (``demo_testing.agentcore_logs``; needs AWS). It ends with the Q15
-numbers: Nexus completion -> task-add-signal -> InvokeWorker -> session start -> first
-Workflow Task on the new session (cold start). ``make timeline WF=... MERGED=1`` adds both
-flags and pipes the output through ``scripts/redact.sh``.
+v0.13: ``--merged`` adds one wall-clock "slide" that merges three histories: Support
+(``agents``), Finance's task (``agent-services``) and the Worker Controller Instance of
+Support's version (``scripts/wci-history.sh``: ``task-add-signal``, ``InvokeWorker``). It ends
+with the Q15 numbers: Nexus completion -> task-add-signal -> InvokeWorker -> first Workflow
+Task on the new Worker lifetime. ``make timeline WF=... MERGED=1`` adds the flag and pipes the
+output through ``scripts/redact.sh``.
 
-    uv run python scripts/timeline.py support-2077 --merged --agentcore
+    uv run python scripts/timeline.py support-2077 --merged
 """
 
 from __future__ import annotations
@@ -204,27 +202,7 @@ def _wci_rows(build: str, since: datetime, until: datetime) -> list[Row]:
     return rows
 
 
-def _session_rows(workflow_id: str, since: datetime, build: str) -> list[Row]:
-    from demo_testing.agentcore_logs import sessions_for
-
-    labels = {
-        "app_start": "process start (cold)",
-        "invoked": "Worker lifetime started",
-        "connected": "connected over mTLS, polling",
-        "idle": "idle 30 s: draining",
-        "released": "async task released (session may idle out)",
-    }
-    rows: list[Row] = []
-    found = sessions_for(workflow_id, int(since.timestamp() * 1000) - 5000, build)
-    for n, session in enumerate(found, 1):
-        for ts, marker, _ in session.events:
-            if marker in labels:
-                when = datetime.fromtimestamp(ts / 1000, UTC)
-                rows.append((when, "agentcore", f"session #{n}: {labels[marker]}"))
-    return rows
-
-
-async def merged(workflow_id: str, with_agentcore: bool) -> int:
+async def merged(workflow_id: str) -> int:
     caller = await config.connect(plugins=[config.build_strands_plugin()])
     handler = await Client.connect(**{**config.connect_config(), "namespace": HANDLER_NAMESPACE})
     handle = caller.get_workflow_handle(workflow_id)
@@ -238,12 +216,10 @@ async def merged(workflow_id: str, with_agentcore: bool) -> int:
     start, end = rows[0][0], rows[-1][0]
     if build:
         rows += _wci_rows(build, start, end)
-        if with_agentcore:
-            rows += _session_rows(workflow_id, start, build)
     rows.sort(key=lambda r: r[0])
-    where = f"Support on AgentCore {build}" if build else "Support unversioned"
-    print(f"\n== One timeline: {workflow_id} ({where}, Finance on EKS)")
-    print(f"   t0 = {start:%Y-%m-%d %H:%M:%S}Z; lanes: support | finance | wci | agentcore")
+    where = f"Support version {build}" if build else "Support unversioned"
+    print(f"\n== One timeline: {workflow_id} ({where}, Finance)")
+    print(f"   t0 = {start:%Y-%m-%d %H:%M:%S}Z; lanes: support | finance | wci")
     for when, lane, what in rows:
         print(f"  +{(when - start).total_seconds():7.2f}s  {lane:<9} {what}")
     _q15(rows)
@@ -263,8 +239,6 @@ def _q15(rows: list[Row]) -> None:
     marks = [
         ("task-add-signal", after("wci", "task-add-signal")),
         ("InvokeWorker", after("wci", "InvokeWorker")),
-        ("session start", after("agentcore", "process start")),
-        ("connected", after("agentcore", "connected")),
         ("first Workflow Task", after("support", "Workflow Task on")),
         ("reply", after("support", "Workflow completed")),
     ]
@@ -278,9 +252,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="One timeline for a Support conversation")
     parser.add_argument("workflow_id")
     parser.add_argument("--merged", action="store_true", help="wall-clock slide incl. the WCI")
-    parser.add_argument("--agentcore", action="store_true", help="add AgentCore sessions (AWS)")
     args = parser.parse_args()
     code = asyncio.run(main(args.workflow_id))
     if args.merged:
-        code = asyncio.run(merged(args.workflow_id, args.agentcore)) or code
+        code = asyncio.run(merged(args.workflow_id)) or code
     sys.exit(code)

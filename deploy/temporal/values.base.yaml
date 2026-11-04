@@ -1,5 +1,5 @@
 # Environment-independent values for chart temporal-1.7.0 (runbook Phase 2 + Phase 3).
-# Frozen at v0.9 on kind; v0.11 reuses it unchanged on EKS (plus values.eks.yaml).
+# Frozen at v0.9 on kind.
 # Order: -f values.postgresql.yaml -f values.base.yaml [-f values.tls.yaml] -f values.<env>.yaml
 server:
   # 2.1: the chart's appVersion is 1.32.0; pin the 1.32.1 patch (ledger 30).
