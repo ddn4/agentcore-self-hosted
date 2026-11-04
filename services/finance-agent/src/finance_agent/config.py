@@ -1,7 +1,7 @@
 """Configuration for team Finance (handler).
 
 Each service owns its own config module, on purpose: the only code the two teams
-share is `finance_a2a_api` (IMPLEMENTATION_PLAN.md section 2.2, layout rules).
+share is `finance_a2a_api` (layout rule).
 
 Precedence (plan section 3.2): runtime-injected env > .env (exported by make) >
 the `TEMPORAL_PROFILE` section of `TEMPORAL_CONFIG_FILE` > code defaults here.

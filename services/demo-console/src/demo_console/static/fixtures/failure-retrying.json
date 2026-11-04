@@ -854,8 +854,8 @@
     "title": "Finance disappears mid-call",
     "summary": "Stop the Finance worker after discovery. The Nexus call retries on the server until Finance comes back.",
     "story": {
-     "tag": "v0.11-temporal-and-finance-on-eks",
-     "doc": "docs/story/v0.11-temporal-and-finance-on-eks.md"
+     "tag": "v0.5-a2a-over-nexus",
+     "doc": "docs/story/v0.5-a2a-over-nexus.md"
     },
     "profiles": [
      "local"
@@ -1044,8 +1044,8 @@
     "title": "N conversations at once",
     "summary": "Start up to 20 runs on support-tq and count the WCI's invokes.",
     "story": {
-     "tag": "v0.13-scale-to-zero",
-     "doc": "docs/story/v0.13-scale-to-zero.md"
+     "tag": "v0.7-serverless-shape",
+     "doc": "docs/story/v0.7-serverless-shape.md"
     },
     "profiles": [
      "local",

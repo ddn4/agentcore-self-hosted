@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Observable acceptance checks for v0.3-sub-agents (IMPLEMENTATION_PLAN.md v0.3).
+# Observable acceptance checks for v0.3-sub-agents (tag v0.3).
 # Output is piped through scripts/redact.sh so it can be pasted into the story doc.
 #   VERIFY_SKIP_BEDROCK=1  skip the live Opus 5.5 steps (6-9)
 #   RECORD_HISTORY=1       re-record the replay fixtures in services/support-agent/tests/histories

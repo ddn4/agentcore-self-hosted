@@ -2,12 +2,15 @@
 
 A web console on `http://127.0.0.1:8099` that a presenter uses to run every scenario of this
 demo and that an audience watches on a projector. The presenter drives Case A, Case B
-(approve or reject), the crash demo, the serverless shapes (invoke-local, the WCI emulator,
-real AgentCore), the failure demo and load. The console shows what is happening in both
+(approve or reject), the crash demo, the serverless shapes (invoke-local, the WCI emulator),
+the failure demo and load. The console shows what is happening in both
 namespaces while it happens. It works for every permutation (`TEMPORAL_PROFILE=local`,
-`kind`, `kind-plaintext`, `eks-pf`; scripted or live models) and derives everything it
+`kind`, `kind-plaintext`; scripted or live models) and derives everything it
 shows from Temporal, so it can be started before or after the stack and restarted at any
 time.
+
+The EKS profile and every AWS-backed action were removed on 2026-11-04, when the AWS
+deployment was retired.
 
 - Look: [`BRAND.md`](BRAND.md) (dark, Temporal brand styling; authoritative for visuals).
 - Visual target: [`mockup.html`](mockup.html) (self-contained, fake data, dark brand styling; the run view midway
@@ -50,7 +53,7 @@ small runs.
 
 **Presenter flow** (for every scenario):
 1. Pick the scenario in the launcher. Its preconditions are checked against the live stack,
-   and each missing piece has a fix button (local) or the exact make command (kind/eks-pf).
+   and each missing piece has a fix button (local) or the exact make command (kind).
 2. Press **Start**. The console starts the workflow with a fresh ID and opens the run view.
 3. Follow the guided step list. Each step ticks itself when Temporal shows it happened
    (derived from history, task state and the compute signals; never from button clicks). The
@@ -66,7 +69,7 @@ small runs.
 
 ```
 ┌ Stack bar ─────────────────────────────────────────────────────────────────────────────┐
-│ AgentCore demo console   [local | kind | eks-pf]   Support: serverless via WCI emulator │
+│ AgentCore demo console   [local | kind]            Support: serverless via WCI emulator │
 │ Model: scripted   ● Temporal ● Web UI ● Endpoint ● Finance 1 ○ Support 0 ● AgentCore    │
 │ ● Emulator ● Payments   Build 4ee7f87 (current, pinned)     [Manage stack] [N] [P] [◐]  │
 ├──────────────────────┬─────────────────────────────────────────────────┬───────────────┤
@@ -99,10 +102,10 @@ labelled cell.)
 
 - **Stack bar** (always visible, one or two lines, sticky). It shows the profile (a segmented
   control; switching asks first if managed processes are running), Support's shape (plain
-  worker / serverless invoke-local / serverless WCI emulator / AgentCore in AWS), the model
+  worker / serverless invoke-local / serverless WCI emulator), the model
   mode, and one status pip per component. A pip is a small shape and a word, never colour
   alone. **Manage stack** opens the stack sheet: processes with start/stop/log, stack recipes,
-  one-shot actions, kind and EKS commands to copy. `N` toggles presenter notes, `P` toggles
+  one-shot actions and kind jobs. `N` toggles presenter notes, `P` toggles
   projector mode and `◐` switches between the dark theme (default) and light.
 - **Scenario launcher** (left column). Each scenario shows its title, the amount, and a fit
   marker for the current profile: ready, needs N things, or not on this profile. Selecting one
@@ -160,25 +163,24 @@ labelled cell.)
 ### 2.2 Scenario catalog
 
 Steps are a sequence and are numbered. "Done when" is a predicate the backend evaluates on the
-run view (section 5.4), so steps survive reloads and console restarts. *Cost*: `free` (no AWS,
-no tokens), `tokens` (Bedrock), `aws` (any AWS API, including kubectl to EKS).
+run view (section 5.4), so steps survive reloads and console restarts. *Cost*: `free` (no
+tokens) or `tokens` (Bedrock).
 
 | id | Title | Profiles | Support shape | Steps (abridged) | Cost |
 |---|---|---|---|---|---|
-| `case-a` | Case A: $40 headphones, auto-approved | all | plain (support-dev-tq) or serverless (support-tq) | start → sub-agents answer → agent card discovered → Nexus send_message → Finance completed `approved_by auto` → reply | free (scripted) / tokens (live) / aws on eks-pf serverless |
+| `case-a` | Case A: $40 headphones, auto-approved | all | plain (support-dev-tq) or serverless (support-tq) | start → sub-agents answer → agent card discovered → Nexus send_message → Finance completed `approved_by auto` → reply | free (scripted) / tokens (live) |
 | `case-b` | Case B: $450 laptop, a human approves | all | plain or serverless | start → input-required → (optional) stop Support worker → approve/reject → restart worker → reply | as above |
 | `crash` | Durable agent: kill the worker mid-thought | local, kind | plain | start Case A → wait for an `invoke_model` in flight → **Kill Support worker** (SIGKILL to its process group) → start it again → same run finishes; the rail shows two lifetimes, one ending abruptly | free / tokens |
 | `serverless-b` | Case B, AgentCore shape, invoke-local | local, kind | serverless invoke-local | AgentCore app up, Invoke and register version `--poller` (the recipe) → start on support-tq → **Invoke** (lifetime 1 picks the run up; the recipe's lifetime has usually drained by then) → input-required → drained (`/ping` Healthy) → approve → **Invoke** (lifetime 2) → reply → report | free / tokens |
 | `wci-b` | Case B, the server's WCI starts the worker | local | serverless WCI emulator | dev server `WCI=1` (restart only when `/ping` is Healthy) → emulator → register version `--local-wci` → start → input-required → drained → approve → WCI InvokeWorker → lifetime 2 → reply → report | free / tokens |
-| `cloud-b` | Case B on AgentCore in AWS | eks-pf | AgentCore (real) | start on support-tq → WCI invokes session 1 → input-required → drained (estimated from debounce; CloudWatch confirm is opt-in) → approve → InvokeWorker → session 2 → reply → report | aws + tokens |
-| `failure` | Finance disappears mid-call | local (stop the Finance worker), eks-pf (`failure.sh`, scales pods) | plain | start Case A → agent card done → **Stop Finance** → seam shows `send_message` attempt 2, 3… with lastAttemptFailure → **Start Finance** → completes | free locally / aws on eks-pf |
+| `failure` | Finance disappears mid-call | local (stop the Finance worker) | plain | start Case A → agent card done → **Stop Finance** → seam shows `send_message` attempt 2, 3… with lastAttemptFailure → **Start Finance** → completes | free |
 | `smoke` | The hop with no AI | all | smoke worker | `A2ASmokeWorkflow` on nexus-smoke-tq, then a standalone `get_agent_card` | free |
-| `load` | N conversations at once | local, kind, eks-pf | serverless (support-tq) | `load.sh N LOAD_KIND=ping|case-a` as a job; the runs list groups the batch; the report shows completed/failed and InvokeWorker count | free locally (scripted) / aws on eks-pf |
-| `cleanup` | Leftovers | all | — | lists runs still in `input-required` (e.g. `support-2077-v013-…` after resume) with Reject and Terminate | free |
+| `load` | N conversations at once | local, kind | serverless (support-tq) | `load.sh N LOAD_KIND=ping|case-a` as a job; the runs list groups the batch; the report shows completed/failed and InvokeWorker count | free (ping or scripted) / tokens |
+| `cleanup` | Leftovers | all | — | lists runs still in `input-required` with Reject and Terminate | free |
 
 Default workflow IDs follow the make defaults with a short base-36 suffix so that repeated runs
-do not collide: `support-1042-<sfx>`, `support-2077-sl-<sfx>`, `support-2077-wci-<sfx>`,
-`support-2077-v1-<sfx>` (cloud). The suffix is never 12 digits (scrub-check).
+do not collide: `support-1042-<sfx>`, `support-2077-sl-<sfx>`, `support-2077-wci-<sfx>`.
+The suffix is never 12 digits (scrub-check).
 
 ### 2.3 Stack recipes (local profiles)
 
@@ -195,8 +197,7 @@ Each line is the make target the console runs, so the presenter can say what hap
 
 The cluster lifecycle on kind (`kind-up kind-temporal kind-workers FINANCE_MODEL=scripted
 certs-pull pf`, `kind-down`) is offered as confirm-first jobs: Docker only, several minutes,
-and `kind-down` is destructive. On eks-pf the sheet shows the commands (`make resume`,
-`make pf TEMPORAL_PROFILE=eks-pf`, `make pause`) as copyable text and never runs them.
+and `kind-down` is destructive.
 
 ### 2.4 Phone width (≤ 640 px)
 
@@ -251,7 +252,7 @@ behind the theme toggle (`:root[data-theme="light"]`, Off White `#F8FAFC` ground
 | `--finance` | pink `#FF6BFF` | `#B4189E` | Finance lane accent (pink keeps it apart from the UV seam) |
 | `--ok`, `--alive` | mint `#1FF1A5` | `#06714C`, `#12C98A` | completed, healthy pips, compute alive (glow) |
 | `--hold` | lime `#C3FF62` | `#4A7000` | input-required: lime stripes on black under the state word and down the approval card |
-| `--bad` | red `#FF5555` | `#C42929` | rejected, failed, Reject, AWS cost |
+| `--bad` | red `#FF5555` | `#C42929` | rejected, failed, Reject |
 | `--dead` | 40 % Off White, dashed | 32 % black | compute scaled to zero: dashed outline, no fill |
 | `--wire` | `#8E7BFF` | `#5F55E8` | Nexus connectors across the seam |
 | `--focus` | `#8C92FF` | `#444CE7` | 2 px focus ring, offset 2 px |
@@ -310,8 +311,8 @@ label below its wire (the line runs down into the wire), and a stub inside a hel
 
 Inline SVG symbols in one `<svg hidden>` sprite in `index.html` (no icon font, no CDN), with a
 1.5 px stroke, round caps and a 16/20 px grid: lane glyphs (Support headset, Finance ledger,
-Nexus seam), state glyphs (see 3.2), process glyphs (play, stop, log), cost marks (token coin
-= Bedrock, cloud = AWS), external-link and copy. Icons always sit next to a word, never alone,
+Nexus seam), state glyphs (see 3.2), process glyphs (play, stop, log), cost mark (token coin
+= Bedrock), external-link and copy. Icons always sit next to a word, never alone,
 except the three toggles in the stack bar, which carry `aria-label` and a tooltip.
 
 ### 3.6 Copy rules
@@ -337,7 +338,7 @@ kind." An empty state invites the next action: "No runs yet. Start Case A to see
   `TEMPORAL_PROFILE`). It reuses `demo_testing.history`, `demo_testing.a2a_tasks`,
   `demo_testing.versioning`, `finance_a2a_api` and `support_agent.config`, all read-only.
   Make targets and scripts are used only where there is no SDK path: compute-config
-  registration, dev-server, kind/eks pf, load, failure.
+  registration, dev-server, kind pf, load.
 - **Frontend**: static files served by the backend: `index.html`, `styles.css`, and ES
   modules under `static/js/`. There is no build step, no bundler, no npm and no vendored
   minified library (scrub-check scans every file). Lanes are DOM (CSS grid), connectors are
@@ -367,17 +368,17 @@ kind." An empty state invites the next action: "No runs yet. Start Case A to see
   (the response lists them). Profiles all dial `127.0.0.1:7233`, so only one can be live.
   **Detection** suggests the right one: `.temporal/dev-server.pid` → local;
   `.temporal/kind-pf-*.pid` → kind or kind-plaintext (a plaintext `GetSystemInfo` that fails
-  the handshake means mTLS); `.temporal/eks-pf-*.pid` → eks-pf. Every pidfile is checked with
+  the handshake means mTLS). Every pidfile is checked with
   `kill -0`. A mismatch shows in the stack bar: "A kind port-forward is running, but the
   console is on profile local. Switch to kind."
 - **Startup order**: the clients connect lazily, with 1 s → 10 s back-off. Until Temporal
   answers, the stack bar shows "Temporal is not reachable", plus a **Start dev server** button
-  on local or the `make pf` command on kind/eks-pf. The page itself always loads.
+  on local or the `make pf` command on kind. The page itself always loads.
 
 ### 4.3 Ledger 72: never query Support
 
-A query on a `SupportSupervisorWorkflow` on `support-tq` makes the WCI start an AgentCore
-session: a paid session on EKS, and an extra lifetime locally. With no poller, the query hangs
+A query on a `SupportSupervisorWorkflow` on `support-tq` makes the WCI start an extra
+AgentCore-shaped Worker lifetime. With no poller, the query hangs
 instead. The console therefore **never queries Support**. Support's state comes only from
 `fetch_history` and `describe`: status, `pendingNexusOperations` (attempt,
 lastAttemptFailure, scheduleToCloseTimeout), `versioning_info`, worker identities, Nexus
@@ -391,19 +392,19 @@ A2A task's own history (timer started = `input-required`, signal, completion pay
 `source: "history"`. (Describe does not carry "current details": the Web UI reads them with
 the built-in `__temporal_workflow_metadata` query, which hangs the same way. See 5.7.)
 
-### 4.4 What is derived where (no AWS)
+### 4.4 What is derived where
 
-| Signal | local | kind | eks-pf |
-|---|---|---|---|
-| Support rows | history (`demo_testing.history` + own row builder) | same | same |
-| Finance rows and task state | history of `a2a-task-<wf>` + `get_task` | same | same |
-| Lifetimes (compute rail) | WFT-completed / activity-started identities `…/agentcore-lifetime-N` from history, plus the managed AgentCore app's log markers (`lifetime N: connected`, `idle for`, `drained`, `async task released`) and `/ping` | identities + app log (the app is on the laptop) | identities + WCI InvokeWorker rows; CloudWatch sessions only with `CONSOLE_ALLOW_AWS=1` (`demo_testing.agentcore_logs`) |
-| Plain worker "lifetimes" | identity changes in history (`<pid>@<host>`): a new pid = a restart (crash demo) | same | same |
-| Drain | `/ping` HealthyBusy → Healthy, or the app log's `drained` | same | **estimated**: the last Support WFT + debounce (30 s) + 10 s margin, labelled "estimated"; CloudWatch confirm is opt-in (aws) |
-| WCI invokes | emulator JSONL `.temporal/agentcore-emulator.jsonl` + the WCI system workflow | the WCI system workflow | the WCI system workflow (Temporal only, free) |
-| WCI system workflow | `temporal-sys-worker-controller-instance:support-supervisor:<build>` in `agents`, read by ID with `fetch_history` and walked back through `continued_execution_run_id` (SDK; fallback: `scripts/wci-history.sh` subprocess) | same | same |
-| Pollers | `DescribeTaskQueue` (workflow + activity) on support-dev-tq, support-tq, agent-services-tq, nexus-smoke-tq; entries are kept only if `last_access_time` is within 70 s | same | same |
-| Build ID | `TEMPORAL_BUILD_ID` → the deployment's `currentVersion` build (SDK `describe_worker_deployment`) → `scripts/build-id.sh` → none | same | same |
+| Signal | local | kind |
+|---|---|---|
+| Support rows | history (`demo_testing.history` + own row builder) | same |
+| Finance rows and task state | history of `a2a-task-<wf>` + `get_task` | same |
+| Lifetimes (compute rail) | WFT-completed / activity-started identities `…/agentcore-lifetime-N` from history, plus the managed AgentCore app's log markers (`lifetime N: connected`, `idle for`, `drained`, `async task released`) and `/ping` | identities + app log (the app is on the laptop) |
+| Plain worker "lifetimes" | identity changes in history (`<pid>@<host>`): a new pid = a restart (crash demo) | same |
+| Drain | `/ping` HealthyBusy → Healthy, or the app log's `drained` | same |
+| WCI invokes | emulator JSONL `.temporal/agentcore-emulator.jsonl` + the WCI system workflow | the WCI system workflow |
+| WCI system workflow | `temporal-sys-worker-controller-instance:support-supervisor:<build>` in `agents`, read by ID with `fetch_history` and walked back through `continued_execution_run_id` (SDK; fallback: `scripts/wci-history.sh` subprocess) | same |
+| Pollers | `DescribeTaskQueue` (workflow + activity) on support-dev-tq, support-tq, agent-services-tq, nexus-smoke-tq; entries are kept only if `last_access_time` is within 70 s | same |
+| Build ID | `TEMPORAL_BUILD_ID` → the deployment's `currentVersion` build (SDK `describe_worker_deployment`) → `scripts/build-id.sh` → none | same |
 
 **Build ID and uv.lock**: adding `services/demo-console` changes `uv.lock`, and
 `scripts/build-id.sh` refuses while `uv.lock` is uncommitted. The console therefore always
@@ -415,10 +416,10 @@ TEMPORAL_BUILD_ID=<id>." The content hash covers only support-agent's exports, s
 ### 4.5 Process control
 
 - **Allowed to start or stop** (laptop processes only, never cluster or AWS resources):
-  dev server (through `scripts/dev-server.sh start|stop` with `WCI=0|1`, never `aws`),
+  dev server (through `scripts/dev-server.sh start|stop` with `WCI=0|1`),
   `payments-mock`, `worker-finance[-scripted]`, `worker-support[-scripted]`,
   `worker-support-versioned`, `agentcore-local[-scripted]`, `agentcore-emulator`,
-  `worker-smoke`. On kind and eks-pf only the laptop-side Support processes are offered
+  `worker-smoke`. On kind only the laptop-side Support processes are offered
   (`agentcore-local*`, `worker-support*`; hybrid). This is a deliberate reading of "observe
   only": scenario 4 needs the laptop AgentCore app. Cluster lifecycle stays out except the
   confirm-first kind jobs in 2.3.
@@ -437,13 +438,11 @@ TEMPORAL_BUILD_ID=<id>." The content hash covers only support-agent's exports, s
 - **Live variants** (`-scripted` dropped) cost Bedrock tokens. They are offered only when the
   model selector is "live", and a start needs `confirm: true`.
 - **Jobs** (one-shots: nexus-endpoint, register-version, invoke-local, smoke, card, load,
-  wci-history, failure, recipes, kind lifecycle) run the same way and are persisted at
+  wci-history, recipes, kind lifecycle) run the same way and are persisted at
   `.temporal/console/jobs/<id>.json` with a log. invoke-local is done in-process with httpx
   (POST `/invocations` with the session header, then GET `/ping`), since it is trivial.
-- **Cost gate**: every action has `cost ∈ {free, tokens, aws}`. `tokens` requires
-  `confirm: true`. `aws` additionally requires the console to be started with
-  `CONSOLE_ALLOW_AWS=1`, otherwise it is `403 aws_disabled`. The UI shows the cost mark on the
-  button and asks for confirmation.
+- **Cost gate**: every action has `cost ∈ {free, tokens}`. `tokens` requires
+  `confirm: true`. The UI shows the cost mark on the button and asks for confirmation.
 
 ### 4.6 Safety
 
@@ -454,18 +453,6 @@ TEMPORAL_BUILD_ID=<id>." The content hash covers only support-agent's exports, s
 - No secrets in responses: identities and paths only, with cert contents never read.
 - Logs served by the API are tailed files under `.temporal/console/`. Paths are never taken
   from the request.
-
-### 4.7 Running inside EKS (follow-up, not in scope)
-
-The backend is container-ready: no laptop state is required beyond `.temporal/console/`.
-The follow-up adds `services/demo-console/Dockerfile` (the finance-agent pattern: python
-3.12.12-slim, uv 0.12.15, `uv sync --frozen --no-dev --package demo-console`, non-root),
-`deploy/k8s/base/demo-console/` (Deployment + Service + NetworkPolicy in `temporal-workers`,
-readiness `/healthz`, an operator client cert from cert-manager), an `eks` overlay with the
-image tag set by make, and `CONSOLE_MODE=in-cluster`, which hides process control and reads
-the frontend at `temporal-frontend.temporal-customer-support.internal:7233`. Access would go
-through `kubectl port-forward` (no Ingress). This stays out of v1 because it needs a new
-image, IAM review and an AWS deploy.
 
 ---
 
@@ -489,10 +476,9 @@ Every non-2xx response:
 |---|---|---|
 | 400 | `bad_request` | invalid JSON / missing field |
 | 403 | `forbidden_origin` | Host or `X-Console` check failed |
-| 403 | `aws_disabled` | `cost: aws` action without `CONSOLE_ALLOW_AWS=1` |
 | 404 | `not_found` | unknown run / scenario / action / process / job |
 | 409 | `not_input_required` | approve/reject outside input-required |
-| 409 | `confirm_required` | `tokens`/`aws` action without `confirm: true` |
+| 409 | `confirm_required` | `tokens` action without `confirm: true` |
 | 409 | `precondition_failed` | e.g. no Build ID, process already running, profile mismatch |
 | 422 | `invalid_param` | e.g. empty approver, `n` outside 1..20 |
 | 503 | `temporal_unreachable` | Temporal not reachable (reads that need it) |
@@ -504,8 +490,8 @@ Every non-2xx response:
 `GET /api/config`
 
 ```json
-{ "profile": "local", "profiles": ["local", "kind", "kind-plaintext", "eks-pf"],
-  "ui_base": "http://127.0.0.1:8233", "allow_aws": false, "console_version": "0.1.0",
+{ "profile": "local", "profiles": ["local", "kind", "kind-plaintext"],
+  "ui_base": "http://127.0.0.1:8233", "console_version": "0.1.0",
   "debounce_s": 20, "auto_approve_limit_usd": 100, "default_approver": "dana.finance" }
 ```
 
@@ -547,13 +533,11 @@ Every non-2xx response:
 
 - `components[].status` ∈ `up | down | degraded | zero | unknown | external`. `zero` means
   up by design with nothing running (Support between lifetimes); it renders in `--off`, not red.
-- `shape` ∈ `plain | serverless-invoke | serverless-wci | agentcore-aws | unknown`. It is
+- `shape` ∈ `plain | serverless-invoke | serverless-wci | unknown`. It is
   derived from the current deployment compute config, the WCI mode, the pollers and the
   managed processes.
 - `model.mode` ∈ `scripted | live | mixed | unknown`; `source` ∈ `managed | unknown`.
-- `port_forward`: `null` on local, else `{"kind": "kind|eks", "frontend": true, "web": true}`.
-- On eks-pf, `components` adds `{"id": "agentcore-aws", "status": "unknown", "detail":
-  "not checked (AWS)"}` unless `allow_aws`.
+- `port_forward`: `null` on local, else `{"kind": "kind", "frontend": true, "web": true}`.
 
 ### 5.2 Scenarios
 
@@ -606,7 +590,7 @@ Every non-2xx response:
 
 - `fit` ∈ `ready | needs_setup | wrong_profile`.
 - `steps[].kind` ∈ `action | watch | human | manual`. `manual` steps carry `make` text only
-  (e.g. eks-pf `make resume`) and can be ticked by hand (the tick is kept client-side only,
+  and can be ticked by hand (the tick is kept client-side only,
   in localStorage).
 - `done_when` uses a closed vocabulary that the backend evaluates (5.4). The frontend never
   parses it; it reads `RunView.steps[].status`.
@@ -650,8 +634,8 @@ The list's `task_state` is inferred from each running A2A task's history (no que
 ```
 
 - `queue` ∈ `dev` (support-dev-tq) | `versioned` (support-tq). The default comes from the
-  scenario: `case-*` uses `dev` unless the stack shape is serverless, and `serverless-b`,
-  `wci-b` and `cloud-b` use `versioned`. `ticket: null` uses the case default (README text).
+  scenario: `case-*` uses `dev` unless the stack shape is serverless, and `serverless-b`
+  and `wci-b` use `versioned`. `ticket: null` uses the case default (README text).
 - The start uses `SupportSupervisorWorkflow.run` args `[ticket, a2a_mode, nexus_send_timeout]`
   and `id_conflict_policy=USE_EXISTING`, like case-a.sh. It never waits for the result.
 - `201` →
@@ -661,8 +645,7 @@ The list's `task_state` is inferred from each running A2A task's history (no que
                "finance": "http://127.0.0.1:8233/namespaces/agent-services/workflows/a2a-task-support-2077-wci-k3f9" } }
   ```
   `attached: true` when an open run with that ID already existed.
-- Cost: `tokens` if the stack's model mode is `live` or `unknown` on a non-scripted shape;
-  `aws` on eks-pf with `queue: versioned` (starts an AgentCore session).
+- Cost: `tokens` if the stack's model mode is `live` or `unknown` on a non-scripted shape.
 
 `GET /api/runs/{wf}` → **RunView**
 
@@ -756,8 +739,7 @@ The list's `task_state` is inferred from each running A2A task's history (no que
   `nexus.scheduled, nexus.started, nexus.attempt_failed, nexus.completed, nexus.failed`,
   `task.started, task.state, timer.started, timer.fired, signal.approve, signal.reject`,
   `refund.issued, lifetime.start, lifetime.connected, lifetime.idle, lifetime.drained,
-  lifetime.released, lifetime.killed, wci.signal, wci.invoke, wci.failed, session.start`
-  (CloudWatch, opt-in).
+  lifetime.released, lifetime.killed, wci.signal, wci.invoke, wci.failed`.
 - `pair` links the two ends of a seam crossing: `nexus.scheduled` ↔ `task.started` (out), and
   `task.state completed|rejected|failed` ↔ `nexus.completed|nexus.failed` (back). Discovery
   (`get_agent_card`, sync) is one pair with both ends on the seam.
@@ -782,7 +764,7 @@ The list's `task_state` is inferred from each running A2A task's history (no que
   `{"workflow_id": "...", "task_id": "a2a-task-...", "verdict": "approve",
     "state_before": "input-required", "state_after": "completed", "settled": true}`.
   `settled: false` if it is still `working` after 10 s; the stream carries the rest.
-- No AWS involved on any profile (signals go to Finance), so the cost is `free`.
+- Signals go to Finance and no model is called, so the cost is `free`.
 
 `POST /api/runs/{wf}/terminate` with body `{"reason": "console cleanup", "confirm": true}`
 → `200 {"terminated": true}` (used by the `cleanup` scenario).
@@ -823,8 +805,7 @@ optional step passed over (e.g. "stop the Support worker").
 
 Action ids: `start-recipe` (`recipe` = `local-plain | local-invoke | local-wci | kind-laptop |
 teardown`), `nexus-endpoint`, `register-version`, `invoke-local`, `agentcore-ping`, `smoke`,
-`card`, `load` (`n` 1..20, `kind` = `ping|case-a`), `wci-history`, `failure`
-(eks-pf, `aws`), `drain-cloudwatch` (eks-pf, `aws`), `kind-up`, `kind-temporal`,
+`card`, `load` (`n` 1..20, `kind` = `ping|case-a`), `wci-history`, `kind-up`, `kind-temporal`,
 `kind-workers`, `certs-pull`, `pf`, `pf-stop`, `kind-down` (long, confirm).
 
 `POST /api/actions/{id}` with body `{"params": {"mode": "--local-wci"}, "confirm": false}` →
@@ -897,9 +878,7 @@ these additions and clarifications:
 - **A2A task source**: `task.source` and `task_state_source` are `query` (Finance's
   `get_task`, 3 s RPC timeout), `history` (inferred from the task's history) or `cache`
   (list only, closed tasks). There is no `details` source (see 4.3).
-- **`POST /api/runs`** also takes `confirm` (cost gate: `tokens` with a live/mixed model,
-  `tokens` on eks-pf with `queue: dev` because Finance on EKS uses Bedrock, `aws` on eks-pf
-  with `queue: versioned`) and validates `nexus_send_timeout` (`25h`, `90m`, `30s`) and the
+- **`POST /api/runs`** also takes `confirm` (cost gate: `tokens` with a live/mixed model) and validates `nexus_send_timeout` (`25h`, `90m`, `30s`) and the
   workflow ID (`[A-Za-z0-9][A-Za-z0-9._:-]*`, never `a2a-task-…`). Scenario `options` also
   carry `queue` (`dev|versioned`) and, for Case B scenarios, `approver`. A run the console
   starts is recorded in `.temporal/console/runs/<wf>.json`, so its scenario (e.g. `crash`,
@@ -918,8 +897,7 @@ these additions and clarifications:
   `todo`. A step seen `done` stays done for that run (sticky), so "stop the Support worker"
   stays ticked after the worker is started again.
 - **RunView `compute`**: `drain.state` ∈ `running | drained | unknown`; `drain.source` ∈
-  `process | pollers` (plain worker), `ping | app-log | no-app` (local/kind AgentCore app),
-  `estimate | cloudwatch` (eks-pf). `lifetimes[].end_reason` ∈ `drained | killed | stopped |
+  `process | pollers` (plain worker), `ping | app-log | no-app` (local/kind AgentCore app). `lifetimes[].end_reason` ∈ `drained | killed | stopped |
   ended | null`. A lifetime can start before `t0` (the app was invoked before the run), so
   rows can have a negative `t`.
 - **`rows_version`** increases on every change of the row list; the SSE `rows` event says
@@ -940,13 +918,10 @@ these additions and clarifications:
   (the app process outlives each lifetime, so the server would list them for a minute).
 - **Child env**: `MAKEFLAGS`, `MFLAGS`, `MAKELEVEL` and `MAKEOVERRIDES` are removed, so the
   variables given to `make console` never override the profile the console switched to.
-- **Process**: `dev-server` adds `wci` (`"0"`, `"1"`, `"aws"` or `null`); `unavailable` comes
+- **Process**: `dev-server` adds `wci` (`"0"`, `"1"` or `null`); `unavailable` comes
   with `why` (wrong profile, no Build ID, or no client certificate under `.certs/…`).
 - **Job**: `status` ∈ `running | succeeded | failed`. `start-recipe` takes
-  `params: {recipe, variant: "scripted"|"live"}` (live = `tokens`). On eks-pf, `pf`,
-  `pf-stop`, `certs-pull` and `load` are `aws` (kubectl to EKS needs an AWS token;
-  `load.sh` reads CloudWatch there), and `register-version` defaults to `--agentcore-auto`
-  (`aws`).
+  `params: {recipe, variant: "scripted"|"live"}` (live = `tokens`).
 - **Errors** may carry extra fields next to `code/message/hint` (e.g. `processes` on a
   refused profile switch).
 - **Tests**: the fakes are in `demo_console.fakes` (pytest's `--import-mode=importlib` cannot
@@ -976,8 +951,7 @@ scripted stdout/exit codes), `FakeHttp` (ping/invocations), and a tmp `.temporal
 | `test_detect.py` | profile detection from pidfiles (tmp dir, `kill -0` faked) and the TLS probe outcome |
 | `test_env.py` | `child_env()` strips `TEMPORAL_TLS`/`TEMPORAL_ADDRESS` outside local, sets `TEMPORAL_PROFILE`, `TEMPORAL_CONFIG_FILE` (absolute), `TEMPORAL_BUILD_ID` |
 | `test_procs.py` | start spawns `make -s <target>` in a new session; record written; adoption after "restart"; stop TERM→KILL; `external` detection; live variant needs confirm |
-| `test_actions.py` | cost gate (`confirm_required`, `aws_disabled`); eks-pf `failure`/`drain-cloudwatch` build the right argv **with FakeRunner only**; `register-version` argv per mode; recipes order |
-| `test_cloud.py` | `agentcore_logs` adapter with faked `sessions_for`/`wait_drained` (no boto3 client created) |
+| `test_actions.py` | cost gate (`confirm_required`); `register-version` argv per mode (`--poller`, `--local-wci`); recipes order |
 | `test_routes.py` | Starlette `TestClient`: Host check, `X-Console` check, error shapes, approve 409/422/200 paths, `POST /api/runs` arguments match case-a.sh (ticket, mode, budget, `USE_EXISTING`) |
 | `test_stream.py` | the SSE generator emits `hello`, `stack`, `run`, `rows` and only on change (hash); heartbeat |
 | `test_static.py` | `index.html` references only local assets (fonts are vendored); every JS module imported exists; no `localhost` |
@@ -1032,11 +1006,10 @@ creates the endpoint with `demo_testing.nexus`. The console app is built with
   through), reduced-motion run (`--force-prefers-reduced-motion`), and contrast spot checks of
   `--muted` on `--panel` in both themes.
 
-### 6.4 Manual acceptance (by the user, after `make resume` for eks-pf)
+### 6.4 Manual acceptance (by the user)
 
 Run each scenario from the console only (no terminal except `make console`) on: local plain
-scripted; local invoke-local scripted; local WCI scripted; kind scripted; eks-pf `cloud-b`
-(with `CONSOLE_ALLOW_AWS=1` for the CloudWatch confirm and the failure demo). Restart the
+scripted; local invoke-local scripted; local WCI scripted; kind scripted. Restart the
 console mid-Case-B; the run view, steps and managed processes come back.
 
 ---
@@ -1051,7 +1024,7 @@ services/demo-console/
   src/demo_console/
     __init__.py
     __main__.py                  python -m demo_console [--host 127.0.0.1] [--port 8099] [--profile P]
-    settings.py                  Settings (repo root, profile, ui_base, allow_aws, debounce), child_env()
+    settings.py                  Settings (repo root, profile, ui_base, debounce), child_env()
     app.py                       create_app(settings, clients=None, runner=None) -> Starlette; static mount
     routes.py                    handlers for section 5; error helper; Host/X-Console middleware
     clients.py                   Clients (agents w/ strands converter, agent-services), lazy connect,
@@ -1067,7 +1040,6 @@ services/demo-console/
     procs.py                     ProcessManager (make targets, process groups, records, adoption)
     jobs.py                      JobStore (.temporal/console/jobs)
     runner.py                    CommandRunner protocol + asyncio implementation
-    cloud.py                     opt-in AWS adapters (agentcore_logs, eks failure) behind allow_aws
     stream.py                    SSE hub: pollers, change hashing, heartbeat
     static/
       index.html                 shell + SVG sprite + font preload
@@ -1090,23 +1062,20 @@ true }` to sources, and `demo_console` to ruff `known-first-party`. Run `uv lock
 Makefile (new section `# --- v1.0: demo console ---`, all in `.PHONY`):
 
 ```make
-console: ## Demo console on http://127.0.0.1:8099 (TEMPORAL_PROFILE=local|kind|kind-plaintext|eks-pf; CONSOLE_ALLOW_AWS=1 enables AWS-backed actions)
+console: ## Demo console on http://127.0.0.1:8099 (TEMPORAL_PROFILE=local|kind|kind-plaintext)
 	$(UV) python -m demo_console --port $(or $(CONSOLE_PORT),8099)
 
 console-shots: ## Screenshots of the console's fixture views (light/dark, laptop/phone) -> .temporal/console/shots/
 	scripts/console-shot.sh --all
 ```
 
-Usage: `make console`, `TEMPORAL_PROFILE=kind make console`,
-`TEMPORAL_PROFILE=eks-pf CONSOLE_ALLOW_AWS=1 make console`. The Makefile's per-profile
+Usage: `make console`, `TEMPORAL_PROFILE=kind make console`. The Makefile's per-profile
 `unexport` already applies to the console process.
 
 ---
 
 ## 8. Follow-ups (out of scope)
 
-- Running the console in EKS (4.7).
 - Event-level deep links into the Temporal UI (`…/history/events/<id>`), once verified on UI 2.x
   for server 1.32.
 - `make up` / `demo-reset` (plan 3.4) can call the console's recipes instead of duplicating them.
-- A CloudWatch session lane on eks-pf by default (today opt-in because it calls AWS).

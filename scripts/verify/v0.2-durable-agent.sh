@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Observable acceptance checks for v0.2-durable-agent (IMPLEMENTATION_PLAN.md v0.2).
+# Observable acceptance checks for v0.2-durable-agent (tag v0.2).
 # Output is piped through scripts/redact.sh so it can be pasted into the story doc.
 #   VERIFY_SKIP_BEDROCK=1  skip the live Opus 5.5 steps (spikes, live Case A + crash)
 #   RECORD_HISTORY=1       re-record tests/histories/support-1042.json from the live run

@@ -2,6 +2,27 @@
 
 One section per tag. Tags are never moved; fixes go forward as `v0.N.1-…`.
 
+## Unreleased: local only (AWS deployment retired)
+
+The demo now runs only on the laptop: the dev server or the Helm chart on kind, with the
+models on Amazon Bedrock through the laptop's SSO profile. The AWS deployment of tags v0.8 and
+v0.10–v0.13 (EKS, RDS, internal NLB, Route 53, AgentCore Runtime in a VPC, IAM, Secrets
+Manager, budget alarm) was torn down on 2026-11-04, and its code and docs are removed. They
+remain readable at those tags.
+
+- Removed: Terraform stacks and the IRSA module, `deploy/k8s/overlays/eks`, `values.eks.yaml`,
+  the invocation-role CFN template, the AgentCore CodeZip bundle and CLI tooling, the EKS/RDS/
+  Route 53/pause scripts, `demo_testing.agentcore_logs` (CloudWatch), `support_agent.mtls`
+  (Secrets Manager client cert), the `eks-pf` profile, `WCI=aws`, `register-version
+  --agentcore*`, verify scripts for v0.8 and v0.10–v0.13; the runbook, the implementation
+  plan, the verify ledger, the AWS story pages and ADR-0005/0006/0008.
+- Kept: the local serverless shape (AgentCore-shaped Worker, the AgentCore API emulator, the
+  dev server's WCI, PINNED versions on `support-tq`), kind with mTLS, live and scripted models.
+- Changed: `make failure` scales Finance on kind; `case-b.sh` is the plain Case B start;
+  `make load` targets the local WCI; `make timeline MERGED=1` has no AgentCore-log lane.
+- Console: the `eks-pf` profile, `CONSOLE_ALLOW_AWS`, the `aws` cost tier and the `cloud-b`
+  scenario are gone.
+
 ## Unreleased: demo console (toward v1.0.0)
 
 A web **demo console** on <http://127.0.0.1:8099> (`make console`) that drives every scenario
@@ -14,7 +35,7 @@ links to the Web UI on :8233. New workspace member `services/demo-console` (pack
 contract; Build ID unchanged (`4ee7f87`). Design and API contract: `docs/console/DESIGN.md`;
 look: `docs/console/BRAND.md`; story: `docs/story/console.md`.
 
-- Profiles: `local` (dev server; scripted or live models), `kind`, `kind-plaintext`, `eks-pf`.
+- Profiles: `local` (dev server; scripted or live models), `kind`, `kind-plaintext`.
   Uses the same envconfig as `make`. Outside `local` it strips `TEMPORAL_TLS`/`TEMPORAL_ADDRESS`,
   and it never passes the parent make's `MAKEFLAGS` to children. It detects a profile mismatch
   from the port-forward pidfiles.
@@ -24,8 +45,7 @@ look: `docs/console/BRAND.md`; story: `docs/story/console.md`.
   restart. Stack recipes: local plain, local invoke-local, local WCI emulator, kind laptop
   side, teardown. One-shot jobs: nexus-endpoint, register-version, invoke-local, smoke, card,
   load, wci-history, and the kind cluster lifecycle (confirm first).
-- Cost gate on every action (`free | tokens | aws`). AWS-backed actions (EKS failure demo,
-  CloudWatch drain confirm, `--agentcore-auto`) need `CONSOLE_ALLOW_AWS=1`.
+- Cost gate on every action (`free | tokens`): actions that spend Bedrock tokens ask first.
 - Ledger 72 enforced: the console never queries a Support Workflow (a query on `support-tq`
   would wake an AgentCore session); Support's state comes from history and describe only.
   A unit test checks every route.
@@ -34,8 +54,8 @@ look: `docs/console/BRAND.md`; story: `docs/story/console.md`.
   `?fixture=<name>` and `?demo=1` (a recorded Case B replay) work without Temporal.
 - Tests: 95 unit tests (fakes only: no AWS, no cluster) and an integration test on the
   two-namespace dev server that drives Case A, Case B approve and reject, and a 409 through the
-  console's API with scripted in-process Workers. The kind and eks-pf paths are covered by unit
-  tests only; they need a real run after `make resume`.
+  console's API with scripted in-process Workers. The kind path is covered by unit tests only;
+  it still needs a real run.
 
 ## v0.13-scale-to-zero
 

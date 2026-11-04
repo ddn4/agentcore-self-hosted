@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Observable acceptance checks for v0.4-finance-agent (IMPLEMENTATION_PLAN.md v0.4).
+# Observable acceptance checks for v0.4-finance-agent (tag v0.4).
 # Output is piped through scripts/redact.sh so it can be pasted into the story doc.
 #   VERIFY_SKIP_BEDROCK=1  Finance runs a scripted model (no AWS); otherwise Opus 5.5 (a few
 #                          small calls: one A2A task = 2 model turns)

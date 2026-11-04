@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Observable acceptance checks for v0.9-temporal-on-kind-mtls (IMPLEMENTATION_PLAN.md v0.9).
+# Observable acceptance checks for v0.9-temporal-on-kind-mtls (tag v0.9).
 # Output is piped through scripts/redact.sh so it can be pasted into the story doc.
 #   VERIFY_SKIP_CHECK=1       skip step 1 (make check)
 #   VERIFY_SKIP_PLAINTEXT=1   skip part A (commit 1: chart on kind without TLS)

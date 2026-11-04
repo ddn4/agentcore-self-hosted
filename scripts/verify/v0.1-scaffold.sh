@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Observable acceptance checks for v0.1-scaffold (IMPLEMENTATION_PLAN.md v0.1).
+# Observable acceptance checks for v0.1-scaffold (tag v0.1).
 # Output is piped through scripts/redact.sh so it can be pasted into the story doc.
 #   VERIFY_SKIP_BEDROCK=1  skip the live Opus 5.5 ping (e.g. no AWS session)
 set -euo pipefail

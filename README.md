@@ -1,15 +1,23 @@
 # Self-hosted Temporal + AgentCore: customer-support A2A demo
 
-A customer-support **Support Supervisor** agent (namespace `agents`, eventually a
-serverless Worker on Amazon Bedrock AgentCore) asks a **Finance Refund** agent
-owned by another team (namespace `agent-services`, on EKS) for a refund, over a
-published A2A-shaped contract carried by **Temporal Nexus**. Both agents are
-Strands agents made durable by the Temporal Strands plugin, running on Claude
-Opus 5.5 on Bedrock, on a **self-hosted** Temporal 1.32 server.
+A customer-support **Support Supervisor** agent (namespace `agents`) asks a **Finance
+Refund** agent owned by another team (namespace `agent-services`) for a refund, over a
+published A2A-shaped contract carried by **Temporal Nexus**. Both agents are Strands
+agents made durable by the Temporal Strands plugin, running on Claude Opus 5.5 on
+Amazon Bedrock, on a **self-hosted** Temporal 1.32 server: the dev server, or the Helm
+chart on a local **kind** cluster with mTLS.
 
-- Design: [`TEMPORAL_SELFHOSTED_AGENTCORE_RUNBOOK.md`](TEMPORAL_SELFHOSTED_AGENTCORE_RUNBOOK.md)
-- Plan (tags, conventions, testing): [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
-- Decisions: [`docs/adr/`](docs/adr/README.md) · Unknowns: [`docs/verify-ledger.md`](docs/verify-ledger.md) · Versions: [`docs/versions.md`](docs/versions.md)
+Support runs either as a plain long-lived Worker or in **serverless (AgentCore) shape**:
+a Worker that the server's Worker Controller invokes on demand through a local AgentCore
+API emulator, and that drains to zero when idle.
+
+Everything runs on your laptop. The only AWS dependency is Bedrock for the live model
+calls; every scenario also runs offline with scripted models.
+
+- Decisions: [`docs/adr/`](docs/adr/README.md) · Versions: [`docs/versions.md`](docs/versions.md)
+- History: tags `v0.8` and `v0.10`–`v0.13` also deployed this demo to AWS (EKS, RDS,
+  AgentCore Runtime in a VPC). That deployment was retired on 2026-11-04; check out a tag
+  to read its code and docs.
 
 ## Run the demo on your laptop
 
@@ -26,7 +34,7 @@ process in its own terminal (or append `&`), and stop everything when you are do
 | Docker with context `colima-agentcore` (6 CPU / 12 GB; the global context is never changed), kind, helm v4, kubectl | scenario 4 (kind + mTLS) | `make doctor` |
 | AWS default profile (SSO) with Bedrock access to `global.anthropic.claude-opus-5-5` in `us-east-1` | live runs only | `aws sso login`, then `make bedrock-ping` |
 
-No AWS resource is created by any laptop scenario. Use `127.0.0.1`, not `localhost`.
+Nothing here creates AWS resources. Use `127.0.0.1`, not `localhost`.
 
 ```bash
 make setup          # uv python install 3.12; uv sync --all-packages; .env from .env.example
@@ -126,7 +134,7 @@ each scenario and shows both workflows side by side while they run. You see Supp
 `agents` and Finance in `agent-services`, the Nexus `send_message` crossing between them, the
 A2A task state, and Support's Worker or AgentCore lifetimes, including when they drain to
 zero. Every row links to the Web UI on :8233. The console reads Temporal through the same
-envconfig profile as `make` and never queries Support (ledger 72). The processes it starts are
+envconfig profile as `make` and never queries Support (a query would wake a serverless Worker). The processes it starts are
 `make -s <target>` children, and a console restart picks them up again. Design:
 [`docs/console/DESIGN.md`](docs/console/DESIGN.md). Story:
 [`docs/story/console.md`](docs/story/console.md).
@@ -138,8 +146,6 @@ envconfig profile as `make` and never queries Support (ledger 72). The processes
 | Local, serverless shape (invoke-local) | `TEMPORAL_BUILD_ID=4ee7f87 make console`* | *Local, serverless (invoke-local)*, or the scenario's fix buttons: AgentCore app, **Invoke**, register version `--poller`. Then *AgentCore, invoke-local*: approve, Invoke again (lifetime 2). |
 | Local, the dev server's WCI | as above | *Local, serverless (WCI emulator)*. It waits until `/ping` is Healthy, then restarts the dev server with `WCI=1`. Then *AgentCore, server's WCI*. |
 | kind + mTLS | `make kind-up kind-temporal kind-workers FINANCE_MODEL=scripted certs-pull pf`, then `TEMPORAL_PROFILE=kind make console` | *kind (laptop side)*: nexus endpoint, AgentCore app, Invoke, register version. Then any scenario. The cluster jobs (`kind-up` … `kind-down`) are in Manage stack and ask before they run. |
-| Hybrid on EKS (after `make resume`) | `make certs-pull pf TEMPORAL_PROFILE=eks-pf`, then `TEMPORAL_PROFILE=eks-pf make console` | Case A/B with the laptop Support Worker (`worker-support`), Finance on EKS (Bedrock, so tokens). |
-| EKS + real AgentCore | `TEMPORAL_PROFILE=eks-pf CONSOLE_ALLOW_AWS=1 make console` | *AgentCore in AWS*: two AgentCore sessions around a human. Without `CONSOLE_ALLOW_AWS=1` every AWS-backed action is refused (`403 aws_disabled`), and the drain is estimated from the debounce. |
 
 \* The Build ID: `scripts/build-id.sh` refuses while `uv.lock` or Support's code has
 uncommitted changes. Once those are committed, `make console` alone resolves it from the
@@ -159,27 +165,22 @@ to forget all Workflows) or `make kind-down`. Nothing else keeps running.
 ## Story index
 
 Each tag adds one concept: tag -> what it adds -> its story doc (`docs/story/<tag>.md`: how
-to run it, what to look at, which unknowns it closed). What is still open for the AWS tags
-(v0.8 resume, v0.10+) is summarised at the top of [`docs/verify-ledger.md`](docs/verify-ledger.md#still-open-for-the-aws-tags).
+to run it, what to look at, which unknowns it closed). The AWS tags (`v0.8`, `v0.10`–`v0.13`)
+are not listed: their code and docs live only in git history.
 
 | Tag | Adds | Run it | Talk track | Build ID |
 |---|---|---|---|---|
-| [`v0.0-research`](TEMPORAL_SELFHOSTED_AGENTCORE_RUNBOOK.md) | The design and its unknowns | — | "Before any code we wrote down the design and the twenty-odd things we didn't know." | — |
+| `v0.0-research` | The design and its unknowns | — | "Before any code we wrote down the design and the twenty-odd things we didn't know." | — |
 | [`v0.1-scaffold`](docs/story/v0.1-scaffold.md) | A repo you can trust: uv workspace, two-namespace dev server, `make check`, Opus 5.5 ping | `make check dev-server bedrock-ping` | "One command gives you a two-namespace Temporal, and `make check` runs real Temporal tests with no cloud access." | — |
 | [`v0.2-durable-agent`](docs/story/v0.2-durable-agent.md) | Support Supervisor `TemporalAgent` with Activity tools; survives `kill -9` mid-thought | `make dev-server worker-support case-a` (offline: `worker-support-scripted`) | "Every model call and tool call is an Activity. I kill the process mid-thought, and it carries on from exactly where it stopped." | — |
 | [`v0.3-sub-agents`](docs/story/v0.3-sub-agents.md) | Order Lookup and Return Policy sub-agents as in-workflow tools; three agents attributed in one Workflow | `make dev-server worker-support case-a case-b sub-agents` (offline: `worker-support-scripted`, `spike-nested`) | "Support now has its own small team of agents, used as tools, in-process. Keep that in mind, because the next agent belongs to someone else." | — |
 | [`v0.4-finance-agent`](docs/story/v0.4-finance-agent.md) | A2A-shaped contract; Finance Refund agent in `agent-services` behind Nexus endpoint `finance-agent`; no-LLM smoke caller | `make dev-server-up payments-mock worker-finance-scripted worker-smoke nexus-endpoint smoke card task-state` (or `make dev`) | "The Finance team publishes exactly one thing, an A2A-shaped contract. No AI on the caller yet, just the hop. A Workflow in `agents` calls a named endpoint, and the server routes it into another namespace. Workers never talk to each other." | — |
 | [`v0.5-a2a-over-nexus`](docs/story/v0.5-a2a-over-nexus.md) | The Supervisor discovers Finance's Agent Card and asks Finance itself: `ask_finance_agent`, an async in-workflow `@tool` awaiting `send_message` over Nexus (Q19a); `SUPPORT_A2A_MODE=handoff` fallback; prompt-drift guard | `make dev` then `make nexus-endpoint case-a timeline task-state` (offline: `worker-support-scripted worker-finance-scripted`; `SUPPORT_A2A_MODE=handoff make case-a`) | "Support can't move money, so it asks Finance: a different team's agent, through a published contract and a named endpoint. It isn't a child workflow, and only the contract is shared." | — |
 | [`v0.6-human-in-the-loop`](docs/story/v0.6-human-in-the-loop.md) | Finance's human approver: over $100 or HIGH risk the A2A task goes `input-required` and waits (up to 24 h) for `approve`/`reject` signals; no decision → `failed`. Support budgets 25 h (ADR-0009) and apologises or escalates on `rejected`/`failed`; Support can be stopped while Finance waits | `make case-b task-state pending`, stop the Support worker, `make approve WF=support-2077 APPROVER=dana.finance`, start it again, `make result approval-report` | "Over $100, Finance's agent says 'I need a human', and the task goes to input-required. I switch Support off completely. Nothing is lost, and when the approver signals, the conversation picks up again." | — |
-| [`v0.7-serverless-shape`](docs/story/v0.7-serverless-shape.md) | Support Worker in AgentCore shape: `BedrockAgentCoreApp` entrypoint, debounce/drain/`complete_async_task`, PINNED Worker Versioning on `support-tq`, content-hash Build ID, CodeZip bundle; the dev server's own WCI invokes it through a local AgentCore API emulator | `make agentcore-local-scripted invoke-local register-version MODE=--poller case-b-serverless`; with the WCI: `make dev-server-up WCI=1 agentcore-emulator register-version`; `make agentcore-bundle agentcore-bundle-test` | "Support's Worker is now built to die. It starts when invoked, drains when idle, and when Finance answers, a new invocation picks the conversation up, pinned to the exact build." | `32b04fb` (local) |
-| [`v0.8-wci-handshake`](docs/story/v0.8-wci-handshake.md) | First AWS contact: budget + AgentCore session alarm, External ID in Secrets Manager, vendored invocation-role template, AgentCore IAM in Terraform, a throwaway PUBLIC runtime (CLI 1.0.1), and the dev server's real WCI handshake: AssumeRole with External ID (wrong ID denied), endpoint, `InvokeAgentRuntime`; Q15 first AWS look **yes**; same-day teardown | `make tf-plan tf-apply STACK=30-agentcore-iam`, `make aws-profile agentcore-deploy MODE=PUBLIC invoke-role`, `scripts/verify/v0.8-wci-handshake.sh`, `make agentcore-down invoke-role-delete`, `VERIFY_PART=3 scripts/verify/v0.8-wci-handshake.sh` | "The Worker Controller ships inside the Temporal server, even the dev server: it assumes a role guarded by an External ID and starts an AgentCore session 4 ms after Finance's approval lands." | `fd7af7a` (dev server only; deleted) |
+| [`v0.7-serverless-shape`](docs/story/v0.7-serverless-shape.md) | Support Worker in AgentCore shape: `BedrockAgentCoreApp` entrypoint, debounce/drain/`complete_async_task`, PINNED Worker Versioning on `support-tq`, content-hash Build ID; the dev server's own WCI invokes it through a local AgentCore API emulator | `make agentcore-local-scripted invoke-local register-version MODE=--poller case-b-serverless`; with the WCI: `make dev-server-up WCI=1 agentcore-emulator register-version` | "Support's Worker is now built to die. It starts when invoked, drains when idle, and when Finance answers, a new invocation picks the conversation up, pinned to the exact build." | `32b04fb` (local) |
 | [`v0.9-temporal-on-kind-mtls`](docs/story/v0.9-temporal-on-kind-mtls.md) | The real server on the laptop: chart temporal-1.7.0 / server 1.32.1 on kind (postgres, WCI constrained to `agents`), Finance + payments-mock as pods; then mTLS everywhere from a free cert-manager CA (one CN per identity), NetworkPolicy, rotation | `make kind-up kind-temporal kind-workers certs-pull pf`, `TEMPORAL_PROFILE=kind make nexus-endpoint agentcore-local-scripted invoke-local register-version MODE=--poller case-b-serverless approve`; `make kind-down` | "Same code, real server, locked down: one free CA, one identity per Worker, wrong certs refused, and the A2A contract still hasn't changed." | `32b04fb` (unchanged) |
 | [`v0.9.1-laptop-complete`](docs/story/v0.9.1-laptop-complete.md) | Acceptance on a clean slate: every laptop scenario above run from this README alone; doc and script gaps fixed (`make env`) | the four scenarios above | "Everything up to here runs on one laptop, from a clean checkout, with one README." | `32b04fb` (unchanged) |
 | [`v0.9.2-live-bedrock`](docs/story/v0.9.2-live-bedrock.md) | Every laptop scenario on Opus 5.5, live: spikes, Case A/B, the WCI-invoked AgentCore app, kind + mTLS with Finance on Bedrock, `make test-live`; three stale checks fixed | `aws sso login`, then the live variants above and `make spikes test-live` | "Same demo, real model, every path." | `0015bea` (tests only) |
-| [`v0.10-aws-foundation`](docs/story/v0.10-aws-foundation.md) | The AWS foundation in Terraform, left running: VPC with private subnets on the AgentCore AZ IDs, one NAT, flow logs, six interface endpoints + S3 gateway, four SGs, private zone `temporal-customer-support.internal`; EKS 1.37 (IRSA, laptop-/32 endpoint, VPC CNI NetworkPolicy enforced), 2 × m7g.large, LBC + cert-manager; RDS PostgreSQL 16.15 (TLS forced); IRSA `temporal-server-wci` and `agent-services-worker`; ECR | `make check-quotas`, `make guardrails external-id cfn-template`, `make tf-plan tf-apply STACK=10-network`, then `STACK=20-platform`, `scripts/verify/v0.10-aws-foundation.sh`, `make render-config`; `make pause` / `resume`, `make tf-destroy STACK=foundation` | "One target builds a private VPC on the AZ IDs AgentCore needs, endpoints so nothing needs the internet, private DNS, EKS, Postgres that refuses plaintext and two narrow IRSA roles. The budget alarm was in place before we spent a cent." | unchanged (no Support input) |
-| [`v0.11-temporal-and-finance-on-eks`](docs/story/v0.11-temporal-and-finance-on-eks.md) | Temporal 1.32.1 on EKS with the v0.9 values: RDS over verified TLS (schema hook Job with the RDS CA), 512 shards, an internal TCP NLB passing mTLS through at `temporal-frontend.temporal-customer-support.internal`, IRSA on the worker service; Finance on EKS (ECR arm64, IRSA, NetworkPolicy); hybrid Cases A/B from the laptop (gate G4), failure demo | `make eks-rds-ca create-db-user rds-snapshot CHANGE=v011-install eks-temporal route53-alias`, `make certs-pull pf TEMPORAL_PROFILE=eks-pf`, `make finance-image finance-deploy`, `TEMPORAL_PROFILE=eks-pf make nexus-endpoint card worker-support case-a case-b approve failure`, `scripts/verify/v0.11-temporal-and-finance-on-eks.sh` | "The values rehearsed on my laptop, now on RDS, behind an internal NLB that passes TLS straight through, at a private DNS name. Finance runs on EKS with its own IAM identity, Support is still on my laptop, and the A2A call didn't change at all." | unchanged (`fd7af7a`) |
-| [`v0.12-agentcore-worker`](docs/story/v0.12-agentcore-worker.md) | Support on AgentCore Runtime in VPC mode, registered from `main` as a serverless Worker Deployment Version; the WCI on EKS (IRSA) assumes the invocation role with the External ID and invokes it; mTLS from Secrets Manager to the Route 53 frontend name; ping and Case A with zero other pollers; NLB cross-zone fix | `make export-agentcore-cert CLUSTER=eks CONFIRM=yes`, `make agentcore-deploy MODE=VPC`, `make invoke-role`, `make register-version MODE=--agentcore-auto CLOUD=1 TEMPORAL_PROFILE=eks-pf`, `scripts/verify/v0.12-agentcore-worker.sh` | "Nothing is polling Support's queue. I start a Workflow, Temporal's Worker Controller sees there's no Worker, assumes a narrowly scoped role and invokes AgentCore. A microVM in our VPC dials the frontend over mTLS, does the work, idles and goes away." | `4ee7f87` |
-| [`v0.13-scale-to-zero`](docs/story/v0.13-scale-to-zero.md) | Case B fully in the cloud: Finance waits for a human, Support's AgentCore session drains, the approval's Nexus completion makes the WCI start a second session that finishes the reply (Q15: yes); reject variant; merged Support/Finance/WCI timeline; e2e with session counts; N=10 load | `TEMPORAL_PROFILE=eks-pf scripts/demo/case-b.sh`, `make timeline WF=… MERGED=1`, `make e2e TEMPORAL_PROFILE=eks-pf`, `make load N=10`, `scripts/verify/v0.13-scale-to-zero.sh` | "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh AgentCore session to finish the reply." | `4ee7f87` |
 | [console (unreleased)](docs/story/console.md) | The demo console: every scenario from one page on :8099, both namespaces live (lanes, Nexus seam, A2A state, compute rail), process control and recipes, cost gate, never queries Support | `make console`, then Manage stack and a scenario (see [Demo console](#demo-console-every-scenario-from-one-page)) | "I won't type a single command. Watch the two lanes: Support asks, the call crosses the seam, Finance waits for me, and Support's compute disappears while it waits." | unchanged (`4ee7f87`) |
 
 ## Layout
@@ -193,7 +194,6 @@ services/payments-mock     idempotent refund API (v0.4, :8081)
 services/demo-console      the demo console (make console, :8099; docs/console/DESIGN.md)
 config/temporal.toml       envconfig profiles (TEMPORAL_PROFILE=local | kind | kind-plaintext)
 deploy/                    kind cluster, Helm values (chart 1.7.0), cert-manager + k8s manifests (v0.9)
-infra/terraform/           00-guardrails, 10-network, 20-platform, 30-agentcore-iam, modules/irsa-role (v0.8, v0.10)
 scripts/                   doctor, dev-server, bedrock_ping, scrub-check, redact, demo/, verify/<tag>.sh
 spikes/                    one file per verify item (Opus 5.5 params, structured output)
 ```

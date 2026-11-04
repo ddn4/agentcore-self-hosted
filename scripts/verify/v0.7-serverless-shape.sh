@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Observable acceptance checks for v0.7-serverless-shape (IMPLEMENTATION_PLAN.md v0.7).
+# Observable acceptance checks for v0.7-serverless-shape (tag v0.7).
 # Output is piped through scripts/redact.sh so it can be pasted into the story doc.
 #   VERIFY_SKIP_CHECK=1      skip step 1 (make check)
 #   VERIFY_SKIP_BEDROCK=1    skip step 12 (live: one PingWorkflow + Case A on Opus 5.5 via the WCI)

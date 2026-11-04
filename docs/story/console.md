@@ -2,11 +2,13 @@
 
 **Goal.** A web page that a presenter drives every scenario from and that an audience can
 read on a projector. It covers Case A, Case B (approve or reject), the crash demo, the
-serverless shapes (invoke-local, the dev server's WCI, real AgentCore), the failure demo and
-load. It shows both workflows side by side as they run: Support in `agents`, Finance in
+serverless shapes (invoke-local, the dev server's WCI), the failure demo and load. It shows both workflows side by side as they run: Support in `agents`, Finance in
 `agent-services`, the Nexus `send_message` crossing between them, the A2A task state, and
 Support's Worker or AgentCore lifetimes. It works on every profile (`local`, `kind`,
-`kind-plaintext`, `eks-pf`) without new terminals or typed workflow IDs.
+`kind-plaintext`) without new terminals or typed workflow IDs.
+
+The EKS profile and every AWS-backed action were removed on 2026-11-04, when the AWS
+deployment was retired.
 
 **Why now.** Everything through v0.13 runs from make targets, each in its own terminal, and
 the evidence (`make timeline`, `serverless_report.py`, the Web UI) appears only after the
@@ -14,23 +16,22 @@ fact. The four things the audience must see are a state machine, a boundary, com
 away, and a pinned build that comes back. They are easier to see live than in a history dump.
 v1.0.0 needs a demo that one person can run.
 
-**Result (2026-11-02): working on `local` with scripted models; kind and eks-pf not yet run
-live.** `make check` is green offline. Every local scenario below was driven end to end
+**Result (2026-11-02): working on `local` with scripted models; kind not yet run live.** `make check` is green offline. Every local scenario below was driven end to end
 through the console's own API and buttons (headless Chrome clicking the page), with no
-terminal except `make console`. No AWS call and no Bedrock token. The kind and eks-pf code
-paths are unit-tested against fakes and wait for a real run after `make resume`.
+terminal except `make console`. No Bedrock token. The kind code path is unit-tested against
+fakes and waits for a real run.
 
 ## What it adds
 
 | Area | What |
 |---|---|
 | `services/demo-console` (package `demo_console`) | Starlette + uvicorn on `127.0.0.1:8099`. Both libraries were already in `uv.lock`, so nothing new is downloaded. Static ES modules, no build step and no npm. A new workspace member; Support, Finance and the contract are untouched, so the Build ID stays `4ee7f87` |
-| `make console` | `uv run --frozen python -m demo_console --port $(CONSOLE_PORT)`. It takes the same `TEMPORAL_PROFILE` as every other target. `CONSOLE_ALLOW_AWS=1` enables the AWS-backed actions |
+| `make console` | `uv run --frozen python -m demo_console --port $(CONSOLE_PORT)`. It takes the same `TEMPORAL_PROFILE` as every other target |
 | Run view | Lanes `time / compute rail / Support / Nexus seam / Finance`, with gaps over 4 s compressed into bands. The A2A state is the headline word. Three facts sit under it: Support workers running, Nexus call held open (a live clock), and lifetimes. A guided stepper ticks itself from Temporal's own facts. On `input-required` the approval card sits in Finance's lane on the live "now" row. A report strip appears when the run closes. Presenter notes have the talk line, what to point at, and the equivalent make command |
 | Stack bar and Manage stack | One pip per component (Temporal, Web UI, endpoint, Finance, Support, AgentCore app, WCI emulator, payments). Each laptop process can be started, stopped or have its log read. Recipes: local plain, local invoke-local, local WCI emulator, kind laptop side, teardown. One-shot jobs: nexus-endpoint, register-version, invoke-local, smoke, card, load, wci-history, and the kind cluster lifecycle (confirm first) |
 | Process control | Each process is `make -s <target>` in its own process group, recorded in `.temporal/console/procs/`. After a console restart it is adopted again. Children never inherit the parent make's `MAKEFLAGS`, so `make console TEMPORAL_PROFILE=kind` cannot pin later children to kind |
-| Cost gate | Every action is `free`, `tokens` or `aws`. `tokens` asks first. `aws` is refused (`403 aws_disabled`) unless the console was started with `CONSOLE_ALLOW_AWS=1` |
-| Ledger 72 | The console never queries a Support Workflow: on `support-tq` a query would wake an AgentCore session. Support's state comes from history and describe only. `AgentsClient` raises on any query in `agents`, and a unit test checks every route |
+| Cost gate | Every action is `free` or `tokens`. `tokens` asks first |
+| Ledger 72 | The console never queries a Support Workflow: on `support-tq` a query would wake an AgentCore-shaped Worker lifetime. Support's state comes from history and describe only. `AgentsClient` raises on any query in `agents`, and a unit test checks every route |
 | `make console-shots` | `scripts/console-shot.sh` / `console_shot.py` drive headless Chrome over the DevTools protocol, because a plain `--screenshot` fires before the modules render. They write the fixture views at 1440×900 and 390×844, dark and light, to `.temporal/console/shots/`. `?fixture=<name>` and `?demo=1` (a recorded Case B replay) need no Temporal, for rehearsal |
 | Tests | 95 unit tests (fakes only). The integration test drives Case A, Case B approve and reject, and a 409 through the console's API on the two-namespace dev server with in-process scripted Workers. For Case A it asserts the hop both ways (`send_message` out to `task.started`, `task.state completed` back to `nexus.completed`) and zero queries in `agents` |
 
@@ -43,8 +44,6 @@ Design and API contract: [`docs/console/DESIGN.md`](../console/DESIGN.md). Look:
 make console                                   # local; then Manage stack -> "Local, plain Support" (scripted)
 TEMPORAL_BUILD_ID=4ee7f87 make console         # while uv.lock is uncommitted (build-id.sh refuses)
 TEMPORAL_PROFILE=kind make console             # after make kind-up kind-temporal kind-workers certs-pull pf
-TEMPORAL_PROFILE=eks-pf make console           # after make resume and make certs-pull pf TEMPORAL_PROFILE=eks-pf
-TEMPORAL_PROFILE=eks-pf CONSOLE_ALLOW_AWS=1 make console   # + CloudWatch drain confirm, failure demo, --agentcore-auto
 ```
 
 The README table under "Demo console" maps each permutation to the recipe and scenario to
@@ -100,9 +99,8 @@ the Workers. With no override, the Build ID then came from the deployment's curr
 
 ## Still open
 
-- **kind and eks-pf live.** The detection, mTLS probe, per-identity certs, the `aws` cost
-  gate, the estimated drain and the CloudWatch adapter are unit-tested with fakes only. Run
-  scenario 4 and `cloud-b` from the console after `make resume`.
+- **kind live.** The detection, mTLS probe and per-identity certs are unit-tested with fakes
+  only. Run scenario 4 from the console.
 - **Lifetime labels.** The run view numbers lifetimes per run ("lifetime 1, 2"). The app's
   identities count since the app started (`agentcore-lifetime-2, -3`), and so does the
   AgentCore pip ("lifetime 2 running").

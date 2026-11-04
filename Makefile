@@ -1,4 +1,4 @@
-# All entry points for the demo (IMPLEMENTATION_PLAN.md section 3.4).
+# All entry points for the demo.
 # `make help` lists targets. `make check` needs no AWS and is what CI runs.
 
 SHELL := /usr/bin/env bash

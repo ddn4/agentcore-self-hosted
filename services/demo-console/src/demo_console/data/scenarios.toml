@@ -358,7 +358,7 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
 id = "failure"
 title = "Finance disappears mid-call"
 summary = "The Finance worker goes away; Support's Nexus call retries until it comes back."
-story = { tag = "v0.11-temporal-and-finance-on-eks", doc = "docs/story/v0.11-temporal-and-finance-on-eks.md" }
+story = { tag = "v0.5-a2a-over-nexus", doc = "docs/story/v0.5-a2a-over-nexus.md" }
 profiles = ["local"]
 case = "A"
 order_id = "1042"
@@ -457,7 +457,7 @@ notes = "The Finance team publishes exactly one thing, an A2A-shaped contract. N
 id = "load"
 title = "N conversations at once"
 summary = "N Workflows on support-tq with nothing polling; the WCI scales Support up and back to zero."
-story = { tag = "v0.13-scale-to-zero", doc = "docs/story/v0.13-scale-to-zero.md" }
+story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
 profiles = ["local", "kind", "kind-plaintext"]
 case = ""
 order_id = ""
@@ -482,7 +482,7 @@ notes = "Ten conversations arrive at once. Nothing polls Support's queue until t
 id = "cleanup"
 title = "Leftovers"
 summary = "Runs still waiting in input-required. Reject or terminate them."
-story = { tag = "v0.13-scale-to-zero", doc = "docs/story/v0.13-scale-to-zero.md" }
+story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
 profiles = ["local", "kind", "kind-plaintext"]
 case = ""
 order_id = ""

@@ -1,7 +1,7 @@
 """ScriptedModel: an offline Strands model registered under the ``"bedrock"`` key.
 
-The plan's test seam (IMPLEMENTATION_PLAN.md section 3.1, ADR-0001): services
-pin Opus 5.5 with ``StrandsPlugin(models={"bedrock": <factory>})``; tests build
+The test seam (ADR-0001): services pin Opus 5.5 with
+``StrandsPlugin(models={"bedrock": <factory>})``; tests build
 the *same* plugin shape with a ``ScriptedModel`` under the same key, so the
 pinning mechanism is also what makes ``make check`` run without AWS.
 

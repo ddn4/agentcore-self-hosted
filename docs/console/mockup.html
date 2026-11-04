@@ -143,7 +143,6 @@ svg.i { width: 1.05em; height: 1.05em; flex: none; vertical-align: -.16em; fill:
 @keyframes spin { to { transform: rotate(1turn); } }
 .cost { display: inline-flex; gap: .25rem; align-items: center; font-size: .8rem; font-weight: 600; white-space: nowrap; }
 .cost[data-c="tokens"] { color: var(--hold); }
-.cost[data-c="aws"] { color: var(--bad); }
 .cost[data-c="free"] { color: var(--muted); font-weight: 500; }
 .copy { display: flex; align-items: flex-start; gap: .4rem; font-family: var(--mono); font-size: .8rem; background: var(--well); border: 1px solid var(--rule); border-radius: 8px; padding: .5rem .5rem .5rem .65rem; overflow-wrap: anywhere; color: var(--ink); }
 .copy code { flex: 1; min-width: 0; font: inherit; }
@@ -703,7 +702,7 @@ dialog::backdrop { background: rgb(0 0 0 / .6); }
 <header class="stack" aria-label="Stack">
   <span class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>AgentCore demo console</span>
   <div class="seg" role="group" aria-label="Temporal profile">
-    <button aria-pressed="true">local</button><button aria-pressed="false">kind</button><button aria-pressed="false">eks-pf</button>
+    <button aria-pressed="true">local</button><button aria-pressed="false">kind</button>
   </div>
   <div class="shape"><span>Support <b>serverless, WCI emulator</b></span><span>Model <b>scripted</b></span></div>
   <ul class="pips" aria-label="Components">
@@ -735,7 +734,6 @@ dialog::backdrop { background: rgb(0 0 0 / .6); }
         <li><button><span class="t">Crash demo</span><span class="fit">needs plain worker</span><span class="s">Kill the worker mid-thought</span></button></li>
         <li><button><span class="t">Serverless, invoke-local</span><span class="fit" data-f="ready">ready</span><span class="s">You start each AgentCore lifetime</span></button></li>
         <li><button aria-current="true"><span class="t">Serverless, the server's WCI</span><span class="fit" data-f="ready">ready</span><span class="s">Temporal starts the worker when work arrives</span></button></li>
-        <li><button><span class="t">On AgentCore in AWS</span><span class="fit">eks-pf only</span><span class="s"><span class="cost"><svg class="i"><use href="#i-cloud"/></svg>Calls AWS</span></span></button></li>
         <li><button><span class="t">Failure demo</span><span class="fit" data-f="ready">ready</span><span class="s">Finance disappears mid-call</span></button></li>
         <li><button><span class="t">The hop with no AI</span><span class="fit" data-f="ready">ready</span><span class="s">Smoke caller and Agent Card</span></button></li>
         <li><button><span class="t">Load</span><span class="fit" data-f="ready">ready</span><span class="s">Up to 20 conversations at once</span></button></li>

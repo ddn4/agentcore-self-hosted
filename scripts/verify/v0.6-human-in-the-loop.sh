@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Observable acceptance checks for v0.6-human-in-the-loop (IMPLEMENTATION_PLAN.md v0.6).
+# Observable acceptance checks for v0.6-human-in-the-loop (tag v0.6).
 # Output is piped through scripts/redact.sh so it can be pasted into the story doc.
 #   VERIFY_SKIP_BEDROCK=1        skip the live Opus 5.5 step (10); everything else is offline
 #   VERIFY_REAL_WAIT_MINUTES=N   step 9: approve after N real minutes with Support stopped

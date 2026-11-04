@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Observable acceptance checks for v0.5-a2a-over-nexus (IMPLEMENTATION_PLAN.md v0.5).
+# Observable acceptance checks for v0.5-a2a-over-nexus (tag v0.5).
 # Output is piped through scripts/redact.sh so it can be pasted into the story doc.
 #   VERIFY_SKIP_BEDROCK=1  skip the live Opus 5.5 steps (9-10); everything else is offline
 #   RECORD_HISTORY=1       re-record the replay fixtures in services/support-agent/tests/histories
