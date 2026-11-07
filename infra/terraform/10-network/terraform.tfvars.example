@@ -1,3 +1,0 @@
-# Nothing is required: every input has a default (AZ IDs, CIDRs, endpoints).
-# endpoint_subnet_count   = 2   # 3 = one endpoint ENI per AgentCore AZ
-# flow_log_retention_days = 7

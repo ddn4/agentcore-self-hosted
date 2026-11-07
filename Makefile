@@ -51,7 +51,7 @@ PYTEST := $(UV) pytest
         worker-support-versioned register-version wci-history case-b-serverless \
         case-a-serverless tools kind-up kind-temporal kind-images kind-workers kind-aws-creds \
         certs-pull pf pf-stop kind-status kind-down cert-renew kind-env env \
-        tf-destroy failure load ui-shot console console-shots
+        failure load ui-shot console console-shots
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -260,13 +260,6 @@ case-b-serverless: ## Case B on the versioned queue support-tq (WF=support-2077-
 
 case-a-serverless: ## Case A on the versioned queue support-tq (WF=support-1042-sl)
 	SUPPORT_TASK_QUEUE=support-tq scripts/demo/case-a.sh $(or $(WF),support-1042-sl)
-
-# --- Temporary: the last AWS stack (10-network) is still being torn down. -------------
-# Removed together with infra/terraform/10-network and scripts/tf.sh once it is destroyed.
-STACK ?=
-
-tf-destroy: ## TEMPORARY: destroy the remaining AWS stack (STACK=10-network); removed after teardown
-	DRY_RUN=$(or $(DRY_RUN),0) scripts/tf.sh destroy $(STACK)
 
 failure: ## Failure demo on kind: Finance to 0 mid-Case A -> pending Nexus op retries -> back to 2 -> completes (WF=)
 	scripts/demo/failure.sh $(WF)
