@@ -1,0 +1,1097 @@
+<title>Refund Agents Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column of figures; each team owns a color (Support blue, Finance amber, Temporal violet) used identically in every drawing. */
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --ink: #18202b; --muted: #5a6574; --line: #c8cfd9; --rule: #e3e7ed;
+  --support: #1d64c4; --support-tint: #e7effb;
+  --finance: #a95a06; --finance-tint: #fbefe1;
+  --server: #6243b8; --server-tint: #efeafb;
+  --ok: #2b7d47; --bad: #b8382a; --wait: #eef0f3;
+  --local: #0b7a6c; --local-tint: #e2f3f0; --aws: #a3336f; --aws-tint: #f8e8f0;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f141a; --panel: #161d26; --ink: #e5eaf1; --muted: #97a2b1; --line: #334050; --rule: #232d39;
+  --support: #6ea8ff; --support-tint: #14243b;
+  --finance: #f0a453; --finance-tint: #2c2113;
+  --server: #ab95ff; --server-tint: #221c37;
+  --ok: #62c486; --bad: #ff7d6c; --wait: #1b232d; color-scheme: dark;
+  --local: #4fc4b1; --local-tint: #12302b; --aws: #f08bc0; --aws-tint: #34182a;
+} }
+:root[data-theme="dark"] {
+  --bg: #0f141a; --panel: #161d26; --ink: #e5eaf1; --muted: #97a2b1; --line: #334050; --rule: #232d39;
+  --support: #6ea8ff; --support-tint: #14243b;
+  --finance: #f0a453; --finance-tint: #2c2113;
+  --server: #ab95ff; --server-tint: #221c37;
+  --ok: #62c486; --bad: #ff7d6c; --wait: #1b232d; color-scheme: dark;
+  --local: #4fc4b1; --local-tint: #12302b; --aws: #f08bc0; --aws-tint: #34182a;
+}
+body { background: var(--bg); color: var(--ink); font: 15px/1.6 var(--body); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-block: 40px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { display: grid; gap: 10px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(30px, 5vw, 44px); }
+h2 { font-size: 26px; }
+h3 { font-size: 17px; }
+.lede { max-width: 68ch; color: var(--muted); margin: 0; }
+nav { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 6px; }
+nav a { font: 500 13px/1 var(--mono); color: var(--ink); text-decoration: none; padding: 7px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+nav a:hover, nav a:focus-visible { border-color: var(--server); color: var(--server); outline: none; }
+section { display: grid; gap: 18px; padding-top: 52px; }
+section > p, .prose { max-width: 70ch; margin: 0; }
+code, .mono { font-family: var(--mono); font-size: .88em; }
+figure { margin: 0; display: grid; gap: 10px; }
+.canvas { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; overflow-x: auto; }
+.canvas svg { display: block; width: 100%; min-width: 760px; height: auto; }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 78ch; }
+.key { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 2px; border: 1.5px solid; display: inline-block; }
+
+/* SVG vocabulary */
+svg text { font-family: var(--body); font-size: 12px; fill: var(--ink); }
+svg .mono { font-family: var(--mono); font-size: 11px; }
+svg .mut { fill: var(--muted); }
+svg .b { font-weight: 600; }
+svg .h { font-family: var(--display); font-weight: 600; font-size: 15px; }
+svg .sm { font-size: 10.5px; }
+svg .knock { paint-order: stroke; stroke: var(--panel); stroke-width: 5px; stroke-linejoin: round; }
+.box { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
+.z-sup { fill: var(--support-tint); stroke: var(--support); stroke-width: 1.2; }
+.z-fin { fill: var(--finance-tint); stroke: var(--finance); stroke-width: 1.2; }
+.z-srv { fill: var(--server-tint); stroke: var(--server); stroke-width: 1.2; }
+.dash { fill: none; stroke-dasharray: 5 4; }
+.pill-s { fill: var(--panel); stroke: var(--support); stroke-width: 1; }
+.pill-f { fill: var(--panel); stroke: var(--finance); stroke-width: 1; }
+.hot-s { fill: var(--support); } .hot-s + text, text.on-hot { fill: var(--panel); }
+.w-ink { stroke: var(--ink); stroke-width: 1.4; fill: none; }
+.w-sup { stroke: var(--support); stroke-width: 1.6; fill: none; }
+.w-fin { stroke: var(--finance); stroke-width: 1.6; fill: none; }
+.w-srv { stroke: var(--server); stroke-width: 1.6; fill: none; }
+.w-ok { stroke: var(--ok); stroke-width: 1.6; fill: none; }
+.w-bad { stroke: var(--bad); stroke-width: 1.6; fill: none; }
+.w-mut { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+.life { stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 3 4; }
+.f-ink { fill: var(--ink); } .f-sup { fill: var(--support); } .f-fin { fill: var(--finance); } .f-srv { fill: var(--server); }
+.f-ok { fill: var(--ok); } .f-bad { fill: var(--bad); } .f-mut { fill: var(--muted); }
+.t-sup { fill: var(--support) !important; } .t-fin { fill: var(--finance) !important; } .t-srv { fill: var(--server) !important; }
+.t-ok { fill: var(--ok) !important; } .t-bad { fill: var(--bad) !important; }
+.st { fill: var(--panel); stroke: var(--ink); stroke-width: 1.2; }
+.st-wait { fill: var(--finance-tint); stroke: var(--finance); stroke-width: 1.4; }
+.st-ok { fill: var(--panel); stroke: var(--ok); stroke-width: 1.6; }
+.st-bad { fill: var(--panel); stroke: var(--bad); stroke-width: 1.6; }
+.band { fill: var(--wait); }
+.idle { fill: var(--support-tint); stroke: var(--support); stroke-width: 1; stroke-dasharray: 3 3; }
+
+/* Config blocks */
+.stack { display: grid; gap: 6px; max-width: 760px; }
+.layer { display: grid; grid-template-columns: 2.2em 1fr; gap: 12px; align-items: baseline; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 10px 14px; }
+.layer:nth-child(2) { margin-left: 4%; } .layer:nth-child(3) { margin-left: 8%; } .layer:nth-child(4) { margin-left: 12%; }
+.layer b { font: 600 13px var(--mono); color: var(--server); }
+.layer div { min-width: 0; }
+.layer small { display: block; color: var(--muted); font-size: 13px; }
+.chain { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; }
+.chain .f { flex: 1 1 200px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; display: grid; gap: 4px; align-content: start; }
+.chain .f.opt { border-style: dashed; }
+.chain .f code { color: var(--server); font-weight: 500; }
+.chain .f span { font-size: 13px; color: var(--muted); }
+.chain .arr { align-self: center; color: var(--muted); font-family: var(--mono); }
+.tbl { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+thead th { font: 600 12px/1.3 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
+tbody th { font-weight: 600; white-space: nowrap; }
+td code { white-space: nowrap; }
+tr.grp th { font: 600 11.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--server); background: var(--server-tint); }
+.tag { display: inline-block; font: 500 11px/1.4 var(--mono); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
+.tag.s { color: var(--support); border-color: var(--support); } .tag.f { color: var(--finance); border-color: var(--finance); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.card ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.card p { margin: 0; font-size: 14px; color: var(--muted); }
+footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+@media (max-width: 560px) { .layer:nth-child(n) { margin-left: 0; } }
+
+/* Environment tabs: html[data-env] is "local" (default) or "aws"; .only-* content follows it. */
+html:not([data-env="aws"]) .only-aws, html[data-env="aws"] .only-local { display: none !important; }
+:root { --env: var(--local); --env-tint: var(--local-tint); }
+html[data-env="aws"] { --env: var(--aws); --env-tint: var(--aws-tint); }
+.envbar { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 12px 0; border-bottom: 2px solid var(--env); display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.envtabs { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.envtabs button { font: 600 14px/1.2 var(--body); color: var(--muted); background: none; border: 0; padding: 9px 16px; cursor: pointer; display: grid; gap: 2px; text-align: left; }
+.envtabs button + button { border-left: 1px solid var(--line); }
+.envtabs button small { font: 400 11.5px/1.2 var(--mono); }
+.envtabs button[data-pick="local"][aria-selected="true"] { background: var(--local); color: var(--panel); }
+.envtabs button[data-pick="aws"][aria-selected="true"] { background: var(--aws); color: var(--panel); }
+.envtabs button:focus-visible { outline: 2px solid var(--env); outline-offset: -4px; }
+.envhint { margin: 0; font-size: 14px; color: var(--muted); max-width: 62ch; }
+.scope { display: inline-block; vertical-align: middle; margin-left: 10px; font: 500 11px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
+.scope.env { border-color: var(--env); color: var(--env); background: var(--env-tint); }
+html:not([data-env="aws"]) .c-local, html[data-env="aws"] .c-aws { background: var(--env-tint); }
+.cmds { margin: 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; font: 12.5px/1.7 var(--mono); overflow-x: auto; white-space: pre; }
+.cmds i { font-style: normal; color: var(--muted); }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Archived · AWS era (v0.13-scale-to-zero) · the AWS deployment was retired; the current page is <a href="architecture.html">architecture.html</a></div>
+  <h1>Support asks Finance for a refund, across two namespaces</h1>
+  <p class="lede">A Support Supervisor agent in namespace <code>agents</code> asks a Finance Refund agent in <code>agent-services</code> for money back, over an A2A-shaped contract carried by Temporal Nexus. Both are Strands agents on Claude Opus 5.5 (Bedrock), made durable by the Temporal Strands plugin, on a self-hosted Temporal 1.32 server.</p>
+  <nav aria-label="Sections">
+    <a href="#system">System</a><a href="#support">Inside Support</a><a href="#hop">The A2A hop</a><a href="#states">Task states</a><a href="#serverless">Serverless lifecycle</a><a href="#config">Configuration</a><a href="#environments">Environments</a><a href="#laptop" class="only-local">On the laptop</a><a href="#aws" class="only-aws">On AWS</a><a href="#versions">Versions</a><a href="#trust">mTLS &amp; network</a>
+  </nav>
+</header>
+
+<div class="envbar">
+  <div class="envtabs" role="tablist" aria-label="Environment">
+    <button type="button" role="tab" data-pick="local" aria-selected="true">Local<small>dev server · kind</small></button>
+    <button type="button" role="tab" data-pick="aws" aria-selected="false">AWS<small>EKS · AgentCore · RDS</small></button>
+  </div>
+  <p class="envhint only-local">One laptop, no AWS resources. Live runs call Bedrock with your SSO profile; offline runs use scripted models.</p>
+  <p class="envhint only-aws">us-east-1, running since v0.13: Temporal and Finance on EKS, Support on AgentCore in VPC mode, RDS for persistence.</p>
+</div>
+
+<!-- ============ 1. SYSTEM ============ -->
+<section id="system">
+  <h2>System at a glance<span class="scope env"><span class="only-local">Local view</span><span class="only-aws">AWS view</span></span></h2>
+  <p>Two teams, two namespaces, one server. The only code the teams share is the contract package <code>finance_a2a_api</code>. Workers never talk to each other: each opens an outbound gRPC connection to the frontend, and the server routes the Nexus call from <code>agents</code> into <code>agent-services</code>.</p>
+  <figure>
+    <div class="canvas">
+    <svg viewBox="0 0 1000 610" role="img" aria-label="Support Worker in an AgentCore session and Finance Worker pods both poll the Temporal frontend; the Nexus endpoint finance-agent routes Support's send_message into agent-services; the WCI invokes the Support session; both agents call Bedrock.">
+      <defs>
+        <marker id="a-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+        <marker id="a-sup" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-sup"/></marker>
+        <marker id="a-fin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-fin"/></marker>
+        <marker id="a-srv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-srv"/></marker>
+      </defs>
+
+      <!-- legend -->
+      <line x1="20" y1="22" x2="56" y2="22" class="w-ink" marker-end="url(#a-ink)"/>
+      <text x="64" y="26" class="sm">network connection (always outbound from a Worker)</text>
+      <line x1="20" y1="44" x2="56" y2="44" class="w-srv dash" marker-end="url(#a-srv)"/>
+      <text x="64" y="48" class="sm">logical call, routed inside the server</text>
+      <text x="980" y="26" class="sm mut" text-anchor="end">Workers never dial each other.</text>
+      <text x="980" y="42" class="sm mut" text-anchor="end">No inbound ports on either Worker.</text>
+
+      <!-- approver -->
+      <rect x="410" y="6" width="180" height="42" rx="5" class="box"/>
+      <text x="500" y="24" text-anchor="middle" class="b">Human approver</text>
+      <text x="500" y="40" text-anchor="middle" class="mono mut">make approve · UI · CLI</text>
+      <line x1="500" y1="48" x2="500" y2="110" class="w-ink" marker-end="url(#a-ink)"/>
+      <text x="508" y="70" class="sm mono knock">signal approve / reject</text>
+
+      <!-- TEMPORAL SERVER -->
+      <rect x="350" y="80" width="300" height="420" rx="10" class="z-srv"/>
+      <text x="364" y="100" class="h t-srv">Temporal Server 1.32.1</text>
+      <text x="636" y="100" text-anchor="end" class="sm mut mono only-local">kind · chart 1.7.0</text><text x="636" y="100" text-anchor="end" class="sm mut mono only-aws">EKS · chart 1.7.0</text>
+      <rect x="370" y="112" width="260" height="40" rx="4" class="box"/>
+      <text x="500" y="129" text-anchor="middle" class="b">frontend :7233</text>
+      <text x="500" y="145" text-anchor="middle" class="mono mut only-local">mTLS · laptop via make pf</text><text x="500" y="145" text-anchor="middle" class="mono mut only-aws">mTLS · behind internal NLB</text>
+      <rect x="370" y="164" width="125" height="34" rx="4" class="box"/>
+      <text x="432" y="185" text-anchor="middle">history</text>
+      <rect x="505" y="164" width="125" height="34" rx="4" class="box"/>
+      <text x="567" y="185" text-anchor="middle">matching</text>
+      <rect x="370" y="210" width="260" height="46" rx="4" class="box"/>
+      <text x="500" y="229" text-anchor="middle" class="b">worker service · WCI</text>
+      <text x="500" y="246" text-anchor="middle" class="mono mut">workercontroller · agents only</text>
+      <rect x="370" y="268" width="260" height="58" rx="4" class="box" style="stroke:var(--server);stroke-width:1.6"/>
+      <text x="500" y="286" text-anchor="middle" class="b">Nexus endpoint <tspan class="mono t-srv">finance-agent</tspan></text>
+      <text x="500" y="302" text-anchor="middle" class="mono mut">→ agent-services / agent-services-tq</text>
+      <text x="500" y="317" text-anchor="middle" class="mono mut">service FinanceAgentA2A</text>
+      <rect x="370" y="338" width="125" height="46" rx="4" class="z-sup"/>
+      <text x="432" y="357" text-anchor="middle" class="mono b t-sup">agents</text>
+      <text x="432" y="374" text-anchor="middle" class="sm mut">retention 7d</text>
+      <rect x="505" y="338" width="125" height="46" rx="4" class="z-fin"/>
+      <text x="567" y="357" text-anchor="middle" class="mono b t-fin">agent-services</text>
+      <text x="567" y="374" text-anchor="middle" class="sm mut">retention 7d</text>
+      <rect x="370" y="396" width="260" height="40" rx="4" class="box"/>
+      <text x="500" y="413" text-anchor="middle" class="b only-local">PostgreSQL pod</text><text x="500" y="413" text-anchor="middle" class="b only-aws">RDS PostgreSQL 16.15</text>
+      <text x="500" y="429" text-anchor="middle" class="mono mut only-local">4 history shards</text><text x="500" y="429" text-anchor="middle" class="mono mut only-aws">TLS · 512 history shards</text>
+      <rect x="370" y="448" width="260" height="36" rx="4" class="box"/>
+      <text x="500" y="471" text-anchor="middle">Web UI 2.54.1 <tspan class="mono mut">:8233</tspan></text>
+
+      <!-- SUPPORT -->
+      <rect x="20" y="110" width="290" height="350" rx="10" class="z-sup"/>
+      <text x="34" y="132" class="h t-sup">Team Support</text>
+      <text x="296" y="132" text-anchor="end" class="mono mut">ns agents</text>
+      <rect x="36" y="144" width="258" height="236" rx="8" class="dash" style="stroke:var(--support)"/>
+      <text x="48" y="163" class="sm b t-sup only-local">LOCAL AGENTCORE APP (LAPTOP)</text><text x="48" y="163" class="sm b t-sup only-aws">AGENTCORE SESSION (microVM, VPC)</text>
+      <text x="48" y="179" class="mono mut">BedrockAgentCoreApp :8080</text>
+      <rect x="50" y="190" width="230" height="180" rx="5" class="box"/>
+      <text x="62" y="208" class="b">Versioned Worker</text>
+      <text x="62" y="224" class="mono mut">support-tq · support-supervisor</text>
+      <text x="62" y="239" class="mono mut">PINNED to one Build ID</text>
+      <rect x="62" y="250" width="206" height="110" rx="4" class="z-sup"/>
+      <text x="74" y="268" class="mono b">SupportSupervisorWorkflow</text>
+      <rect x="74" y="278" width="182" height="20" rx="10" class="pill-s"/>
+      <text x="165" y="292" text-anchor="middle" class="mono sm">order_lookup_agent</text>
+      <rect x="74" y="304" width="182" height="20" rx="10" class="pill-s"/>
+      <text x="165" y="318" text-anchor="middle" class="mono sm">return_policy_agent</text>
+      <rect x="74" y="330" width="182" height="20" rx="10" class="hot-s"/>
+      <text x="165" y="344" text-anchor="middle" class="mono sm b on-hot">ask_finance_agent</text>
+      <text x="36" y="402" class="sm mut only-local">Idle 20 s → drain → exit</text><text x="36" y="402" class="sm mut only-aws">Idle 30 s → drain → reaped after 120 s</text>
+      <text x="36" y="420" class="sm mut only-local">Invoked by make invoke-local, or the dev WCI</text><text x="36" y="420" class="sm mut only-aws">Invoked by the WCI through an IAM role</text>
+      <text x="36" y="438" class="sm mut">Sub-agents run in-process, as tools</text>
+
+      <!-- FINANCE -->
+      <rect x="690" y="110" width="290" height="350" rx="10" class="z-fin"/>
+      <text x="704" y="132" class="h t-fin">Team Finance</text>
+      <text x="966" y="132" text-anchor="end" class="mono mut">ns agent-services</text>
+      <rect x="706" y="144" width="258" height="236" rx="8" class="dash" style="stroke:var(--finance)"/>
+      <text x="718" y="163" class="sm b t-fin only-local">FINANCE WORKER · 2 KIND PODS</text><text x="718" y="163" class="sm b t-fin only-aws">FINANCE WORKER · 2 EKS PODS</text>
+      <text x="718" y="179" class="mono mut">temporal-workers · agent-services-tq</text>
+      <rect x="720" y="190" width="230" height="56" rx="5" class="box"/>
+      <text x="732" y="208" class="b">FinanceAgentA2A handler</text>
+      <text x="732" y="224" class="mono mut">get_agent_card · sync</text>
+      <text x="732" y="239" class="mono mut">send_message · workflow run</text>
+      <rect x="720" y="256" width="230" height="114" rx="4" class="z-fin"/>
+      <text x="732" y="274" class="mono b">FinanceAgentTaskWorkflow</text>
+      <text x="732" y="290" class="mono sm mut">id a2a-task-&lt;context_id&gt;</text>
+      <rect x="732" y="298" width="206" height="18" rx="9" class="pill-f"/>
+      <text x="835" y="311" text-anchor="middle" class="mono sm">fraud_score</text>
+      <rect x="732" y="320" width="206" height="18" rx="9" class="pill-f"/>
+      <text x="835" y="333" text-anchor="middle" class="mono sm">refund_history</text>
+      <rect x="732" y="342" width="206" height="18" rx="9" class="pill-f"/>
+      <text x="835" y="355" text-anchor="middle" class="mono sm">issue_refund</text>
+      <line x1="835" y1="360" x2="835" y2="394" class="w-fin" marker-end="url(#a-fin)"/>
+      <rect x="706" y="396" width="258" height="40" rx="4" class="box"/>
+      <text x="835" y="413" text-anchor="middle" class="b">payments-mock :8080</text>
+      <text x="835" y="429" text-anchor="middle" class="mono mut">POST /refunds · idempotent</text>
+      <text x="706" y="452" class="sm mut">Always polling · egress locked by NetworkPolicy</text>
+
+      <!-- connections -->
+      <line x1="310" y1="132" x2="368" y2="132" class="w-sup" marker-end="url(#a-sup)"/>
+      <text x="339" y="125" text-anchor="middle" class="sm mono knock">polls</text>
+      <line x1="690" y1="132" x2="632" y2="132" class="w-fin" marker-end="url(#a-fin)"/>
+      <text x="661" y="125" text-anchor="middle" class="sm mono knock">polls</text>
+      <line x1="370" y1="233" x2="296" y2="233" class="w-srv dash only-local" marker-end="url(#a-srv)"/><line x1="370" y1="233" x2="296" y2="233" class="w-srv only-aws" marker-end="url(#a-srv)"/>
+      <text x="333" y="226" text-anchor="middle" class="sm mono knock only-local">WCI=1</text><text x="333" y="226" text-anchor="middle" class="sm mono knock only-aws">invokes</text>
+      <path d="M256,340 H330 V297 H368" class="w-srv dash" marker-end="url(#a-srv)"/>
+      <path d="M630,297 H668 V218 H718" class="w-srv dash" marker-end="url(#a-srv)"/>
+
+      <!-- bedrock -->
+      <rect x="350" y="540" width="300" height="50" rx="6" class="box" style="stroke:var(--ink)"/>
+      <text x="500" y="560" text-anchor="middle" class="b">Amazon Bedrock · Claude Opus 5.5</text>
+      <text x="500" y="577" text-anchor="middle" class="mono mut">global.anthropic.claude-opus-5-5</text>
+      <path d="M165,460 V565 H348" class="w-sup" marker-end="url(#a-sup)"/>
+      <path d="M835,460 V565 H652" class="w-fin" marker-end="url(#a-fin)"/>
+      <text x="173" y="520" class="sm mono">invoke_model activity</text>
+      <text x="827" y="520" text-anchor="end" class="sm mono">invoke_model activity</text>
+    </svg>
+    </div>
+    <figcaption class="only-local">Drawn as on kind (scenario 4). On the dev server (scenarios 1–3) the server is one <code>temporal server start-dev</code> process (1.32.0) with SQLite, Finance runs as a local process and payments-mock listens on :8081. You play the WCI with <code>make invoke-local</code>; or start the dev server with <code>WCI=1</code> plus a local AgentCore API emulator, and the server's own WCI invokes the local app without reaching AWS.</figcaption>
+    <figcaption class="only-aws">The same shape in us-east-1. The server runs on EKS behind an internal NLB and persists to RDS. The WCI (Worker Controller Instance), a system Workflow in the worker service, assumes the invocation role through IRSA and calls <code>InvokeAgentRuntime</code> when Matching finds no poller on <code>support-tq</code>; dynamic config pins it to namespace <code>agents</code>, so it can never manage <code>agent-services</code>. Support runs only while a session is invoked; the Finance pods always poll.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 1b. INSIDE SUPPORT ============ -->
+<section id="support">
+  <h2>Inside the Support agent<span class="scope">Same in both</span></h2>
+  <p><code>support_agent/agents.py</code> builds three <code>TemporalAgent</code>s and the Supervisor's tools. The agents themselves are objects in Workflow memory. Everything that touches the outside world (a model turn, an order lookup, the policy file, Finance) leaves the Workflow as an Activity or a Nexus operation.</p>
+  <figure>
+    <div class="canvas">
+    <svg viewBox="0 0 1000 560" role="img" aria-label="SupportSupervisorWorkflow run() discovers the agent card, invokes the Supervisor, applies a prompt-drift guard and, in handoff mode, calls Finance itself. The Supervisor and both sub-agents run in Workflow context; their model turns and tool calls are Activities on support-tq; ask_finance_agent awaits a Nexus operation.">
+      <defs>
+        <marker id="i-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+        <marker id="i-sup" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-sup"/></marker>
+        <marker id="i-srv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-srv"/></marker>
+      </defs>
+
+      <!-- run() steps -->
+      <text x="20" y="40" class="h">SupportSupervisorWorkflow.run()</text>
+      <rect x="20" y="60" width="240" height="62" rx="5" class="box"/>
+      <text x="32" y="80" class="b">1 · Discover Finance</text>
+      <text x="32" y="97" class="mono sm mut">finance.discover()</text>
+      <text x="32" y="112" class="mono sm mut">get_agent_card · sync Nexus op</text>
+      <rect x="20" y="134" width="240" height="62" rx="5" class="box" style="stroke:var(--support);stroke-width:1.6"/>
+      <text x="32" y="154" class="b">2 · Run the Supervisor</text>
+      <text x="32" y="171" class="mono sm mut">supervisor.invoke_async(</text>
+      <text x="32" y="186" class="mono sm mut">  ticket + card brief)</text>
+      <rect x="20" y="208" width="240" height="78" rx="5" class="box"/>
+      <text x="32" y="228" class="b">3 · Prompt-drift guard</text>
+      <text x="32" y="245" class="sm mut">Return Policy said ELIGIBLE but</text>
+      <text x="32" y="260" class="sm mut">Finance was never contacted:</text>
+      <text x="32" y="275" class="sm mut">re-prompt the Supervisor once</text>
+      <rect x="20" y="298" width="240" height="78" rx="5" class="box dash" style="stroke:var(--muted)"/>
+      <text x="32" y="318" class="b">4 · Handoff mode only</text>
+      <text x="32" y="335" class="sm mut">Workflow code sends the captured</text>
+      <text x="32" y="350" class="sm mut">request over Nexus, then gives</text>
+      <text x="32" y="365" class="sm mut">the Supervisor Finance's answer</text>
+      <text x="20" y="404" class="sm mut">Mode is fixed at start (SUPPORT_A2A_MODE)</text>
+      <text x="20" y="420" class="sm mut">and recorded in history; __init__ picks</text>
+      <text x="20" y="436" class="sm mut">the Finance tool and the prompt.</text>
+      <text x="20" y="468" class="b">Queries</text>
+      <text x="20" y="486" class="mono sm mut">transcript · sub_agent_runs · a2a</text>
+
+      <line x1="260" y1="165" x2="308" y2="125" class="w-sup" marker-end="url(#i-sup)"/>
+
+      <!-- workflow context -->
+      <rect x="290" y="60" width="420" height="480" rx="10" class="z-sup"/>
+      <text x="304" y="82" class="sm b t-sup">WORKFLOW CONTEXT · deterministic, replayed from history</text>
+      <rect x="310" y="96" width="380" height="58" rx="5" class="box" style="stroke:var(--support);stroke-width:1.6"/>
+      <text x="324" y="117" class="b">Support Supervisor <tspan class="mono sm mut">TemporalAgent</tspan></text>
+      <text x="324" y="135" class="mono sm mut">model "bedrock" · 120 s per turn · 5 attempts</text>
+      <text x="324" y="148" class="mono sm mut">heartbeat 10 s · summary = agent name</text>
+
+      <line x1="318" y1="154" x2="318" y2="492" class="w-sup"/>
+      <line x1="318" y1="208" x2="332" y2="208" class="w-sup"/>
+      <line x1="318" y1="316" x2="332" y2="316" class="w-sup"/>
+      <line x1="318" y1="418" x2="332" y2="418" class="w-sup"/>
+      <line x1="318" y1="492" x2="332" y2="492" class="w-sup dash"/>
+
+      <rect x="332" y="172" width="358" height="94" rx="5" class="box"/>
+      <text x="344" y="190" class="mono sm"><tspan class="mut">@tool</tspan> <tspan class="b">order_lookup_agent</tspan>(question)</text>
+      <rect x="344" y="200" width="330" height="54" rx="4" class="z-sup"/>
+      <text x="356" y="219" class="b">Order Lookup agent <tspan class="sm mut">· new per call</tspan></text>
+      <text x="356" y="236" class="mono sm mut">tool: lookup_order · orders.json</text>
+      <text x="356" y="249" class="mono sm mut">answers one line of order facts</text>
+
+      <rect x="332" y="280" width="358" height="94" rx="5" class="box"/>
+      <text x="344" y="298" class="mono sm"><tspan class="mut">@tool</tspan> <tspan class="b">return_policy_agent</tspan>(question)</text>
+      <rect x="344" y="308" width="330" height="54" rx="4" class="z-sup"/>
+      <text x="356" y="327" class="b">Return Policy agent <tspan class="sm mut">· new per call</tspan></text>
+      <text x="356" y="344" class="mono sm mut">tool: get_return_policy</text>
+      <text x="356" y="357" class="mono sm mut">ELIGIBLE / NOT_ELIGIBLE (+ approval flag)</text>
+
+      <rect x="332" y="388" width="358" height="60" rx="5" class="box" style="stroke:var(--server);stroke-width:1.4"/>
+      <text x="344" y="407" class="mono sm"><tspan class="mut">@tool</tspan> <tspan class="b">ask_finance_agent</tspan>(order_id, amount_usd, …)</text>
+      <text x="344" y="424" class="sm mut">tool mode (default): awaits FinancePeer.ask,</text>
+      <text x="344" y="439" class="sm mut">a Nexus call that can stay open for hours</text>
+
+      <rect x="332" y="462" width="358" height="60" rx="5" class="box dash" style="stroke:var(--muted)"/>
+      <text x="344" y="481" class="mono sm"><tspan class="mut">@tool</tspan> <tspan class="b">submit_refund_request</tspan>(…)</text>
+      <text x="344" y="498" class="sm mut">handoff mode: only records the request;</text>
+      <text x="344" y="513" class="sm mut">run() step 4 makes the Nexus call</text>
+
+      <!-- activities -->
+      <rect x="740" y="60" width="240" height="320" rx="10" class="box" style="stroke:var(--ink)"/>
+      <text x="754" y="82" class="sm b">ACTIVITIES · task queue support-tq</text>
+      <rect x="755" y="100" width="210" height="34" rx="4" class="box"/>
+      <text x="767" y="115" class="mono sm b">invoke_model</text>
+      <text x="767" y="128" class="sm mut">Support Supervisor</text>
+      <rect x="755" y="190" width="210" height="34" rx="4" class="box"/>
+      <text x="767" y="205" class="mono sm b">invoke_model</text>
+      <text x="767" y="218" class="sm mut">Order Lookup agent</text>
+      <rect x="755" y="230" width="210" height="28" rx="4" class="box"/>
+      <text x="767" y="248" class="mono sm b">lookup_order</text>
+      <rect x="755" y="298" width="210" height="34" rx="4" class="box"/>
+      <text x="767" y="313" class="mono sm b">invoke_model</text>
+      <text x="767" y="326" class="sm mut">Return Policy agent</text>
+      <rect x="755" y="338" width="210" height="28" rx="4" class="box"/>
+      <text x="767" y="356" class="mono sm b">get_return_policy</text>
+
+      <line x1="690" y1="118" x2="753" y2="118" class="w-ink" marker-end="url(#i-ink)"/>
+      <line x1="674" y1="220" x2="753" y2="207" class="w-ink" marker-end="url(#i-ink)"/>
+      <line x1="674" y1="236" x2="753" y2="244" class="w-ink" marker-end="url(#i-ink)"/>
+      <line x1="674" y1="328" x2="753" y2="315" class="w-ink" marker-end="url(#i-ink)"/>
+      <line x1="674" y1="344" x2="753" y2="352" class="w-ink" marker-end="url(#i-ink)"/>
+
+      <!-- nexus -->
+      <rect x="740" y="396" width="240" height="126" rx="10" class="z-srv"/>
+      <text x="754" y="418" class="sm b t-srv">NEXUS · endpoint finance-agent</text>
+      <rect x="755" y="430" width="210" height="34" rx="4" class="box"/>
+      <text x="767" y="445" class="mono sm b">send_message</text>
+      <text x="767" y="458" class="sm mut">→ a2a-task in agent-services</text>
+      <rect x="755" y="472" width="210" height="34" rx="4" class="box"/>
+      <text x="767" y="487" class="mono sm b">get_agent_card</text>
+      <text x="767" y="500" class="sm mut">sync, from run() step 1</text>
+      <line x1="690" y1="418" x2="720" y2="418" class="w-srv"/>
+      <path d="M720,418 V447 H753" class="w-srv dash" marker-end="url(#i-srv)"/>
+    </svg>
+    </div>
+    <figcaption>The sub-agent tools are hand-written <code>@tool</code> functions rather than Strands' <code>Agent.as_tool()</code>, which would write a durable timer to history every 50 ms. Each call builds a fresh, stateless sub-agent, so two calls in one model turn never collide. Every <code>invoke_model</code> Activity carries the agent's name as its summary, so the Web UI shows which agent was thinking.</figcaption>
+  </figure>
+
+  <h3>Where the agents actually execute</h3>
+  <figure>
+    <div class="canvas">
+    <svg viewBox="0 0 1000 330" role="img" aria-label="One AgentCore session runs one Worker process. Its Workflow Task holds all three agent loops in memory. Model and tool calls go to the server as ScheduleActivityTask commands and come back through Matching on support-tq to an Activity slot, usually in the same process, or in another session of the same Build ID if the WCI started one.">
+      <defs>
+        <marker id="x-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+        <marker id="x-srv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-srv"/></marker>
+      </defs>
+      <rect x="20" y="20" width="440" height="290" rx="10" class="z-sup"/>
+      <text x="34" y="42" class="h t-sup">AgentCore session #1</text>
+      <text x="446" y="42" text-anchor="end" class="mono sm mut only-local">one local process</text><text x="446" y="42" text-anchor="end" class="mono sm mut only-aws">one microVM</text>
+      <rect x="36" y="56" width="408" height="238" rx="6" class="box"/>
+      <text x="48" y="76" class="b">One Python Worker process</text>
+      <text x="432" y="76" text-anchor="end" class="mono sm mut">support-supervisor:&lt;build&gt;</text>
+      <rect x="48" y="90" width="384" height="90" rx="4" class="z-sup"/>
+      <text x="60" y="110" class="sm b">WORKFLOW TASK SLOT</text>
+      <text x="60" y="128">SupportSupervisorWorkflow, with the Supervisor,</text>
+      <text x="60" y="144">Order Lookup and Return Policy agent loops</text>
+      <text x="60" y="164" class="sm mut">objects in memory, rebuilt by replay after a restart</text>
+      <rect x="48" y="194" width="384" height="86" rx="4" class="box" style="stroke:var(--ink)"/>
+      <text x="60" y="214" class="sm b">ACTIVITY SLOTS</text>
+      <text x="60" y="232">invoke_model × every agent turn,</text>
+      <text x="60" y="248">lookup_order, get_return_policy</text>
+      <text x="60" y="268" class="sm mut">the only place a Bedrock call is made</text>
+
+      <rect x="560" y="96" width="190" height="96" rx="8" class="z-srv"/>
+      <text x="655" y="118" text-anchor="middle" class="b t-srv">Temporal Matching</text>
+      <text x="655" y="138" text-anchor="middle" class="mono sm">task queue support-tq</text>
+      <text x="655" y="156" text-anchor="middle" class="sm mut">PINNED: only Workers of</text>
+      <text x="655" y="171" text-anchor="middle" class="sm mut">the same Build ID get tasks</text>
+
+      <path d="M432,120 H558" class="w-ink" marker-end="url(#x-ink)"/>
+      <text x="510" y="100" text-anchor="middle" class="mono sm">Schedule</text>
+      <text x="510" y="113" text-anchor="middle" class="mono sm">ActivityTask</text>
+      <path d="M600,192 V237 H434" class="w-srv" marker-end="url(#x-srv)"/>
+      <text x="510" y="254" text-anchor="middle" class="mono sm">activity task</text>
+      <text x="510" y="267" text-anchor="middle" class="mono sm mut">(on poll)</text>
+
+      <rect x="560" y="256" width="190" height="40" rx="5" class="box" style="stroke:var(--ink)"/>
+      <text x="655" y="281" text-anchor="middle" class="b">Amazon Bedrock</text>
+      <path d="M432,270 H558" class="w-ink" marker-end="url(#x-ink)"/>
+
+      <rect x="790" y="20" width="190" height="290" rx="10" class="idle"/>
+      <text x="804" y="42" class="h t-sup">Session #2</text>
+      <text x="804" y="62" class="sm mut">Exists only if the WCI</text>
+      <text x="804" y="77" class="sm mut">invoked another session,</text>
+      <text x="804" y="92" class="sm mut">for example after #1 drained</text>
+      <text x="804" y="107" class="sm mut">or while tasks backed up.</text>
+      <text x="804" y="137" class="sm">Same code, same Build ID.</text>
+      <text x="804" y="157" class="sm">Can take any Activity or the</text>
+      <text x="804" y="172" class="sm">next Workflow Task: there is</text>
+      <text x="804" y="187" class="sm">no per-agent placement.</text>
+      <path d="M750,150 H788" class="w-srv dash" marker-end="url(#x-srv)"/>
+    </svg>
+    </div>
+    <figcaption>The sub-agents share the Supervisor's Workflow, task queue and Build ID. A model turn is not a direct function call: the Workflow schedules an Activity, and Matching hands it to whichever Worker of that Build ID polls first. In the demo that is nearly always the same session. Finance is the only agent on separate compute: another namespace, its own Worker, its own fleet.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 2. THE HOP ============ -->
+<section id="hop">
+  <h2>The A2A hop, Case B ($450, needs a human)<span class="scope">Same in both</span></h2>
+  <p>Support cannot move money, so its <code>ask_finance_agent</code> tool awaits the <code>send_message</code> Nexus operation. Finance treats the request as an A2A task. Above $100, or at HIGH fraud risk, the task waits for a person.</p>
+  <figure>
+    <div class="canvas">
+    <svg viewBox="0 0 1000 600" role="img" aria-label="Sequence: client starts the Support workflow, Support consults its sub-agents, calls send_message over the finance-agent endpoint, Finance scores risk and goes input-required, the approver signals approve, Finance issues the refund and completes, the completion wakes Support in a new session, and Support replies.">
+      <defs>
+        <marker id="s-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+        <marker id="s-sup" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-sup"/></marker>
+        <marker id="s-fin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-fin"/></marker>
+        <marker id="s-srv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-srv"/></marker>
+      </defs>
+      <!-- lifeline heads -->
+      <rect x="10" y="16" width="120" height="44" rx="5" class="box"/>
+      <text x="70" y="35" text-anchor="middle" class="b">Client</text>
+      <text x="70" y="51" text-anchor="middle" class="mono sm mut">make case-b</text>
+      <rect x="165" y="16" width="150" height="44" rx="5" class="z-sup"/>
+      <text x="240" y="35" text-anchor="middle" class="b t-sup">Support Supervisor</text>
+      <text x="240" y="51" text-anchor="middle" class="mono sm mut">agents</text>
+      <rect x="355" y="16" width="150" height="44" rx="5" class="z-srv"/>
+      <text x="430" y="35" text-anchor="middle" class="b t-srv">Nexus endpoint</text>
+      <text x="430" y="51" text-anchor="middle" class="mono sm mut">finance-agent</text>
+      <rect x="545" y="16" width="150" height="44" rx="5" class="z-fin"/>
+      <text x="620" y="35" text-anchor="middle" class="b t-fin">Finance task</text>
+      <text x="620" y="51" text-anchor="middle" class="mono sm mut">agent-services</text>
+      <rect x="740" y="16" width="120" height="44" rx="5" class="box"/>
+      <text x="800" y="35" text-anchor="middle" class="b">Approver</text>
+      <text x="800" y="51" text-anchor="middle" class="mono sm mut">dana.finance</text>
+      <rect x="880" y="16" width="110" height="44" rx="5" class="box"/>
+      <text x="935" y="35" text-anchor="middle" class="b">payments</text>
+      <text x="935" y="51" text-anchor="middle" class="mono sm mut">:8081 / :8080</text>
+      <line x1="70" y1="60" x2="70" y2="590" class="life"/>
+      <line x1="240" y1="60" x2="240" y2="590" class="life"/>
+      <line x1="430" y1="60" x2="430" y2="590" class="life"/>
+      <line x1="620" y1="60" x2="620" y2="590" class="life"/>
+      <line x1="800" y1="60" x2="800" y2="590" class="life"/>
+      <line x1="935" y1="60" x2="935" y2="590" class="life"/>
+
+      <!-- messages -->
+      <line x1="70" y1="96" x2="238" y2="96" class="w-ink" marker-end="url(#s-ink)"/>
+      <text x="155" y="89" text-anchor="middle" class="mono sm knock">start(ticket) · support-2077</text>
+
+      <path d="M240,124 H272 V144 H243" class="w-sup" marker-end="url(#s-sup)"/>
+      <text x="280" y="138" class="mono sm knock">order_lookup_agent · return_policy_agent</text>
+
+      <line x1="240" y1="178" x2="428" y2="178" class="w-sup" marker-end="url(#s-sup)"/>
+      <text x="335" y="171" text-anchor="middle" class="mono sm knock">send_message(A2AMessage)</text>
+      <text x="335" y="194" text-anchor="middle" class="sm mut knock">schedule-to-close 25 h</text>
+
+      <line x1="430" y1="218" x2="618" y2="218" class="w-srv" marker-end="url(#s-srv)"/>
+      <text x="525" y="211" text-anchor="middle" class="mono sm knock">start a2a-task-support-2077</text>
+
+      <path d="M620,240 H652 V260 H623" class="w-fin" marker-end="url(#s-fin)"/>
+      <text x="660" y="254" class="mono sm knock">fraud_score · refund_history · Opus</text>
+
+      <rect x="548" y="276" width="144" height="26" rx="4" class="st-wait"/>
+      <text x="620" y="293" text-anchor="middle" class="mono sm b t-fin">input-required</text>
+      <text x="700" y="293" class="sm mut knock">$450 &gt; $100</text>
+
+      <rect x="20" y="316" width="960" height="54" class="band"/>
+      <text x="500" y="338" text-anchor="middle" class="b">Waiting, up to 24 h</text>
+      <text x="500" y="356" text-anchor="middle" class="sm mut">Support's AgentCore session drains after 30 s idle (20 s locally). The Nexus operation stays STARTED in agents; no Support Worker is running.</text>
+
+      <line x1="800" y1="398" x2="622" y2="398" class="w-ink" marker-end="url(#s-ink)"/>
+      <text x="711" y="391" text-anchor="middle" class="mono sm knock">signal approve</text>
+
+      <line x1="620" y1="436" x2="933" y2="436" class="w-fin" marker-end="url(#s-fin)"/>
+      <text x="777" y="429" text-anchor="middle" class="mono sm knock">issue_refund → POST /refunds</text>
+
+      <line x1="620" y1="476" x2="432" y2="476" class="w-fin" marker-end="url(#s-fin)"/>
+      <text x="525" y="469" text-anchor="middle" class="mono sm knock">completed + refund_confirmation</text>
+
+      <line x1="430" y1="516" x2="242" y2="516" class="w-srv" marker-end="url(#s-srv)"/>
+      <text x="335" y="509" text-anchor="middle" class="mono sm knock">NexusOperationCompleted</text>
+      <text x="335" y="532" text-anchor="middle" class="sm mut knock">WCI invokes session #2</text>
+
+      <line x1="240" y1="566" x2="72" y2="566" class="w-sup" marker-end="url(#s-sup)"/>
+      <text x="155" y="559" text-anchor="middle" class="mono sm knock">reply quotes refund ID</text>
+    </svg>
+    </div>
+    <figcaption>The A2A Message carries a text part and a data part (<code>order_id</code>, <code>amount_usd</code>, <code>reason</code>) with <code>context_id</code> set to Support's Workflow ID. Support's 25 h budget is Finance's published 24 h approval limit plus 1 h of headroom (ADR-0009). In Case A ($40, LOW risk) the waiting band disappears: Finance issues the refund straight away and one Support session sees the whole conversation.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 3. STATES ============ -->
+<section id="states">
+  <h2>A2A task states<span class="scope">Same in both</span></h2>
+  <p>The Finance handler Workflow is the A2A task. The <code>get_task</code> query returns its current state; the terminal task is the Nexus operation's result.</p>
+  <figure>
+    <div class="canvas">
+    <svg viewBox="0 0 960 240" role="img" aria-label="State machine: submitted to working; working goes to completed when at most 100 dollars and low risk, to input-required otherwise, or to failed on an invalid request; input-required goes to completed on approve, rejected on reject, failed after 24 hours with no decision.">
+      <defs>
+        <marker id="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+        <marker id="m-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ok"/></marker>
+        <marker id="m-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-bad"/></marker>
+        <marker id="m-fin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-fin"/></marker>
+      </defs>
+      <rect x="20" y="104" width="120" height="40" rx="20" class="st"/>
+      <text x="80" y="128" text-anchor="middle" class="mono">submitted</text>
+      <rect x="190" y="104" width="120" height="40" rx="20" class="st"/>
+      <text x="250" y="128" text-anchor="middle" class="mono">working</text>
+      <rect x="390" y="104" width="150" height="40" rx="20" class="st-wait"/>
+      <text x="465" y="128" text-anchor="middle" class="mono b t-fin">input-required</text>
+      <rect x="770" y="30" width="160" height="40" rx="20" class="st-ok"/>
+      <text x="850" y="54" text-anchor="middle" class="mono b t-ok">completed</text>
+      <rect x="770" y="104" width="160" height="40" rx="20" class="st-bad"/>
+      <text x="850" y="128" text-anchor="middle" class="mono b t-bad">rejected</text>
+      <rect x="770" y="180" width="160" height="40" rx="20" class="st-bad"/>
+      <text x="850" y="204" text-anchor="middle" class="mono b t-bad">failed</text>
+
+      <line x1="140" y1="124" x2="188" y2="124" class="w-ink" marker-end="url(#m-ink)"/>
+      <path d="M250,104 V50 H768" class="w-ok" marker-end="url(#m-ok)"/>
+      <text x="480" y="43" text-anchor="middle" class="sm knock">≤ $100 and LOW risk · Finance issues the refund itself</text>
+      <line x1="310" y1="124" x2="388" y2="124" class="w-fin" marker-end="url(#m-fin)"/>
+      <text x="349" y="160" text-anchor="middle" class="sm">&gt; $100</text>
+      <text x="349" y="174" text-anchor="middle" class="sm">or HIGH</text>
+      <path d="M540,114 H700 V62 H768" class="w-ok" marker-end="url(#m-ok)"/>
+      <text x="620" y="107" text-anchor="middle" class="mono sm knock">approve</text>
+      <line x1="540" y1="128" x2="768" y2="128" class="w-bad" marker-end="url(#m-bad)"/>
+      <text x="650" y="142" text-anchor="middle" class="mono sm knock">reject</text>
+      <path d="M520,144 V188 H768" class="w-bad" marker-end="url(#m-bad)"/>
+      <text x="650" y="182" text-anchor="middle" class="sm knock">no decision within 24 h</text>
+      <path d="M250,144 V212 H768" class="w-mut" marker-end="url(#m-ink)"/>
+      <text x="420" y="206" text-anchor="middle" class="sm mut knock">invalid request, or an Activity fails</text>
+    </svg>
+    </div>
+    <figcaption>Support reads the terminal state from the tool result: on <code>completed</code> it quotes the refund ID; on <code>rejected</code> or <code>failed</code> it apologises or escalates. HITL is enforced in Workflow code, not left to the model (ADR-0002).</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 4. SERVERLESS ============ -->
+<section id="serverless">
+  <h2>Serverless lifecycle: one conversation, two sessions<span class="scope env"><span class="only-local">Local view</span><span class="only-aws">AWS view</span></span></h2>
+  <p>The Support Worker is built to die. It starts when it is invoked, drains after a short idle debounce, and a new invocation picks the conversation up when Finance answers. PINNED versioning keeps both lifetimes on the same Build ID. <span class="only-local">Locally (scenario 3) each lifetime is the AgentCore app on :8080; you invoke it with <code>make invoke-local</code>, and it drains 20 s after its last Activity.</span><span class="only-aws">On AWS (v0.13) each lifetime is a separate AgentCore session in VPC mode, invoked by the WCI on EKS; it drains 30 s after its last Activity.</span></p>
+  <figure>
+    <div class="canvas">
+    <svg viewBox="0 0 1000 290" role="img" aria-label="Timeline: WCI invokes session 1, which runs the Supervisor and sends the Nexus message, idles 30 seconds and exits; Finance waits in input-required; after the approve signal Finance completes, the WCI invokes session 2 which finishes the reply and exits.">
+      <defs>
+        <marker id="t-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+        <marker id="t-srv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-srv"/></marker>
+        <marker id="t-fin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-fin"/></marker>
+      </defs>
+      <text x="20" y="36" class="b t-srv only-local">invoke-local / WCI</text><text x="20" y="36" class="b t-srv only-aws">WCI on EKS</text>
+      <text x="20" y="86" class="b t-sup">Support session</text>
+      <text x="20" y="160" class="b t-fin">Finance task</text>
+      <text x="20" y="226" class="b">Approver</text>
+      <line x1="180" y1="32" x2="980" y2="32" class="life"/>
+      <line x1="180" y1="222" x2="980" y2="222" class="life"/>
+
+      <!-- WCI invokes -->
+      <path d="M200,24 l8,8 l-8,8 l-8,-8 z" class="f-srv"/>
+      <text x="214" y="22" class="mono sm">invoke #1</text>
+      <line x1="200" y1="40" x2="200" y2="64" class="w-srv" marker-end="url(#t-srv)"/>
+      <path d="M800,24 l8,8 l-8,8 l-8,-8 z" class="f-srv"/>
+      <text x="814" y="22" class="mono sm">invoke #2</text>
+      <line x1="800" y1="40" x2="800" y2="64" class="w-srv" marker-end="url(#t-srv)"/>
+
+      <!-- session 1 -->
+      <rect x="200" y="66" width="130" height="32" rx="3" class="f-sup"/>
+      <text x="265" y="86" text-anchor="middle" class="sm b on-hot">Supervisor runs</text>
+      <rect x="330" y="66" width="80" height="32" rx="0" class="idle"/>
+      <text x="370" y="86" text-anchor="middle" class="sm mono only-local">idle 20 s</text><text x="370" y="86" text-anchor="middle" class="sm mono only-aws">idle 30 s</text>
+      <rect x="410" y="66" width="14" height="32" class="f-mut"/>
+      <text x="430" y="86" class="sm mut">drain · exit</text>
+      <text x="610" y="86" text-anchor="middle" class="sm mut">no Support Worker running · scaled to zero</text>
+      <!-- session 2 -->
+      <rect x="800" y="66" width="110" height="32" rx="3" class="f-sup"/>
+      <text x="855" y="86" text-anchor="middle" class="sm b on-hot">reply drafted</text>
+      <rect x="910" y="66" width="56" height="32" class="idle"/>
+      <rect x="966" y="66" width="14" height="32" class="f-mut"/>
+      <text x="208" y="58" class="mono sm mut only-local">support-supervisor:&lt;build id&gt;</text><text x="208" y="58" class="mono sm mut only-aws">support-supervisor:4ee7f87</text>
+      <text x="808" y="58" class="mono sm mut">same build id (PINNED)</text>
+
+      <!-- nexus send -->
+      <line x1="320" y1="98" x2="320" y2="140" class="w-srv dash" marker-end="url(#t-srv)"/>
+      <text x="326" y="128" class="mono sm knock">send_message</text>
+
+      <!-- finance task -->
+      <rect x="320" y="142" width="70" height="30" rx="3" class="z-fin"/>
+      <text x="355" y="161" text-anchor="middle" class="mono sm">working</text>
+      <rect x="390" y="142" width="370" height="30" class="st-wait"/>
+      <text x="575" y="161" text-anchor="middle" class="mono sm b t-fin">input-required · Finance pods keep polling</text>
+      <rect x="760" y="142" width="30" height="30" class="z-fin"/>
+      <circle cx="790" cy="157" r="6" class="f-ok"/>
+
+      <!-- approve -->
+      <path d="M760,222 l7,-7 l7,7 l-7,7 z" class="f-ink"/>
+      <text x="780" y="236" class="mono sm">approve</text>
+      <line x1="760" y1="214" x2="760" y2="175" class="w-ink" marker-end="url(#t-ink)"/>
+      <!-- completion -->
+      <path d="M790,142 V120 H800 V100" class="w-fin" marker-end="url(#t-fin)"/>
+      <text x="800" y="194" class="sm mut knock only-local">completed → new Workflow Task</text><text x="975" y="194" text-anchor="end" class="sm mut knock only-aws">completed → invoke +56 ms → first task +5.3 s</text>
+
+      <line x1="180" y1="268" x2="975" y2="268" class="w-mut" marker-end="url(#t-ink)"/>
+      <text x="180" y="284" class="sm mut">time (not to scale: the wait can be seconds or up to 24 h)</text>
+    </svg>
+    </div>
+    <figcaption>The Build ID comes from <code>scripts/build-id.sh</code>, a content hash that refuses uncommitted Support changes. A versioned Worker never polls the unversioned dev queue <code>support-dev-tq</code>; it reads <code>TEMPORAL_TASK_QUEUE</code> (default <code>support-tq</code>) instead. <span class="only-local">Locally, <code>make agentcore-ping</code> reports Healthy again about 20 s after the Worker drains, and <code>scripts/serverless_report.py</code> shows two lifetimes on one Build ID.</span><span class="only-aws">Measured at v0.13 (Q15): the server signalled the WCI 27 ms after Finance's Nexus completion, the WCI called <code>InvokeWorker</code> at +56 ms, and session #2 ran its first Workflow Task at +5.3 s, about 5 s of it AgentCore session and process start. A drained session then waits up to 120 s (<code>idleRuntimeSessionTimeout</code>) to be reaped, so a waiting approval costs no compute however long the human takes.</span></figcaption>
+  </figure>
+</section>
+
+<!-- ============ 5. CONFIG ============ -->
+<section id="config">
+  <h2>Configuration<span class="scope env"><span class="only-local">Local view</span><span class="only-aws">AWS view</span></span></h2>
+  <p>Every process resolves its settings through the same four layers. The first three are handled by <code>temporalio.envconfig</code>; each service's own <code>config.py</code> fills in only the code defaults. The two services deliberately keep separate config modules.</p>
+
+  <h3>Which value wins</h3>
+  <div class="stack" role="list">
+    <div class="layer" role="listitem"><b>1st</b><div>Runtime-injected environment<small>AgentCore runtime env, Kubernetes Deployment <code>env:</code>, or a <code>TEMPORAL_TLS_CLIENT_CERT_PATH</code> override from the Makefile</small></div></div>
+    <div class="layer" role="listitem"><b>2nd</b><div><code>.env</code>, exported by <code>make</code><small>copied from <code>.env.example</code> by <code>make setup</code>; gitignored; no AWS keys (SSO default profile)</small></div></div>
+    <div class="layer" role="listitem"><b>3rd</b><div>Profile in <code>config/temporal.toml</code><small>chosen by <code>TEMPORAL_PROFILE</code>; addresses, TLS server names and cert paths only</small></div></div>
+    <div class="layer" role="listitem"><b>4th</b><div>Code defaults in <code>support_agent/config.py</code> and <code>finance_agent/config.py</code><small>namespace, model ID, effort, debounce, timeouts</small></div></div>
+  </div>
+
+  <h3>Connection profiles</h3>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Profile</th><th>Address</th><th>TLS</th><th>Client identity</th><th>Used by</th></tr></thead>
+    <tbody>
+      <tr class="only-local"><th class="mono">local</th><td><code>127.0.0.1:7233</code></td><td>off</td><td>none</td><td>Scenarios 1–3, dev server</td></tr>
+      <tr class="only-local"><th class="mono">kind</th><td><code>127.0.0.1:7233</code> via <code>make pf</code></td><td>mTLS, SNI <code>temporal-frontend.temporal-customer-support.internal</code></td><td><code>.certs/operator</code>; Support Workers override with their own cert</td><td>Scenario 4</td></tr>
+      <tr class="only-local"><th class="mono">kind-plaintext</th><td><code>127.0.0.1:7233</code></td><td>off</td><td>none</td><td><code>make kind-temporal KIND_TLS=0</code></td></tr>
+      <tr class="only-aws"><th class="mono">eks-pf</th><td><code>127.0.0.1:7233</code> via <code>make pf TEMPORAL_PROFILE=eks-pf</code></td><td>mTLS, same SNI, EKS CA</td><td><code>.certs/eks/operator</code>; the laptop Support Worker uses <code>laptop-support</code></td><td>Hybrid demo, Case B approvals, e2e on EKS</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="prose" style="font-size:14px;color:var(--muted)">No profile sets a namespace: each service defaults to its own in code, and CLI commands pass <code>--namespace</code>. Always dial <code>127.0.0.1</code>, not <code>localhost</code>, which can resolve to <code>::1</code>. A bare <code>temporal</code> command reads your personal config file unless you run <code>eval "$(make -s env)"</code> first.</p>
+
+  <h3>Settings reference</h3>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Variable</th><th>Default</th><th>Read by</th><th>What it controls</th></tr></thead>
+    <tbody>
+      <tr class="grp"><th colspan="4">Temporal connection</th></tr>
+      <tr><th class="mono">TEMPORAL_CONFIG_FILE</th><td><code>config/temporal.toml</code></td><td><span class="tag">both</span></td><td>Where the envconfig profiles live</td></tr>
+      <tr><th class="mono">TEMPORAL_PROFILE</th><td><code>local</code></td><td><span class="tag">both</span></td><td>Which profile to load: local, kind, kind-plaintext, eks-pf</td></tr>
+      <tr><th class="mono">TEMPORAL_CONNECT_TIMEOUT_SECONDS</th><td><code>10</code></td><td><span class="tag s">support</span></td><td>Fail fast when the frontend is unreachable</td></tr>
+      <tr class="grp"><th colspan="4">Model</th></tr>
+      <tr><th class="mono">BEDROCK_MODEL_ID</th><td><code>global.anthropic.claude-opus-5-5</code></td><td><span class="tag">both</span></td><td>Pinned model (ADR-0001). Temperature, top_p and forced tool_choice are never sent</td></tr>
+      <tr><th class="mono">BEDROCK_EFFORT</th><td><code>medium</code></td><td><span class="tag">both</span></td><td>low · medium · high · xhigh · max; non-default sent as <code>output_config.effort</code></td></tr>
+      <tr><th class="mono">AWS_REGION</th><td><code>us-east-1</code></td><td><span class="tag">both</span></td><td>Bedrock Region</td></tr>
+      <tr class="grp"><th colspan="4">Support (namespace agents)</th></tr>
+      <tr><th class="mono">SUPPORT_TASK_QUEUE</th><td><code>support-dev-tq</code></td><td><span class="tag s">support</span></td><td>Unversioned laptop Worker queue</td></tr>
+      <tr><th class="mono">SUPPORT_A2A_MODE</th><td><code>tool</code></td><td><span class="tag s">support</span></td><td><code>tool</code>: the agent calls Finance itself; <code>handoff</code>: Workflow code calls Finance after the agent</td></tr>
+      <tr><th class="mono">SUPPORT_NEXUS_SEND_TIMEOUT</th><td><code>25h</code></td><td><span class="tag s">support</span></td><td>Budget for one A2A task; passed as Workflow input so it lands in history</td></tr>
+      <tr class="grp"><th colspan="4">Support, serverless shape</th></tr>
+      <tr><th class="mono">TEMPORAL_TASK_QUEUE</th><td><code>support-tq</code></td><td><span class="tag s">support</span></td><td>Versioned queue the AgentCore Worker polls</td></tr>
+      <tr><th class="mono">TEMPORAL_DEPLOYMENT_NAME</th><td><code>support-supervisor</code></td><td><span class="tag s">support</span></td><td>Worker Deployment name</td></tr>
+      <tr><th class="mono">TEMPORAL_BUILD_ID</th><td>none, required</td><td><span class="tag s">support</span></td><td>From <code>scripts/build-id.sh</code> or the bundle's <code>BUILD_ID</code> file; the Worker refuses to start without it</td></tr>
+      <tr><th class="mono">AGENTCORE_DEBOUNCE_SECONDS</th><td><code>20</code></td><td><span class="tag s">support</span></td><td>Idle time before the Worker drains; the AWS runtime sets 30</td></tr>
+      <tr class="grp"><th colspan="4">Finance (namespace agent-services)</th></tr>
+      <tr><th class="mono">FINANCE_TASK_QUEUE</th><td><code>agent-services-tq</code></td><td><span class="tag f">finance</span></td><td>Queue behind the Nexus endpoint</td></tr>
+      <tr><th class="mono">FINANCE_APPROVAL_TIMEOUT</th><td><code>24h</code></td><td><span class="tag f">finance</span></td><td>How long <code>input-required</code> waits before <code>failed</code></td></tr>
+      <tr><th class="mono">PAYMENTS_URL</th><td><code>http://127.0.0.1:8081</code></td><td><span class="tag f">finance</span></td><td>Refund API; in kind <code>payments-mock.temporal-workers.svc:8080</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="prose" style="font-size:14px;color:var(--muted)">Contract constants live in <code>finance_a2a_api</code>, so both sides read the same numbers: the $100 auto-approve limit and the 24 h approval wait limit, which Support's 25 h default is derived from.</p>
+</section>
+
+<!-- ============ 6. ENVIRONMENTS ============ -->
+<section id="environments">
+  <h2>Where it runs<span class="scope">Side by side</span></h2>
+  <p>The Workflow code and the A2A contract are identical in every environment. What changes is the server, the transport, and who starts the Support Worker.</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th></th><th class="c-local">Dev server<br><span style="text-transform:none;letter-spacing:0">scenarios 1–3</span></th><th class="c-local">kind + mTLS<br><span style="text-transform:none;letter-spacing:0">scenario 4</span></th><th class="c-aws">EKS + AgentCore<br><span style="text-transform:none;letter-spacing:0">live since v0.11–v0.13</span></th></tr></thead>
+    <tbody>
+      <tr><th>Temporal server</th><td class="c-local"><code>temporal server start-dev</code>: server 1.32.0 from CLI 1.9.1</td><td class="c-local">Helm chart 1.7.0, server 1.32.1</td><td class="c-aws">Same chart and base values plus <code>values.eks.yaml</code>; frontend × 2</td></tr>
+      <tr><th>Persistence</th><td class="c-local">SQLite, in-process</td><td class="c-local">PostgreSQL pod, 4 history shards</td><td class="c-aws">RDS PostgreSQL 16.15 over TLS (RDS CA bundle), 512 shards, schemas 1.19 / 1.14</td></tr>
+      <tr><th>Transport</th><td class="c-local">Plaintext</td><td class="c-local">mTLS; laptop reaches it via port-forward</td><td class="c-aws">mTLS passed through an internal NLB (cross-zone) at <code>temporal-frontend.temporal-customer-support.internal</code>; laptop via <code>eks-pf</code></td></tr>
+      <tr><th>Finance Worker</th><td class="c-local">Local process</td><td class="c-local">2 pods in <code>temporal-workers</code></td><td class="c-aws">2 pods from ECR (arm64), IRSA role <code>agent-services-worker</code></td></tr>
+      <tr><th>Support Worker</th><td class="c-local">Local process, or local AgentCore app on :8080</td><td class="c-local">Local AgentCore app with <code>agentcore-worker</code> cert</td><td class="c-aws">AgentCore Runtime in VPC mode, endpoint <code>b_4ee7f87</code>; or the laptop Worker (hybrid demo)</td></tr>
+      <tr><th>Who invokes Support</th><td class="c-local">You (<code>make invoke-local</code>) or the dev server's WCI via a local emulator</td><td class="c-local">You (<code>make invoke-local</code>)</td><td class="c-aws">The WCI (IRSA <code>temporal-server-wci</code>), via the invocation role and <code>InvokeAgentRuntime</code>; no other poller needed</td></tr>
+      <tr><th>Model</th><td colspan="3">Opus 5.5 on Bedrock (live), or scripted models with no AWS access (offline)</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Helm values, applied in this order</h3>
+  <div class="chain">
+    <div class="f"><code>values.postgresql.yaml</code><span>Datastores <code>temporal</code> and <code>temporal_visibility</code>, password from a Secret</span></div>
+    <div class="arr" aria-hidden="true">→</div>
+    <div class="f"><code>values.base.yaml</code><span>Image 1.32.1, namespaces and retention, WCI dynamic config for <code>agents</code>, standalone Nexus ops</span></div>
+    <div class="arr" aria-hidden="true">→</div>
+    <div class="f opt only-local"><code>values.tls.yaml</code><span>Optional (<code>KIND_TLS=1</code>). Frontend and internode mTLS, UI client cert, 1 m cert refresh</span></div>
+    <div class="f only-aws"><code>values.tls.yaml</code><span>Always on for EKS. Frontend and internode mTLS, UI client cert, 1 m cert refresh</span></div>
+    <div class="arr" aria-hidden="true">→</div>
+    <div class="f only-local"><code>values.kind.yaml</code><span>4 shards, small requests for the 6 CPU / 12 GB colima VM</span></div>
+    <div class="f only-aws"><code>values.eks.yaml</code><span>Plus generated <code>values.eks.ids.yaml</code>: RDS TLS, 512 shards, frontend × 2 behind the internal NLB (cross-zone), IRSA on the worker service</span></div>
+  </div>
+  <p class="prose" style="font-size:14px;color:var(--muted)">Later files override earlier ones. A change to the dynamic-config block alone rewrites a ConfigMap without restarting pods; the server re-reads it every 10 s.</p>
+</section>
+
+<!-- ============ 6a. LAPTOP ============ -->
+<section id="laptop" class="only-local">
+  <h2>On the laptop<span class="scope env">Local only</span></h2>
+  <p>Four scenarios, all on one machine. The first three use the CLI's dev server; the fourth installs the real Helm chart on kind with mTLS everywhere, the same values EKS uses. Every scenario has a live form (Opus 5.5 on Bedrock) and an offline form (scripted models).</p>
+  <div class="cols">
+    <div class="card">
+      <h3>Dev server · scenarios 1–3</h3>
+      <ul>
+        <li>Server 1.32.0 from CLI 1.9.1, SQLite, UI on :8233</li>
+        <li>Finance and Support as local processes; payments-mock on :8081</li>
+        <li>Scenario 3: Support as the AgentCore app on :8080, versioned and PINNED</li>
+        <li>Plaintext, profile <code>local</code></li>
+      </ul>
+<pre class="cmds">make dev            <i># server, payments-mock, Workers, endpoint</i>
+make case-a         <i># $40, auto-approved</i>
+make case-b         <i># $450, input-required</i>
+make approve WF=support-2077 APPROVER=dana.finance
+make agentcore-local invoke-local   <i># scenario 3</i></pre>
+    </div>
+    <div class="card">
+      <h3>kind + mTLS · scenario 4</h3>
+      <ul>
+        <li>Helm chart 1.7.0, server 1.32.1, PostgreSQL pod, 4 shards</li>
+        <li>cert-manager CA; Finance × 2 and payments-mock as pods</li>
+        <li>NetworkPolicy on the frontend and Finance egress</li>
+        <li>Laptop reaches it through <code>make pf</code>, profile <code>kind</code></li>
+      </ul>
+<pre class="cmds">make kind-up kind-temporal
+make kind-workers FINANCE_MODEL=scripted
+make certs-pull pf
+export TEMPORAL_PROFILE=kind
+make nexus-endpoint agentcore-local-scripted
+make invoke-local register-version MODE=--poller
+make case-b-serverless WF=support-2077-sl</pre>
+    </div>
+  </div>
+  <p class="prose" style="font-size:14px;color:var(--muted)">Ports: 7233 (Temporal), 8233 (UI), 8080 (AgentCore app), 8081 (payments-mock). Clean up with <code>make dev-server-down</code> or <code>make kind-down</code>; nothing else keeps running.</p>
+</section>
+
+<!-- ============ 6a. AWS ============ -->
+<section id="aws" class="only-aws">
+  <h2>On AWS<span class="scope env">AWS only</span></h2>
+  <p>All of this is running in us-east-1 as of v0.13: the v0.8 guardrails and AgentCore IAM, the v0.10 Terraform foundation, Temporal and Finance on EKS (v0.11), and Support on AgentCore in VPC mode (v0.12). v0.13 ran Case B end to end here. The network is private: AgentCore ENIs and EKS reach AWS APIs through VPC endpoints, and the only way into Temporal is the internal NLB.</p>
+  <figure>
+    <div class="canvas">
+    <svg viewBox="0 0 1000 600" role="img" aria-label="AWS foundation in us-east-1. Outside the VPC: guardrails budget, IAM execution and invocation roles, Secrets Manager, ECR. Inside VPC 10.40.0.0/16: the AgentCore Runtime in VPC mode dials the internal NLB on 7233, which targets the Temporal frontend in the EKS cluster; the WCI in the Temporal worker service invokes AgentCore through the invocation role. EKS 1.37 with two m7g.large nodes reaches RDS PostgreSQL 16.15 over TLS on 5432 and the interface endpoints on 443; AgentCore reaches the same endpoints. One NAT gateway and a private Route 53 zone complete it.">
+      <defs>
+        <marker id="aw-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+        <marker id="aw-sup" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-sup"/></marker>
+        <marker id="aw-srv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-srv"/></marker>
+      </defs>
+      <rect x="10" y="10" width="980" height="580" rx="8" class="box"/>
+      <text x="24" y="32" class="h">AWS account · us-east-1</text>
+
+      <!-- account-level -->
+      <rect x="24" y="44" width="200" height="68" rx="5" class="box"/>
+      <text x="36" y="62" class="mono sm b">00-guardrails · v0.8</text>
+      <text x="36" y="80" class="sm">Budget USD 200/mo, 80 % / 100 %</text>
+      <text x="36" y="97" class="sm mut">Alarm on ActiveSessionCount</text>
+      <rect x="236" y="44" width="300" height="68" rx="5" class="z-sup"/>
+      <text x="248" y="62" class="mono sm b">IAM · 30-agentcore-iam + CFN · v0.8</text>
+      <text x="248" y="80" class="sm"><tspan class="mono">agentcore-demo-support-exec</tspan> (execution)</text>
+      <text x="248" y="97" class="sm"><tspan class="mono">Temporal-AgentCore-Worker</tspan> (invocation, CFN)</text>
+      <rect x="548" y="44" width="230" height="68" rx="5" class="box"/>
+      <text x="560" y="62" class="mono sm b">Secrets Manager</text>
+      <text x="560" y="80" class="mono sm">temporal/agentcore-external-id</text>
+      <text x="560" y="97" class="mono sm">temporal/agentcore-worker-mtls</text>
+      <rect x="790" y="44" width="186" height="68" rx="5" class="z-fin"/>
+      <text x="802" y="62" class="mono sm b">ECR · arm64 images</text>
+      <text x="802" y="80" class="mono sm">…/finance-agent</text>
+      <text x="802" y="97" class="mono sm">…/payments-mock</text>
+
+      <!-- VPC -->
+      <rect x="24" y="126" width="952" height="452" rx="6" fill="none" stroke="var(--ink)" stroke-width="1.4"/>
+      <text x="38" y="148" class="mono b">VPC temporal-customer-support · 10.40.0.0/16 · 10-network</text>
+      <text x="962" y="148" text-anchor="end" class="sm mut">private subnets on AZ IDs use1-az1 · az2 · az4</text>
+
+      <!-- AgentCore (v0.12) -->
+      <rect x="44" y="200" width="200" height="136" rx="5" class="z-sup"/>
+      <text x="58" y="224" class="b">AgentCore Runtime</text>
+      <text x="58" y="242" class="sm mut">VPC mode · idle reap 120 s</text>
+      <text x="58" y="264" class="sm">Support Worker sessions</text>
+      <text x="58" y="281" class="sm mut">endpoint <tspan class="mono">b_4ee7f87</tspan></text>
+      <text x="58" y="318" class="mono sm">sg-agentcore-worker</text>
+
+      <!-- zone + NLB -->
+      <rect x="300" y="160" width="180" height="40" rx="5" class="box"/>
+      <text x="390" y="177" text-anchor="middle" class="sm b">Route 53 private zone</text>
+      <text x="390" y="192" text-anchor="middle" class="mono sm mut">temporal-frontend.…internal</text>
+      <line x1="390" y1="200" x2="390" y2="236" class="w-mut"/>
+      <rect x="300" y="236" width="180" height="60" rx="5" class="z-srv"/>
+      <text x="390" y="256" text-anchor="middle" class="sm b">Internal NLB · cross-zone</text>
+      <text x="390" y="272" text-anchor="middle" class="sm mut">TLS passthrough :7233</text>
+      <text x="390" y="288" text-anchor="middle" class="mono sm">sg-nlb-temporal-frontend</text>
+
+      <!-- EKS -->
+      <rect x="536" y="160" width="420" height="244" rx="6" class="box" stroke="var(--ink)"/>
+      <text x="552" y="180" class="b">EKS <tspan class="mono">temporal</tspan> · Kubernetes 1.37 · 20-platform</text>
+      <text x="552" y="197" class="sm mut">2 × m7g.large arm64 · LBC 3.6.2 · cert-manager v1.21.3</text>
+      <rect x="552" y="210" width="388" height="88" rx="5" class="z-srv"/>
+      <text x="566" y="230" class="sm b">namespace temporal</text>
+      <text x="566" y="248" class="sm">Temporal Server 1.32.1, Helm chart 1.7.0</text>
+      <text x="566" y="265" class="sm mut">frontend × 2 · history · matching · worker (WCI) · UI</text>
+      <text x="566" y="285" class="mono sm">SA temporal-worker → IRSA temporal-server-wci</text>
+      <rect x="552" y="308" width="388" height="86" rx="5" class="z-fin"/>
+      <text x="566" y="328" class="sm b">namespace temporal-workers</text>
+      <text x="566" y="346" class="sm">Finance Nexus Worker × 2 · payments-mock</text>
+      <text x="566" y="363" class="sm mut">Bedrock Opus 5.5 inference profiles only</text>
+      <text x="566" y="382" class="mono sm">SA + IRSA agent-services-worker</text>
+
+      <!-- bottom row -->
+      <rect x="44" y="446" width="360" height="114" rx="5" class="box"/>
+      <text x="58" y="466" class="sm b">Interface endpoints</text>
+      <text x="392" y="466" text-anchor="end" class="sm mut">sg-vpce · 2 AZs · private DNS</text>
+      <text x="58" y="486" class="mono sm">bedrock-runtime · bedrock-agentcore</text>
+      <text x="58" y="503" class="mono sm">bedrock-agentcore-control · sts</text>
+      <text x="58" y="520" class="mono sm">secretsmanager · logs</text>
+      <text x="58" y="544" class="sm mut">+ S3 gateway endpoint (prefix list)</text>
+      <rect x="552" y="446" width="208" height="114" rx="5" class="z-srv"/>
+      <text x="566" y="466" class="sm b">RDS <tspan class="mono">temporal-db</tspan></text>
+      <text x="566" y="484" class="sm">PostgreSQL 16.15 · db.t4g.medium</text>
+      <text x="566" y="501" class="sm mut">single-AZ · 20 GB gp3 · encrypted</text>
+      <text x="566" y="520" class="mono sm">rds.force_ssl = 1 · sg-rds</text>
+      <text x="566" y="544" class="sm mut">user temporal_user, verify-full</text>
+      <rect x="776" y="446" width="180" height="114" rx="5" class="box"/>
+      <text x="790" y="466" class="sm b">NAT gateway × 1</text>
+      <text x="790" y="484" class="sm">one EIP, internet egress</text>
+      <text x="790" y="501" class="sm mut">VPC flow logs · 7 d</text>
+
+      <!-- flows -->
+      <line x1="244" y1="272" x2="298" y2="272" class="w-ink" marker-end="url(#aw-ink)"/>
+      <text x="271" y="264" text-anchor="middle" class="mono sm knock">7233</text>
+      <line x1="480" y1="266" x2="550" y2="256" class="w-ink" marker-end="url(#aw-ink)"/>
+      <text x="515" y="250" text-anchor="middle" class="sm mut knock">ip targets</text>
+      <line x1="552" y1="222" x2="246" y2="222" class="w-sup" marker-end="url(#aw-sup)"/>
+      <text x="398" y="218" text-anchor="middle" class="sm t-sup knock">WCI → InvokeAgentRuntime</text>
+      <line x1="144" y1="336" x2="144" y2="444" class="w-mut" marker-end="url(#aw-ink)"/>
+      <text x="152" y="394" class="mono sm knock">443</text>
+      <line x1="540" y1="404" x2="406" y2="470" class="w-mut" marker-end="url(#aw-ink)"/>
+      <text x="470" y="432" text-anchor="middle" class="mono sm knock">443</text>
+      <line x1="652" y1="404" x2="652" y2="444" class="w-srv" marker-end="url(#aw-srv)"/>
+      <text x="660" y="428" class="mono sm knock">5432 TLS</text>
+    </svg>
+    </div>
+    <div class="key">
+            <span><i class="sw" style="border-color:var(--support);background:var(--support-tint)"></i>Support</span>
+      <span><i class="sw" style="border-color:var(--finance);background:var(--finance-tint)"></i>Finance</span>
+      <span><i class="sw" style="border-color:var(--server);background:var(--server-tint)"></i>Temporal</span>
+    </div>
+    <figcaption>The two directions in the middle are the point of the design. The Support Worker dials <em>out</em> to the frontend through the NLB on 7233 with mTLS. The WCI, inside the Temporal worker service, calls <em>in</em> to AgentCore: its IRSA role <code>temporal-server-wci</code> may only assume <code>Temporal-AgentCore-Worker</code> (with the External ID from Secrets Manager), and that role calls <code>InvokeAgentRuntime</code>. The External ID and the AgentCore Worker's mTLS key come from Secrets Manager, along with the RDS user's password. Finance's role is separate and reaches Bedrock only. The NLB needs cross-zone load balancing: without it, an AgentCore ENI whose AZ had no frontend pod timed out (ledger 70). Because the NLB's ip targets see NLB addresses, a generated NetworkPolicy <code>temporal-frontend-from-nlb</code> admits exactly the NLB ENIs. VPC CNI NetworkPolicy is enforced, so the in-cluster policies under <a href="#trust">mTLS &amp; network</a> apply on EKS too. The EKS API endpoint is public but limited to the laptop's /32.</figcaption>
+  </figure>
+
+  <h3>Stages</h3>
+  <div class="chain">
+    <div class="f"><code>v0.8 · done</code><span>Guardrails, AgentCore IAM, External ID secret. Live WCI handshake against a PUBLIC probe runtime, deleted the same day (ADR-0005)</span></div>
+    <div class="arr" aria-hidden="true">→</div>
+    <div class="f"><code>v0.10 · done</code><span><code>10-network</code> and <code>20-platform</code> applied and verified; second plan clean. <code>make pause</code> / <code>resume</code> between demos</span></div>
+    <div class="arr" aria-hidden="true">→</div>
+    <div class="f"><code>v0.11 · done</code><span>Temporal 1.32.1 on EKS with RDS TLS and NLB passthrough; Finance pods; hybrid demo (laptop Support → EKS Finance)</span></div>
+    <div class="arr" aria-hidden="true">→</div>
+    <div class="f"><code>v0.12 · done</code><span>Support registered as serverless version <code>support-supervisor:4ee7f87</code>; ping and Case A with zero other pollers</span></div>
+    <div class="arr" aria-hidden="true">→</div>
+    <div class="f"><code>v0.13 · done</code><span>Case B fully in the cloud: the Nexus completion wakes session #2 (Q15: yes). <code>make load N=10</code>: 10/10 in 55 s</span></div>
+  </div>
+
+  <h3>Running the cloud demo</h3>
+<pre class="cmds">make resume                                   <i># nodes back, RDS started (after make pause)</i>
+make pf TEMPORAL_PROFILE=eks-pf               <i># frontend :7233 and UI :8233 from the laptop</i>
+CASE_B_APPROVE=approve TEMPORAL_PROFILE=eks-pf scripts/demo/case-b.sh support-2077
+TEMPORAL_PROFILE=eks-pf make timeline WF=support-2077 MERGED=1
+make e2e TEMPORAL_PROFILE=eks-pf              <i># asserts AgentCore session counts per Case</i>
+make pf-stop TEMPORAL_PROFILE=eks-pf
+make pause                                    <i># nodes to 0, RDS stopped: ~$0.28/h</i></pre>
+
+  <h3>Demo sizing (ADR-0006)</h3>
+  <div class="tbl">
+  <table>
+    <thead><tr><th></th><th>Runbook</th><th>This demo</th><th>Why it is acceptable</th></tr></thead>
+    <tbody>
+      <tr><th>EKS nodes</th><td>3 × m6i.xlarge</td><td>2 × m7g.large, arm64 (max 3)</td><td>Every image was proven on arm64 on kind at v0.9; m6i.xlarge stays as the fallback</td></tr>
+      <tr><th>RDS</th><td>db.r6g.large, Multi-AZ, 100 GB</td><td>db.t4g.medium, single-AZ, 20 GB</td><td>A handful of Workflows; losing an AZ costs a re-run, not data</td></tr>
+      <tr><th>PostgreSQL</th><td>16.6 (Temporal-tested)</td><td>16.15, pinned</td><td>RDS no longer offers 16.6; same major, no auto minor upgrade</td></tr>
+      <tr><th>NAT / endpoints</th><td>One NAT per AZ; endpoints in every subnet</td><td>One NAT; endpoints in 2 of 3 subnets</td><td>Private DNS answers from any AZ; the account is at 8/10 EIPs</td></tr>
+      <tr><th>History shards</th><td>512</td><td>512 on EKS (4 on kind)</td><td>Immutable after install, and free, so EKS keeps the production shape</td></tr>
+      <tr><th>Idle debounce</th><td>60 s</td><td>30 s in the cloud (20 s local); idle reap 120 s</td><td>Shorter waits during a demo; kept at 30 s after Q15 showed a Nexus completion starts a new session</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="prose" style="font-size:14px;color:var(--muted)">Running cost about $0.51/h (~$12/day); <code>make pause</code> scales the nodes to 0 and stops RDS, bringing it to about $0.28/h. Runbook sizing would be roughly $1.35/h. <code>make render-config</code> writes the stack outputs (subnets, SGs, role ARNs, RDS address) to <code>.generated/foundation.{json,env}</code> for the later stages.</p>
+</section>
+
+<!-- ============ 6b. VERSIONS ============ -->
+<section id="versions">
+  <h2>Temporal component versions<span class="scope env"><span class="only-local">Local view</span><span class="only-aws">AWS view</span></span></h2>
+  <p>These are the versions the demo was tested with through v0.13, from <code>docs/versions.md</code> and <code>uv.lock</code>. Serverless Workers and the Strands plugin are pre-release, so everything is pinned to what was tested.</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Component</th><th>Version</th><th>Where it runs</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr class="grp"><th colspan="4">Server side</th></tr>
+      <tr class="only-local"><th>Temporal Server (dev)</th><td><code>1.32.0</code></td><td>Laptop, scenarios 1–3</td><td>Embedded in the CLI; <code>scripts/dev-server.sh</code> sets standalone Nexus ops and, with <code>WCI=1</code>, the Worker Controller flags</td></tr>
+      <tr><th>Temporal Server (Helm)</th><td><code>1.32.1</code></td><td>kind (scenario 4) and EKS</td><td>Images <code>temporalio/server</code> and <code>temporalio/admin-tools</code>, arm64. Pinned above the chart's appVersion, so pods still carry the label <code>1.32.0</code></td></tr>
+      <tr><th>Temporal Helm chart</th><td><code>1.7.0</code></td><td>kind and EKS</td><td>From <code>go.temporal.io/helm-charts</code>; values layered as shown above</td></tr>
+      <tr><th>Temporal Web UI</th><td><code>2.54.1</code></td><td>All</td><td>Embedded in the CLI for the dev server; <code>temporalio/ui</code> image (chart default) on kind</td></tr>
+      <tr><th>Temporal CLI</th><td><code>1.9.1</code></td><td>Laptop</td><td>Runs the dev server and every <code>make</code> demo command; <code>make doctor</code> and a harness test check it</td></tr>
+      <tr class="grp"><th colspan="4">Client side, in every Worker</th></tr>
+      <tr><th>Python SDK <span class="mono" style="font-weight:400">temporalio</span></th><td><code>1.35.0</code></td><td>Support, Finance</td><td>Constraint <code>&gt;=1.34.0,&lt;2</code>; 1.34.0 is the Strands plugin's minimum. Includes <code>temporalio.envconfig</code> for the profiles</td></tr>
+      <tr><th>Strands plugin <span class="mono" style="font-weight:400">temporalio-strands-agents</span></th><td><code>0.1.0</code></td><td>Support, Finance</td><td>Pre-release. Provides <code>TemporalAgent</code>, the <code>invoke_model</code> Activity and <code>activity_as_tool</code></td></tr>
+      <tr><th>Nexus RPC <span class="mono" style="font-weight:400">nexus-rpc</span></th><td><code>1.4.0</code></td><td>Contract, Finance</td><td>Defines the <code>FinanceAgentA2A</code> service in <code>finance_a2a_api</code></td></tr>
+      <tr class="grp"><th colspan="4">Server features the demo depends on</th></tr>
+      <tr><th>Nexus</th><td>1.32</td><td>Both</td><td>No dynamic config needed on 1.32. Only the standalone operation used by <code>make card</code> needs <code>nexusoperation.enableStandalone</code></td></tr>
+      <tr><th>Serverless Workers (WCI)</th><td>1.32, pre-release</td><td>Dev server with <code>WCI=1</code>; kind; EKS with AgentCore</td><td><code>workercontroller.enabled</code> for <code>agents</code> only, compute provider <code>aws-agentcore</code>, scaling <code>no-sync</code></td></tr>
+      <tr><th>Worker Versioning</th><td>1.32</td><td>Both</td><td>Worker Deployment <code>support-supervisor</code>, PINNED, Build ID from <code>scripts/build-id.sh</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="prose" style="font-size:14px;color:var(--muted)">Around Temporal: <code>strands-agents</code> 1.62.0, <code>bedrock-agentcore</code> 1.25.1 (Support's AgentCore entrypoint), Python 3.12.14, cert-manager v1.21.3, Helm 4.3.1. <span class="only-local">Local: PostgreSQL 16 pod on kind, kind node image v1.37.0. </span><span class="only-aws">AWS: EKS 1.37, RDS PostgreSQL 16.15, Load Balancer Controller 3.6.2, Terraform modules <code>vpc</code> 6.7.3 and <code>eks</code> 21.29.0, AgentCore CLI 1.0.1. </span>The A2A payloads follow A2A 0.3.0 concepts.</p>
+</section>
+
+<!-- ============ 7. TRUST ============ -->
+<section id="trust">
+  <h2>mTLS and network boundaries<span class="scope env"><span class="only-local">Local view</span><span class="only-aws">AWS view</span></span></h2>
+  <p>One free cert-manager CA per cluster signs everything (kind and EKS each run their own copy of this chain, so a kind cert is not trusted on EKS), and every Worker type and human gets its own common name. The frontend trusts exactly one CA file, so a cert from anywhere else is refused.</p>
+  <figure>
+    <div class="canvas">
+    <svg viewBox="0 0 1000 300" role="img" aria-label="Certificate chain: a self-signed bootstrap issuer creates temporal-root-ca, which backs the temporal-ca ClusterIssuer; it issues seven certificates: frontend, internode, UI, operator, laptop-support, agentcore-worker and eks-nexus-worker.">
+      <defs>
+        <marker id="p-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+      </defs>
+      <rect x="20" y="124" width="150" height="46" rx="5" class="box"/>
+      <text x="95" y="143" text-anchor="middle" class="mono sm b">selfsigned-bootstrap</text>
+      <text x="95" y="160" text-anchor="middle" class="sm mut">ClusterIssuer</text>
+      <line x1="170" y1="147" x2="198" y2="147" class="w-ink" marker-end="url(#p-ink)"/>
+      <rect x="200" y="124" width="170" height="46" rx="5" class="z-srv"/>
+      <text x="285" y="143" text-anchor="middle" class="mono sm b">temporal-root-ca</text>
+      <text x="285" y="160" text-anchor="middle" class="sm mut">ECDSA P-256 · 10 years</text>
+      <line x1="370" y1="147" x2="398" y2="147" class="w-ink" marker-end="url(#p-ink)"/>
+      <rect x="400" y="124" width="160" height="46" rx="5" class="z-srv"/>
+      <text x="480" y="143" text-anchor="middle" class="mono sm b">temporal-ca</text>
+      <text x="480" y="160" text-anchor="middle" class="sm mut">CA ClusterIssuer</text>
+
+      <g class="w-mut">
+        <path d="M560,147 C590,147 590,30 618,30"/>
+        <path d="M560,147 C590,147 590,70 618,70"/>
+        <path d="M560,147 C590,147 590,110 618,110"/>
+        <path d="M560,147 C590,147 590,150 618,150"/>
+        <path d="M560,147 C590,147 590,190 618,190"/>
+        <path d="M560,147 C590,147 590,230 618,230"/>
+        <path d="M560,147 C590,147 590,270 618,270"/>
+      </g>
+      <rect x="620" y="14" width="360" height="32" rx="4" class="z-srv"/>
+      <text x="632" y="34" class="mono sm b">temporal-frontend-tls</text><text x="968" y="34" text-anchor="end" class="sm mut">server + client · 90 d</text>
+      <rect x="620" y="54" width="360" height="32" rx="4" class="z-srv"/>
+      <text x="632" y="74" class="mono sm b">temporal-internode-tls</text><text x="968" y="74" text-anchor="end" class="sm mut">server + client · 90 d</text>
+      <rect x="620" y="94" width="360" height="32" rx="4" class="z-srv"/>
+      <text x="632" y="114" class="mono sm b">temporal-ui</text><text x="968" y="114" text-anchor="end" class="sm mut">Web UI client · 90 d</text>
+      <rect x="620" y="134" width="360" height="32" rx="4" class="box"/>
+      <text x="632" y="154" class="mono sm b">operator</text><text x="968" y="154" text-anchor="end" class="sm mut">CLI and demo scripts · 30 d</text>
+      <rect x="620" y="174" width="360" height="32" rx="4" class="z-sup"/>
+      <text x="632" y="194" class="mono sm b">laptop-support</text><text x="968" y="194" text-anchor="end" class="sm mut">unversioned Support Worker · 30 d</text>
+      <rect x="620" y="214" width="360" height="32" rx="4" class="z-sup"/>
+      <text x="632" y="234" class="mono sm b">agentcore-worker</text><text x="968" y="234" text-anchor="end" class="sm mut">Support on AgentCore · 180 d</text>
+      <rect x="620" y="254" width="360" height="32" rx="4" class="z-fin"/>
+      <text x="632" y="274" class="mono sm b">eks-nexus-worker</text><text x="968" y="274" text-anchor="end" class="sm mut">Finance pods · 30 d</text>
+    </svg>
+    </div>
+    <figcaption>The frontend cert carries both server and client usage because the chart's own admin pods present it as their client cert. The AgentCore cert lives longest because in the cloud its copy in Secrets Manager is refreshed by hand. The server re-reads its own certs every minute; the Python SDK reads client certs once at connect, so a renewal reaches a Worker on its next start.</figcaption>
+  </figure>
+
+  <div class="cols">
+    <div class="card">
+      <h3>Frontend ingress</h3>
+      <p><code>temporal-frontend-ingress</code> in namespace <code>temporal</code></p>
+      <ul>
+        <li>Pods in <code>temporal</code> itself: 7233, 7243 (HTTP API), 6933 (membership)</li>
+        <li>Pods in <code>temporal-workers</code> labelled <code>temporal.io/client: "true"</code>: 7233 only</li>
+        <li class="only-aws">On EKS, <code>temporal-frontend-from-nlb</code>: the NLB ENIs' /32s on 7233</li>
+        <li>Everything else, including unlabelled pods: refused</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Finance egress</h3>
+      <p><code>agent-services-worker-egress</code> in namespace <code>temporal-workers</code></p>
+      <ul>
+        <li>Temporal frontend: TCP 7233</li>
+        <li>DNS in <code>kube-system</code>: 53</li>
+        <li>HTTPS 443 for Bedrock and STS (VPC endpoints on EKS)</li>
+        <li><code>payments-mock</code>: TCP 8080. All else dropped</li>
+      </ul>
+    </div>
+    <div class="card only-local">
+      <h3>The laptop path</h3>
+      <p><code>make pf</code> port-forwards 7233 and the UI. A port-forward enters the pod's network namespace from the node, so NetworkPolicy does not apply to it; the TLS server name is still checked exactly as an AgentCore Worker on EKS checks it.</p>
+    </div>
+    <div class="card only-aws">
+      <h3>The AgentCore path</h3>
+      <p>AgentCore ENIs can reach only the internal NLB on 7233 (<code>sg-agentcore-worker</code> → <code>sg-nlb-temporal-frontend</code>) and the VPC endpoints. TLS passes through the NLB, so the frontend itself checks the <code>agentcore-worker</code> cert, read from Secrets Manager at session start. The laptop reaches EKS only through the <code>eks-pf</code> port-forward and an API endpoint limited to its /32.</p>
+    </div>
+  </div>
+</section>
+
+<footer>Drawn from <code>TEMPORAL_SELFHOSTED_AGENTCORE_RUNBOOK.md</code>, <code>config/temporal.toml</code>, <code>.env.example</code>, <code>deploy/</code>, <code>infra/terraform/</code>, ADR-0006 and each service's <code>config.py</code> at v0.13-scale-to-zero.</footer>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.envtabs [role="tab"]'));
+  function set(env, save) {
+    root.setAttribute('data-env', env);
+    tabs.forEach(function (t) {
+      var on = t.getAttribute('data-pick') === env;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+    });
+    if (save) { try { localStorage.setItem('arch-env', env); } catch (e) {} }
+  }
+  var start = 'local';
+  try { start = new URLSearchParams(location.search).get('env') || localStorage.getItem('arch-env') || 'local'; } catch (e) {}
+  set(start === 'aws' ? 'aws' : 'local', false);
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { set(t.getAttribute('data-pick'), true); });
+    t.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      var other = tabs[(i + 1) % tabs.length];
+      other.focus(); set(other.getAttribute('data-pick'), true);
+    });
+  });
+})();
+</script>
