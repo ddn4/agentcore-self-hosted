@@ -1,6 +1,7 @@
 # gitleaks config: the default rules, plus one allowlist.
 #
-# Replay fixtures (tests/histories/*.json) carry Nexus operation tokens. They are
+# Replay fixtures (tests/histories/*.json, and the compact console fixtures in
+# services/demo-console/tests/fixtures/*.json) carry Nexus operation tokens. They are
 # server-issued routing tokens, base64url JSON such as
 # {"t":1,"ns":"agent-services","wid":"a2a-task-support-1042"}: no credential, but
 # long and high-entropy, so the generic-api-key rule flags them.
@@ -15,6 +16,6 @@ useDefault = true
 description = "Nexus operation tokens in replay fixtures; the v0.2 dummy AWS key"
 regexTarget = "line"
 regexes = [
-  '''"(operationToken|nexus-operation-token)": "eyJ[A-Za-z0-9_-]+=*"''',
+  '''"(operationToken|nexus-operation-token)":\s*"eyJ[A-Za-z0-9_-]+=*"''',
   '''AKIAOFFLINE[T]EST0{5}''',
 ]
