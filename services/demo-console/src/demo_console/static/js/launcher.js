@@ -9,6 +9,13 @@ import { copyBox, openAttr, patch } from "./ui.js";
 
 const temporalDown = (state) => (state.stack?.components || []).some((c) => c.id === "temporal" && c.status === "down");
 const missingOf = (s) => (s.preconditions || []).filter((p) => !p.ok);
+/** "2 missing", "1 not checked" (its read failed), or both: a failed read is not a miss. */
+function gapText(s) {
+  const gaps = missingOf(s);
+  const unread = gaps.filter((p) => p.unknown).length;
+  const missing = gaps.length - unread;
+  return [missing && `${missing} missing`, unread && `${unread} not checked`].filter(Boolean).join(", ");
+}
 
 function fitLabel(s, down) {
   if (s.fit === "wrong_profile") {
@@ -18,8 +25,7 @@ function fitLabel(s, down) {
   // With Temporal down every scenario misses things for the same reason: one line says so.
   if (down) return "";
   if (s.fit === "ready") return "ready";
-  const n = missingOf(s).length;
-  return n ? `${n} missing` : "";
+  return gapText(s);
 }
 
 export function renderScenarioList(state) {
@@ -108,7 +114,8 @@ function setupProgress(job) {
 }
 
 /** The options' current values on one line: what the disclosure hides. */
-function optionSummary(s, v) {
+function optionSummary(s, raw) {
+  const v = filled(s, raw);
   return (s.options || [])
     .filter((o) => !["queue", "approver"].includes(o.id) || v[o.id] !== o.default)
     .map((o) => (o.type === "number" ? `${v[o.id]} ${String(o.label || o.id).toLowerCase()}` : String(v[o.id] ?? "")))
@@ -123,8 +130,21 @@ function plan(s) {
     : h`<span>${st.title}<span class="k">${KIND_WORD[st.kind] || ""}</span></span>`}</li>`)}</ol>`;
 }
 
+/** The form's values with an empty or out-of-range number back at its default: a cleared
+ *  field means "the default", never 0. */
+function filled(s, v) {
+  const out = { ...v };
+  for (const o of s.options || []) {
+    if (o.type !== "number") continue;
+    const n = out[o.id];
+    const bad = typeof n !== "number" || !Number.isFinite(n) || (o.min !== undefined && n < o.min) || (o.max !== undefined && n > o.max);
+    if (bad) out[o.id] = o.default;
+  }
+  return out;
+}
+
 /** The catalog's start_label with {option} filled from the form ("Start {n} conversations"). */
-const startLabel = (s, v) => String(s.start_label || "Start").replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ""));
+const startLabel = (s, v) => String(s.start_label || "Start").replace(/\{(\w+)\}/g, (_, k) => String(filled(s, v)[k] ?? ""));
 /** The busy key of what Start runs: the scenario's action, or a Support run. */
 const startKey = (s) => (s.start_action ? `action:${s.start_action}` : `start:${s.id}`);
 
@@ -136,7 +156,8 @@ async function start(s, v) {
     return;
   }
   const params = {};
-  for (const p of actionById(s.start_action)?.params || []) if (v[p.id] !== undefined) params[p.id] = v[p.id];
+  const f = filled(s, v);
+  for (const p of actionById(s.start_action)?.params || []) if (f[p.id] !== undefined) params[p.id] = f[p.id];
   await runAction(s.start_action, params);
 }
 
@@ -171,7 +192,7 @@ export function renderScenarioCard(state, el) {
   const blocked = canSetUp ? s.setup_blocked : null;
   const setupWhy = blocked ? blocked.why : canSetUp && recipe?.available === false ? recipe.why_not : null;
   const chip = wrong ? h`<span class="chip">${(s.profiles || []).map((p) => PROFILE_LABEL[p] || p).join(" or ")} only</span>`
-    : missing.length ? h`<span class="chip">${missing.length} missing</span>`
+    : missing.length ? h`<span class="chip">${gapText(s)}</span>`
     : (s.preconditions || []).length ? h`<span class="chip" data-s="ready">${icon("check")}Ready</span>` : "";
   const blockBtn = blocked ? h`<button class="btn primary start ${busy[fixKey(blocked.fix)] ? "busy" : ""}" type="button" data-block-fix>${icon("play")}${blocked.fix.label}</button>` : "";
   const setupBtn = canSetUp ? h`${blockBtn}<button class="btn ${blocked ? "ghost" : "primary"} start ${busy["action:start-recipe"] || running ? "busy" : ""}" type="button" data-setup="${s.setup_recipe}" ${running || setupWhy ? "disabled" : ""}>${icon("play")}Set up for ${s.short}</button>` : "";
@@ -286,7 +307,8 @@ export function wireLauncher() {
     const f = e.target.closest("#scen-form");
     if (!f || !e.target.name) return;
     const vals = formValues.get(f.dataset.scenario);
-    if (vals) vals[e.target.name] = e.target.type === "number" ? Number(e.target.value) : e.target.value;
+    // An empty number field stays empty (null), so it falls back to its default, not 0.
+    if (vals) vals[e.target.name] = e.target.type === "number" ? (e.target.value === "" ? null : Number(e.target.value)) : e.target.value;
   });
   document.addEventListener("change", (e) => {
     // The notes quote the make command with this ID; refresh them once the field is left.

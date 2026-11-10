@@ -273,3 +273,28 @@ async def test_a_failed_read_is_unknown_not_missing(
     pre = precondition("endpoint", p.facts)
     assert pre is not None and pre["fix"]["action"] == "nexus-endpoint"
     assert comp(p.last or {}, "endpoint")["status"] == "down"
+
+
+async def test_a_failed_version_read_leaves_the_compute_check_unknown(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    gateway.deployment_info = {
+        "name": "support-supervisor",
+        "current_build": "4ee7f87",
+        "versions": ["4ee7f87"],
+    }
+
+    async def denied(name: str, build_id: str) -> Any:
+        raise PermissionError("describe version: permission denied")
+
+    gateway.deployment_version = denied  # type: ignore[method-assign]
+    p = probe(tmp_path, gateway, runner, http, TEMPORAL_BUILD_ID="4ee7f87")
+    snap = await p.snapshot()
+    denied_text = "PermissionError: describe version: permission denied"
+    assert snap["read_errors"] == {"version": denied_text}
+    # The build is current (that read worked); only the compute is unread.
+    current = precondition("version-current", p.facts)
+    assert current is not None and current["ok"] is True
+    wci = precondition("version-wci", p.facts)
+    assert wci is not None and wci["ok"] is False and wci["unknown"] is True
+    assert "fix" not in wci and "describe version" in wci["note"]

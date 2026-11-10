@@ -276,6 +276,8 @@ SPECS: dict[str, ActionSpec] = {
                 {"id": "kind", "type": "choice", "choices": ["ping", "case-a"], "default": "ping"},
             ],
             make=("load", "N={n}", "LOAD_KIND={kind}"),
+            # Above load.sh's own bound (ping: 15 min execution timeout) plus its reads after.
+            within=1200.0,
         ),
         ActionSpec(
             "wci-history",

@@ -297,17 +297,22 @@ async def test_one_recipe_at_a_time(
         await gate.wait()
         return {}
 
+    async def build_id() -> str:
+        await asyncio.sleep(0)  # both clicks pass the first check before either job exists
+        return "4ee7f87"
+
     c.actions.recipe = held  # type: ignore[method-assign]
+    c.actions.stack.build_id = build_id  # type: ignore[method-assign]
     first, second = await asyncio.gather(
-        c.actions.run("start-recipe", {"recipe": "local-plain"}, False),
-        c.actions.run("start-recipe", {"recipe": "local-plain"}, False),
+        c.actions.run("start-recipe", {"recipe": "local-invoke"}, True),
+        c.actions.run("start-recipe", {"recipe": "local-invoke"}, True),
         return_exceptions=True,
     )
     results = [first, second]
     errors = [r for r in results if isinstance(r, ActionError)]
     assert len(errors) == 1, results
     assert errors[0].code == "precondition_failed"  # 409
-    assert errors[0].message == "Local, plain Support is still running."
+    assert errors[0].message == "Local, serverless (invoke-local) is still running."
     assert errors[0].hint and "One stack job runs at a time" in errors[0].hint
     gate.set()
     await c.jobs.shutdown()
@@ -315,6 +320,9 @@ async def test_one_recipe_at_a_time(
 
 def test_the_catalog_names_real_actions_and_labels_every_step() -> None:
     from demo_console.scenarios import load_catalog
+
+    # load.sh bounds its own Workflows at 15 min; the job limit must not cut it short.
+    assert SPECS["load"].within > 15 * 60
 
     for s in load_catalog().values():
         if s.start_action:

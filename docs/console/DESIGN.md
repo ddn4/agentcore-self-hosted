@@ -115,6 +115,8 @@ labelled cell.)
   projector mode and `◐` switches between the dark theme (default) and light.
 - **Scenario launcher** (left column), in story order. Each scenario shows its short name and
   sub, and a muted fit marker for the current profile: "ready", "N missing", or "local only".
+  A line whose read failed counts as "N not checked", never as missing ("1 missing, 1 not
+  checked").
   While Temporal is down every scenario misses things for that one reason, so the markers are
   dropped and one line at the top says "Stack not ready: Temporal is down". Selecting one
   opens its card in the main column if no run is focused. The card, top to bottom, fits a
@@ -1131,8 +1133,8 @@ these additions and clarifications:
   with `why` (wrong profile, no Build ID, or no client certificate under `.certs/…`).
 - **Job**: `status` ∈ `running | succeeded | failed | ended`. No job stays running for good: a
   command that cannot start fails at once ("make could not start: ..."); a `make` job past its
-  time (cluster jobs 1800 s, the others 600 s) has its process group stopped (TERM, KILL after
-  8 s) and fails "ran longer than ...s and was stopped". A command job adopted after a console
+  time (cluster jobs 1800 s, `load` 1200 s so it outlasts `load.sh`'s own 15 min, the others
+  600 s) has its process group stopped (TERM, KILL after 8 s) and fails "ran longer than ...s and was stopped". A command job adopted after a console
   restart ends as `ended` (exit code unknown, with a `note`), never `succeeded`; the page says
   "<title> ended" instead of "done". A sync action (`invoke-local`, `agentcore-ping`) still
   running after 30 s answers `202` with the running job. `start-recipe` takes

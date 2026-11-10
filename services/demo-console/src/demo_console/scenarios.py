@@ -370,17 +370,18 @@ def _outside(pid: str, label: str, who: str) -> dict[str, Any]:
     }
 
 
-#: The read each precondition depends on: when it failed the line says so, with no fix.
-_READS = {
-    "endpoint": "endpoint",
-    "finance": f"{SERVICES_NS}/{FINANCE_TQ}",
-    "finance-managed": f"{SERVICES_NS}/{FINANCE_TQ}",
-    "support-plain": f"{AGENTS_NS}/{DEV_TQ}",
-    "support-plain-managed": f"{AGENTS_NS}/{DEV_TQ}",
-    "smoke-worker": f"{AGENTS_NS}/{SMOKE_TQ}",
-    "version": "deployment",
-    "version-current": "deployment",
-    "version-wci": "deployment",
+#: The reads each precondition depends on: when one failed the line says so, with no fix.
+_READS: dict[str, tuple[str, ...]] = {
+    "endpoint": ("endpoint",),
+    "finance": (f"{SERVICES_NS}/{FINANCE_TQ}",),
+    "finance-managed": (f"{SERVICES_NS}/{FINANCE_TQ}",),
+    "support-plain": (f"{AGENTS_NS}/{DEV_TQ}",),
+    "support-plain-managed": (f"{AGENTS_NS}/{DEV_TQ}",),
+    "smoke-worker": (f"{AGENTS_NS}/{SMOKE_TQ}",),
+    # The compute check also reads the current version (stack.py records it as "version").
+    "version": ("deployment", "version"),
+    "version-current": ("deployment",),
+    "version-wci": ("deployment", "version"),
 }
 
 
@@ -391,7 +392,7 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
     something that may exist), and a note with the error.
     """
     p = _precondition(pid, f)
-    error = f.read_errors.get(_READS.get(pid, ""))
+    error = next((f.read_errors[n] for n in _READS.get(pid, ()) if n in f.read_errors), None)
     if p is not None and not p["ok"] and error:
         p.pop("fix", None)
         p["unknown"] = True
