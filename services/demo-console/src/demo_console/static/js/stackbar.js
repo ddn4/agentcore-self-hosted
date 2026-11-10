@@ -155,9 +155,13 @@ export function toggleNotes() {
   prefs.write(root.dataset.projector === "on" ? { projectorNotes: root.dataset.notes } : { notes: root.dataset.notes });
   store.touch("config", "run");
 }
+// Whether a #/notes window lives elsewhere. State, not prefs: P must not bring the notes back.
+let paired = false;
+
 /** A #/notes window opened (true) or closed (false) elsewhere: notes off here while it lives.
  *  Not remembered: the presenter's own N choice stays in prefs. */
-export function pairNotes(paired) {
+export function pairNotes(on) {
+  paired = !!on;
   const p = prefs.read();
   const mine = root.dataset.projector === "on" ? (p.projectorNotes || "off") : (p.notes || "on");
   const next = paired ? "off" : mine;
@@ -169,7 +173,8 @@ export function toggleProjector() {
   root.dataset.projector = root.dataset.projector === "on" ? "off" : "on";
   const p = prefs.read();
   // The projector shows the lanes, not the presenter's notes (those go to #/notes on the laptop).
-  root.dataset.notes = root.dataset.projector === "on" ? (p.projectorNotes || "off") : (p.notes || "on");
+  const mine = root.dataset.projector === "on" ? (p.projectorNotes || "off") : (p.notes || "on");
+  root.dataset.notes = paired ? "off" : mine;
   prefs.write({ projector: root.dataset.projector });
   store.touch("config", "run");
 }

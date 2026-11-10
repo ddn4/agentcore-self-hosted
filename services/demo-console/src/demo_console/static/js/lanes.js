@@ -1,8 +1,10 @@
 // The lanes: time | compute rail | Support | Nexus seam | Finance (DESIGN 2.1 item 4, 5.3 rows).
-// Rows pair into wires across the seam. A thought carries its own think time; runs of agent and
-// tool rows in one lane fold into one expandable row; only gaps that tell the story (no
-// compute, the debounce, retries, Finance working or waiting on a human) become bands. The last
-// row is a live "now" row that carries the approval card while the task is input-required.
+// Rows pair into wires across the seam. Each fact is one row: a lifetime's bring-up (WCI,
+// start, polls) is one row, its idle and drained are one row, and Finance's ask and its
+// approval timer are one row. A thought carries its own think time; runs of agent and tool
+// rows in one lane fold into one expandable row; only gaps that tell the story (no compute,
+// retries, Finance working or waiting on a human) become bands. The last row is a live "now"
+// row that carries the approval card while the task is input-required.
 import { dur, h, icon, ms, offset, raw, sinceText } from "./format.js";
 import { approvalNode } from "./approval.js";
 
@@ -14,7 +16,7 @@ const LANE_WORD = { sup: "Support", cmp: "Support compute", wci: "Temporal serve
 
 const GLYPH = {
   "run.started": "start", "run.completed": "check", "run.failed": "x", "run.terminated": "x",
-  "model.turn": "think", activity: "tool", wft: "power",
+  "model.turn": "think", activity: "tool", "activity.timed_out": "warn", wft: "power",
   "nexus.scheduled": "seam", "nexus.started": "seam", "nexus.attempt_failed": "warn",
   "nexus.completed": "seam", "nexus.failed": "x",
   "task.started": "start", "timer.started": "clock", "timer.fired": "clock",
@@ -27,6 +29,68 @@ const STATE_ICON = { submitted: "ring", working: "dot", "input-required": "hold"
 
 const isDisco = (r) => /get_agent_card/.test(`${r.detail || ""} ${r.title || ""}`);
 const opName = (r) => ((`${r.detail || ""} ${r.title || ""}`).match(/(send_message|get_agent_card)/) || [])[1] || "Nexus";
+
+const lifeN = (r) => r.lifetime ?? Number(((r.title || "").match(/^Lifetime (\d+)/) || [])[1]);
+const sameLife = (a, b) => (a.identity && b.identity ? a.identity === b.identity : lifeN(a) === lifeN(b));
+const afterLife = (r) => (r.title || "").replace(/^Lifetime \d+\s*/, "").replace(/^is\s+/, "");
+
+/**
+ * One row per fact. A lifetime's bring-up (the WCI rows just before it, its start, its first
+ * poll) becomes "Lifetime N starts · polls support-tq" with the WCI step as detail; idle then
+ * drained becomes "Lifetime N drains after the 20 s debounce"; "Finance asks a human" carries
+ * the approval timer. Rows that never get their partner stay as they are (a run still live).
+ * A merged row keeps the seqs of what it absorbed in `merged` (for the new-row flash).
+ */
+export function mergeRows(rows, debounceS) {
+  const out = [];
+  const gone = new Set();
+  const absorb = (into, r) => { gone.add(r.seq); into.merged = [...(into.merged || [into.seq]), r.seq]; };
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i];
+    if (gone.has(r.seq)) continue;
+    if (r.kind === "lifetime.start") {
+      const m = { ...r };
+      const wci = [];
+      while (out.length && /^wci\.(signal|invoke)$/.test(out[out.length - 1].kind) && r.t - out[out.length - 1].t <= 5) {
+        wci.unshift(out.pop());
+      }
+      wci.forEach((w) => absorb(m, w));
+      const poll = rows.slice(i + 1).find((o) => !gone.has(o.seq) && o.t - r.t <= 5
+        && o.kind === "lifetime.connected" && sameLife(o, r));
+      if (poll) { absorb(m, poll); m.title = `${r.title} · ${afterLife(poll)}`; }
+      const how = wci.map((w) => w.detail || w.title).filter(Boolean).join(", then ");
+      m.detail = [how, r.detail].filter(Boolean).join(" · ") || null;
+      out.push(m);
+      continue;
+    }
+    if (r.kind === "lifetime.idle") {
+      const drained = rows.slice(i + 1).find((o) => !gone.has(o.seq) && o.t - r.t <= 60
+        && o.lane === "compute" && sameLife(o, r) && /^lifetime\./.test(o.kind));
+      if (drained && drained.kind === "lifetime.drained") {
+        const m = { ...drained, merged: [r.seq, drained.seq] };
+        gone.add(drained.seq);
+        const n = lifeN(r);
+        const who = Number.isFinite(n) ? `Lifetime ${n}` : "The worker";
+        m.title = `${who} drains after the ${Number.isFinite(debounceS) ? `${dur(debounceS)} ` : ""}debounce`;
+        out.push(m);
+        continue;
+      }
+    }
+    if (r.kind === "task.state" && r.state === "input-required") {
+      const timer = rows.slice(i + 1).find((o) => !gone.has(o.seq) && o.t - r.t <= 1
+        && o.kind === "timer.started" && o.lane === r.lane);
+      if (timer) {
+        const m = { ...r };
+        absorb(m, timer);
+        m.detail = [r.detail, `approval wait, ${timer.detail || timer.title}`].filter(Boolean).join(" · ");
+        out.push(m);
+        continue;
+      }
+    }
+    out.push(r);
+  }
+  return out;
+}
 
 /** Turn API rows into display items: crossings (out/back), discovery, stubs and singles. */
 export function pairRows(rows) {
@@ -122,7 +186,7 @@ function ev(r, cls, ctx, extra = {}) {
   if (/lifetime\.(idle|drained|released)/.test(r.kind)) k.push("drain");
   if (r.kind === "lifetime.killed") k.push("killed");
   if (r.kind === "signal.reject") k.push("reject");
-  if (/failed/.test(r.kind)) k.push("bad");
+  if (/failed|timed_out/.test(r.kind)) k.push("bad");
   const link = r.link || (cls === "fin" || cls === "hum" ? ctx.links.finance : ctx.links.support);
   const side = cls === "fin" || cls === "hum" ? "fin" : "sup";
   let ident = "";
@@ -150,7 +214,7 @@ function railCell(t, lts, it, ctx) {
 function itemHTML(it, ctx, more = "") {
   const { lts, held } = ctx;
   const t = it.t;
-  const isNew = ctx.fresh.size && [it.r, it.a, it.b, it.nx, it.fin].some((r) => r && ctx.fresh.has(r.seq));
+  const isNew = ctx.fresh.size && [it.r, it.a, it.b, it.nx, it.fin].some((r) => r && (r.merged || [r.seq]).some((q) => ctx.fresh.has(q)));
   const cls = `row${isNew ? " new" : ""}${more}`;
   const time = h`<div class="c-time">${offset(t)}</div>`;
   const seam = seamCls(it, t, held);
@@ -197,13 +261,32 @@ function itemHTML(it, ctx, more = "") {
 }
 
 // Agent turns and tool calls: the chatter between the story's moments. Never a wire, a
-// lifetime change, a retry, a state change, the approval or the reply.
+// lifetime change, a retry (a later attempt, a new worker identity, a timeout), a state
+// change, the approval or the reply.
 const FOLDS = new Set(["model.turn", "activity"]);
-const foldable = (it) => it.type === "single" && FOLDS.has(it.r.kind) && !it.r.state
-  && (it.r.lane === "support" || it.r.lane === "finance");
+const sideOf = (lane) => (lane === "finance" || lane === "human" ? "fin" : "sup");
+
+/** Seqs of rows whose worker identity differs from the previous identity on that side. */
+function identityChanges(items) {
+  const last = {};
+  const changed = new Set();
+  for (const it of items) {
+    for (const r of [it.r, it.a, it.nx, it.fin]) {
+      if (!r || !r.identity) continue;
+      const side = sideOf(r.lane);
+      if (last[side] && last[side] !== r.identity) changed.add(r.seq);
+      last[side] = r.identity;
+    }
+  }
+  return changed;
+}
 
 /** Display units: the items, with each run of two or more foldable rows in one lane as a group. */
 export function groupItems(items) {
+  const changed = identityChanges(items);
+  const foldable = (it) => it.type === "single" && FOLDS.has(it.r.kind) && !it.r.state
+    && (it.r.lane === "support" || it.r.lane === "finance")
+    && !(it.r.attempt > 1) && !changed.has(it.r.seq);
   const units = [];
   let i = 0;
   while (i < items.length) {
@@ -241,7 +324,10 @@ function groupHTML(g, ctx) {
     <span class="dd">${names}${names && tools.length ? " · " : ""}${tools.map((t, i) => h`${i ? ", " : ""}<span class="id">${t}</span>`)}</span></button>`;
   const onFin = lc === "fin";
   const head = h`<div class="row grp${isNew ? " new" : ""}" role="listitem"><div class="c-time">${offset(g.t)}</div>${railCell(g.t, ctx.lts, null, ctx)}<div class="c-sup">${onFin ? "" : btn}</div><div class="c-seam ${seamCls(null, g.t, ctx.held)}"></div><div class="c-fin">${onFin ? btn : ""}</div></div>`;
+  // Hidden members must not hide an identity change from the next visible row.
+  const before = { ...ctx.lastIdent };
   const members = g.items.map((it) => itemHTML(it, ctx, " member")).map(String).join("");
+  ctx.lastIdent = before;
   return h`${head}<div class="members" id="${id}" ${open ? "" : "hidden"}>${raw(members)}</div>`;
 }
 
@@ -259,8 +345,7 @@ function gapHTML(prev, next, ctx) {
   } else if (pr && pr.kind === "model.turn") {
     return "";
   } else if (nx && (nx.kind === "lifetime.idle" || nx.kind === "lifetime.drained")) {
-    note = h`<b>${dur(d)}</b>: ${ctx.lts.find((l) => mid >= l.s && mid <= l.e)?.label || "the worker"} stays up for the debounce, then drains`;
-    glyph = "hold";
+    return ""; // the drain row itself says "after the 20 s debounce"
   } else if (seam && [pr?.kind, nx?.kind].includes("nexus.attempt_failed")) {
     // Failure demo: Finance has no task yet, so nothing "works"; the server retries the call.
     note = h`<b>${dur(d)}</b> while the server tries to deliver Support's call; no Finance worker answers`;
@@ -351,13 +436,13 @@ export function renderLanes(state, rowsEl) {
   const rows = (rowsBody.workflow_id === run?.workflow_id ? rowsBody.rows : []) || [];
   if (!run) { rowsEl.innerHTML = ""; return; }
   const t0 = ms(rowsBody.t0 || run.started_at);
-  const sorted = [...rows].sort((a, b) => (a.t - b.t) || (a.seq - b.seq)).map((r) => (
-    Number.isFinite(r.t) ? r : { ...r, t: (ms(r.at) - t0) / 1000 }));
+  const sorted = [...rows].map((r) => (Number.isFinite(r.t) ? r : { ...r, t: (ms(r.at) - t0) / 1000 }))
+    .sort((a, b) => (a.t - b.t) || (a.seq - b.seq));
   const wf = run.workflow_id;
   const prevSeen = seen.get(wf);
   const fresh = new Set(prevSeen ? sorted.filter((r) => !prevSeen.has(r.seq)).map((r) => r.seq) : []);
   seen.set(wf, new Set(sorted.map((r) => r.seq)));
-  const items = pairRows(sorted);
+  const items = pairRows(mergeRows(sorted, state.config?.debounce_s));
   const lts = lifetimesOf(run, t0);
   const held = heldIntervals(items, run);
   // Each row's successor time: a thought's think time, a group's span.

@@ -51,14 +51,24 @@ async function loadRun(wf) {
   }
 }
 
+let lastRoute = null;
+
 function route() {
   const r = parseRoute();
+  const was = lastRoute;
+  lastRoute = r.name;
   root.dataset.route = r.name;
   root.dataset.drawer = "closed";
   store.set({ route: r });
   if (r.name !== "run") unmountRunView();
   focus(r.wf || null);
   if (r.name === "run" && channel) channel.postMessage({ wf: r.wf });
+  // Entering or leaving #/notes by hash pairs or unpairs the other windows, like opening or
+  // closing one (boot announces the first route itself). Leaving, ask whether another lives.
+  if (channel && was !== null && (was === "notes") !== (r.name === "notes")) {
+    if (r.name === "notes") channel.postMessage({ notes: "here" });
+    else { channel.postMessage({ notes: "gone" }); channel.postMessage({ ping: 1 }); }
+  }
 }
 
 // ------------------------------------------------------------------ stream

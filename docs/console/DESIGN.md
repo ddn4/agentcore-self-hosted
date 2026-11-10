@@ -126,8 +126,12 @@ labelled cell.)
      wait, approval to reply, Build ID), each fact once. At its right end, **Run details**
      (a disclosure) holds the workflow ID, scenario name, queue, `pinned to
      support-supervisor:<build>`, A2A mode and budget: setup facts the audience does not need.
-     Header and quiet line together leave the lanes about 85% of a 1440x900 screen; a Case A
-     run fits whole without scrolling.
+     Header and quiet line together leave the lanes about 85% of a 1440x900 screen. With notes
+     on at 1440x900, a Case A run (10 rows) fits all but about 10 px. Case B waiting on the
+     approval (10 rows) does not fit whole, because the approval card is tall, so its start
+     scrolls off the top. The two hop rows and the card stay on screen together. A finished
+     serverless Case B (17 rows, with the reply) is about 1.8 screens tall. That is the limit
+     of one row per fact.
   2. *Compute*: whether Support has a worker is told by the compute rail and the "now" row
      only (no separate counter).
   3. *Guided steps*: a horizontal stepper (numbered, because it is a sequence). It is
@@ -137,14 +141,20 @@ labelled cell.)
      button and talk line live in presenter notes and in the lanes, not in the stepper.
   4. *Lanes*: `time | compute rail | Support | seam (Nexus) | Finance`. Time flows down, in event
      order. A thought carries its own think time on its row ("Support Supervisor thinks ·
-     4.0 s"). Consecutive agent turns and tool calls in one lane, between story events, fold
-     into one row ("3 agents, 2 tools · 16 s", the agent and tool names under it), a button
-     that expands the member rows (keyboard accessible, `aria-expanded`); a row with a wire,
-     a lifetime change, a retry, a state change, the approval or the reply never folds.
+     4.0 s"). Each fact is one row. A lifetime's bring-up is "Lifetime 2 starts · polls
+     support-tq", with the WCI step ("task-add-signal, then InvokeWorker (WCI)") as its detail.
+     Its idle and drained markers become "Lifetime 2 drains after the 20 s debounce".
+     "Finance asks a human" carries the approval timer. Consecutive agent turns and tool calls
+     in one lane, between story events, fold into one row ("3 agents, 2 tools · 16 s", the
+     agent and tool names under it). That row is a button that expands the member rows
+     (keyboard accessible, `aria-expanded`). Some rows never fold: a wire, a lifetime change,
+     a state change, the approval, the reply, or a retry (a later attempt, a new worker
+     identity in that lane, or an `activity.timed_out`). A folded group never hides an
+     identity change from the next visible row.
      **Compressed gaps**: a gap longer than 4 s becomes a band carrying its duration only
-     when it tells the story ("2:00 with no Support compute", the debounce before a drain,
-     the server retrying a call, Finance working or waiting on a human while the call is
-     held); other gaps are only the jump in the time column. This keeps a 24 h approval wait
+     when it tells the story ("2:00 with no Support compute", the server retrying a call,
+     Finance working or waiting on a human while the call is held). Other gaps, the debounce
+     among them (the drain row says it), show only as the jump in the time column. This keeps a 24 h approval wait
      readable. Rows carry their agent attribution ("Order Lookup agent") and, on hover or
      focus, the worker identity and a deep link. Nexus rows pair up into connectors across the
      seam (when the two ends are within 0.2 s, they render as one row with a wire across).
@@ -169,7 +179,9 @@ labelled cell.)
   to point at, the step's button, the equivalent make command (useful when the audience asks
   "what did that button do") and the scenario talk track; the story doc path is folded under
   "Story doc". When a `#/notes` window is open (announced over a `BroadcastChannel`), every
-  other console window turns its own notes off, and back on when that window closes.
+  other console window turns its own notes off, and back on when that window closes or
+  leaves `#/notes`. The pairing is state, not a preference: `P` does not bring the notes
+  back while a `#/notes` window lives.
 - **Projector mode** (`P`): type scale ×1.25, hides the scenario column, process logs,
   identities, the profile pills, the "Recorded data" pill, the "Manage stack" label and Run
   details. Use it on the projected window.
@@ -802,8 +814,8 @@ The list's `task_state` is inferred from each running A2A task's history (no que
   seam; `wci` rows render on the rail edge; `human` rows are signals and render in Finance's
   lane with the human glyph.)
 - `kind` vocabulary:
-  `run.started, run.completed, run.failed, run.terminated, model.turn, activity, wft`
-  (shown only when its identity differs from the previous one),
+  `run.started, run.completed, run.failed, run.terminated, model.turn, activity,
+  activity.timed_out, wft` (shown only when its identity differs from the previous one),
   `nexus.scheduled, nexus.started, nexus.attempt_failed, nexus.completed, nexus.failed`,
   `task.started, task.state, timer.started, timer.fired, signal.approve, signal.reject`,
   `refund.issued, lifetime.start, lifetime.connected, lifetime.idle, lifetime.drained,
