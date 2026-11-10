@@ -288,7 +288,7 @@ order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077-wci"
 queue = "versioned"
-cost = { local = "free", kind = "free", kind-plaintext = "free" }
+cost = { local = "free" }
 cost_note = "scripted model"
 preconditions = ["temporal", "wci", "emulator", "agentcore", "build-id", "version-wci", "finance", "payments", "endpoint"]
 notes = "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh worker to finish the reply."
@@ -365,7 +365,7 @@ order_id = "1042"
 amount_usd = 40.0
 id_prefix = "support-1042-failure"
 queue = "dev"
-cost = { local = "free", kind = "free", kind-plaintext = "free" }
+cost = { local = "free" }
 cost_note = "stops and restarts the console-managed Finance worker"
 preconditions = ["temporal", "endpoint", "finance-managed", "payments", "support-plain"]
 notes = "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives."
@@ -430,7 +430,7 @@ order_id = "1042"
 amount_usd = 40.0
 id_prefix = "smoke-1042"
 queue = "smoke"
-cost = { local = "free", kind = "free", kind-plaintext = "free" }
+cost = { local = "free" }
 cost_note = "no model on the caller"
 preconditions = ["temporal", "endpoint", "finance", "payments", "smoke-worker"]
 notes = "The Finance team publishes exactly one thing, an A2A-shaped contract. No AI on the caller yet, just the hop."

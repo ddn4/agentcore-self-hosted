@@ -15,6 +15,7 @@ from demo_console.scenarios import (
     step_statuses,
     suffix,
 )
+from demo_console.settings import PROFILES
 
 pytestmark = pytest.mark.unit
 
@@ -35,6 +36,13 @@ def test_every_catalog_predicate_parses() -> None:
     for scenario in catalog.values():
         for step in scenario.steps:
             parse_predicate(step.done_when)  # load_catalog already did; explicit here
+
+
+def test_catalog_profiles_are_known_and_costs_match_them() -> None:
+    for scenario in load_catalog().values():
+        assert scenario.profiles, scenario.id
+        assert set(scenario.profiles) <= set(PROFILES), scenario.id
+        assert set(scenario.cost) <= set(scenario.profiles), scenario.id
 
 
 @pytest.mark.parametrize(

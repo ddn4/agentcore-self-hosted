@@ -21,7 +21,7 @@ const RECIPES = {
 // The make targets a recipe's worker steps run for each model variant (procs.py SPECS).
 const LIVE_TARGET = { "worker-finance-scripted": "worker-finance", "worker-support-scripted": "worker-support", "agentcore-local-scripted": "agentcore-local" };
 const recipeSteps = (R, variant) => R.steps.map((s) => (variant === "live" ? LIVE_TARGET[s] || s : s));
-const RECIPE_PROFILES = { "local-plain": ["local"], "local-invoke": ["local"], "local-wci": ["local"], "kind-laptop": ["kind", "kind-plaintext"], teardown: ["local", "kind", "kind-plaintext", "eks-pf"] };
+const RECIPE_PROFILES = { "local-plain": ["local"], "local-invoke": ["local"], "local-wci": ["local"], "kind-laptop": ["kind", "kind-plaintext"], teardown: ["local", "kind", "kind-plaintext"] };
 const CLUSTER = new Set(["kind-up", "kind-temporal", "kind-workers", "certs-pull", "pf", "pf-stop", "kind-down"]);
 const STATUS_WORD = { running: "running", stopped: "stopped", exited: "exited", external: "running outside the console", unavailable: "unavailable", succeeded: "succeeded", failed: "failed" };
 

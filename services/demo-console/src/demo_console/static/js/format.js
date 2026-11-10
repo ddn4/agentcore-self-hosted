@@ -115,7 +115,7 @@ export const SHAPE_LABEL = {
   unknown: "not detected",
 };
 
-export const PROFILE_LABEL = { local: "local", kind: "kind", "kind-plaintext": "kind plain" };
+export const PROFILE_LABEL = { local: "local", kind: "kind · mTLS", "kind-plaintext": "kind · plaintext" };
 
 /** Short base-36 suffix for fresh workflow IDs (never 12 digits: scrub-check). */
 export function suffix() {

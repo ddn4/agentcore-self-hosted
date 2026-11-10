@@ -91,7 +91,7 @@ export function renderBanners(state) {
   const mm = state.stack?.profile?.mismatch;
   if (mm) {
     const det = state.stack.profile.detected;
-    out.push(h`<div class="banner" data-level="warn">${icon("warn")}<p>${mm}</p>${det ? h`<button class="btn small ghost" type="button" data-profile="${det}">Switch to ${det}</button>` : ""}</div>`);
+    out.push(h`<div class="banner" data-level="warn">${icon("warn")}<p>${mm}</p>${det ? h`<button class="btn small ghost" type="button" data-profile="${det}">Switch to ${PROFILE_LABEL[det] || det}</button>` : ""}</div>`);
   }
   // The stack banner above already says Temporal is down, with the fix; the stream's alert
   // carries the raw connection error and would only repeat it.
@@ -109,7 +109,7 @@ async function switchProfile(p) {
   try {
     const res = await post("/api/profile", { profile: p });
     store.set({ config: res });
-    toast(`Switched to profile ${p}.`, { level: "ok" });
+    toast(`Switched to profile ${PROFILE_LABEL[p] || p}.`, { level: "ok" });
   } catch (err) {
     const procs = err.extra?.processes;
     if (procs && procs.length) {
