@@ -90,10 +90,29 @@ class StepError(Exception):
 class JobLog:
     """What a coroutine job writes to (one line at a time), plus its checklist."""
 
-    def __init__(self, path: Path, on_line: Callable[[], None], job: Job | None = None) -> None:
+    def __init__(
+        self,
+        path: Path,
+        on_line: Callable[[], None],
+        job: Job | None = None,
+        on_save: Callable[[], None] | None = None,
+    ) -> None:
         self.path = path
         self._on_line = on_line
         self._job = job
+        self._on_save = on_save
+
+    def hold(self, pgid: int | None) -> None:
+        """Record the process group a streamed step runs in (``None`` when it ends).
+
+        A console restart then adopts the live group instead of closing the job, so the
+        exclusive-job check keeps blocking a second helm or kind run until it exits.
+        """
+        if self._job is None:
+            return
+        self._job.pgid = pgid
+        if self._on_save is not None:
+            self._on_save()
 
     def line(self, text: str) -> None:
         with self.path.open("a") as f:
@@ -203,6 +222,24 @@ class JobStore:
         while job.pgid and self.runner.group_alive(job.pgid):
             await asyncio.sleep(1.0)
             self._push(job)
+        if job.steps:
+            # A recipe: only its running step outlived the restart; the rest never ran.
+            step = next((s for s in job.steps if s["status"] == "running"), None)
+            label = step["label"] if step else "a step"
+            if step:
+                step["status"], step["note"] = "failed", "the console restarted during it"
+            self._finish(
+                job,
+                "failed",
+                None,
+                {
+                    "error": f"the console restarted during {label}",
+                    "step": step["id"] if step else None,
+                    "step_label": label,
+                    "hint": f"Run {job.title or job.command} again; finished steps are skipped.",
+                },
+            )
+            return
         self._finish(job, "succeeded", None, {"note": "exit code unknown (adopted after restart)"})
 
     def _save(self, job: Job) -> None:
@@ -347,7 +384,9 @@ class JobStore:
     ) -> Job:
         """Run a coroutine as a job (recipes); its return value is the job's ``result``."""
         job = self._create(action, command, cost, params, title)
-        log = JobLog(self.log_path(job.id), lambda: self._push(job), job)
+        log = JobLog(
+            self.log_path(job.id), lambda: self._push(job), job, on_save=lambda: self._save(job)
+        )
 
         async def go() -> None:
             try:

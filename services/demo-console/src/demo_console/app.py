@@ -105,6 +105,8 @@ class Console:
         await self.gateway.close()
 
     def _job_ended(self, job: Job) -> None:
+        if job.action == "certs-pull" and job.status == "succeeded":
+            self.procs.certs_state = "ok"
         if job.action in EXCLUSIVE:
             self.stack.kind.invalidate()
             self.hub.stack_cache.invalidate()

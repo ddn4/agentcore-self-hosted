@@ -3,6 +3,9 @@ recipe's order and skips, failure causes, and the recipe/profile contract. Fakes
 
 from __future__ import annotations
 
+import asyncio
+import json
+import signal
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +14,7 @@ import pytest
 from demo_console.actions import RECIPES, SPECS, ActionError
 from demo_console.app import Console, create_app
 from demo_console.fakes import FakeGateway, FakeHttp, FakeRunner, make_settings
+from demo_console.jobs import Job
 from demo_console.kind import KIND_CLUSTER
 from demo_console.payloads import iso, now
 from demo_console.settings import PROFILES
@@ -314,3 +318,86 @@ async def test_certs_from_an_older_cluster_are_stale(
     c.stack.kind.invalidate()
     snap = await c.stack.snapshot()
     assert snap["kind"]["certs"] == "ok" and component(snap, "cluster")["status"] == "up"
+
+
+async def test_bring_up_kind_after_certs_pull_starts_the_laptop_worker_on_stale_certs(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    # A warm cluster skips pf, the Temporal wait and kind-workers, so agentcore-local starts
+    # seconds after certs-pull: it must not still see the snapshot's "stale".
+    laptop_answers(http)
+    warm_cluster(runner, tmp_path, http, gateway)
+    c = console(tmp_path, gateway, runner, http)
+    await c.hub.stack_cache.get()
+    c.procs.certs_state = "stale"
+    _, started = await c.actions.run(
+        "start-recipe", {"recipe": "kind-up", "variant": "scripted"}, confirm=True
+    )
+    await c.jobs.wait(started["id"], within=10)
+    job = c.jobs.view(c.jobs.jobs[started["id"]], lines=200)
+    assert job["status"] == "succeeded", job["log_tail"]
+    assert statuses(job)["register-version"] == "done"
+    assert c.procs.certs_state == "ok"
+
+
+async def test_a_streamed_step_is_held_by_the_job_and_stopped_with_the_console(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    c = console(tmp_path, gateway, runner, http)  # make kind-up never exits by itself
+    await c.hub.stack_cache.get()
+    _, started = await c.actions.run(
+        "start-recipe", {"recipe": "kind-up", "variant": "scripted"}, confirm=True
+    )
+    job = c.jobs.jobs[started["id"]]
+    for _ in range(100):
+        if job.pgid:
+            break
+        await asyncio.sleep(0.01)
+    pgid = job.pgid
+    assert pgid in runner.alive_groups
+    saved = (c.settings.state_dir / "jobs" / f"{job.id}.json").read_text()
+    assert f'"pgid": {pgid}' in saved
+    await c.jobs.shutdown()
+    assert (pgid, signal.SIGTERM) in runner.signals
+    assert pgid not in runner.alive_groups
+
+
+async def test_a_recipe_adopted_after_a_restart_blocks_until_its_step_exits(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    # The console died hard while make kind-up ran in the group the job recorded.
+    c = console(tmp_path, gateway, runner, http)
+    plan = c.actions.recipe_plan(RECIPES["kind-up"], "scripted")
+    steps = [
+        {"id": s["id"], "label": s["label"], "status": "todo", "note": None, "elapsed_s": None}
+        for s in plan
+    ]
+    steps[0]["status"], steps[1]["status"] = "done", "running"
+    record = Job(
+        id="j-kind-up",
+        action="start-recipe",
+        command="recipe kind-up",
+        cost="free",
+        started_at=iso(now()) or "",
+        title="Bring up kind",
+        steps=steps,
+        pgid=4242,
+    )
+    jobs_dir = c.settings.state_dir / "jobs"
+    jobs_dir.mkdir(parents=True, exist_ok=True)
+    (jobs_dir / "j-kind-up.json").write_text(json.dumps(record.record()))
+    runner.alive_groups.add(4242)
+
+    again = console(tmp_path, gateway, runner, http)
+    again.jobs.adopt()
+    assert again.jobs.jobs["j-kind-up"].status == "running"
+    with pytest.raises(ActionError) as err:
+        again.actions._busy("start-recipe")
+    assert err.value.code == "precondition_failed"
+    runner.alive_groups.discard(4242)
+    await again.jobs.wait("j-kind-up", within=5)
+    ended = again.jobs.jobs["j-kind-up"]
+    assert ended.status == "failed"
+    assert ended.result["step"] == steps[1]["id"] == "kind-up"
+    assert ended.result["error"] == f"the console restarted during {steps[1]['label']}"
+    assert ended.steps is not None and ended.steps[1]["status"] == "failed"

@@ -656,27 +656,39 @@ class ActionService:
         runner = self.procs.runner
         start = log.path.stat().st_size
         spawned = await runner.spawn(argv, env=env, cwd=self.settings.root, log_path=log.path)
+        log.hold(spawned.pid)
         waiter = asyncio.ensure_future(spawned.wait())
+
+        async def stop_group() -> None:
+            runner.signal_group(spawned.pid, signal.SIGTERM)
+            try:
+                await asyncio.wait_for(asyncio.shield(waiter), 8)
+            except TimeoutError:
+                runner.signal_group(spawned.pid, signal.SIGKILL)
+                await waiter
+
         loop = asyncio.get_running_loop()
         deadline = loop.time() + within
         size = start
         code: int | None = None
-        while code is None:
-            done, _ = await asyncio.wait({waiter}, timeout=0.5)
-            now_size = log.path.stat().st_size
-            if now_size != size:
-                size = now_size
-                log.touch()
-            if done:
-                code = waiter.result()
-            elif loop.time() > deadline:
-                runner.signal_group(spawned.pid, signal.SIGTERM)
-                try:
-                    await asyncio.wait_for(asyncio.shield(waiter), 8)
-                except TimeoutError:
-                    runner.signal_group(spawned.pid, signal.SIGKILL)
-                    await waiter
-                code = 124
+        try:
+            while code is None:
+                done, _ = await asyncio.wait({waiter}, timeout=0.5)
+                now_size = log.path.stat().st_size
+                if now_size != size:
+                    size = now_size
+                    log.touch()
+                if done:
+                    code = waiter.result()
+                elif loop.time() > deadline:
+                    await stop_group()
+                    code = 124
+        except asyncio.CancelledError:
+            # The console is stopping: do not leave helm or kind running unwatched.
+            if not waiter.done():
+                await stop_group()
+            raise
+        log.hold(None)
         with log.path.open("rb") as f:
             f.seek(start)
             output = f.read().decode("utf-8", "replace")
@@ -878,6 +890,10 @@ class ActionService:
         if any(st["id"] == "certs-pull" for st in log.steps):
             with log.step("certs-pull"):
                 await self._make(log, "certs-pull", within=120)
+            # The stack snapshot recomputes this only on its next refresh; agentcore-local
+            # checks it at start, seconds from now.
+            self.stack.kind.invalidate()
+            self.procs.certs_state = "ok"
         with log.step("pf"):
             if self.stack.kind.port_forward() and await self.http.tcp_open("127.0.0.1", 7233):
                 log.line("= port-forward already running")

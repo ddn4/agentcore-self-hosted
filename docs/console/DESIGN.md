@@ -208,8 +208,13 @@ the last run stopped. It never starts the Docker VM: when `docker --context coli
 info` fails it stops at step 1 with "Docker VM agentcore is stopped" and the fix **Start Docker
 VM** (`make colima-up`, its own confirm-first job). Cluster steps stream their output into the
 job log while they run and have their own time limits (kind-up 900 s, kind-temporal 1500 s,
-kind-workers 1200 s; other steps 180 s). Cluster jobs and recipes run one at a time (409 while
-one runs).
+kind-workers 1200 s; other steps 180 s). A streamed step's process group is recorded on the
+job while it runs: when the console stops, the step gets `SIGTERM` (then `SIGKILL` after 8 s);
+if the console died instead, the restarted console adopts the live group, keeps the job
+running until the group exits, then marks it failed at that step ("the console restarted
+during <step>"; run it again and finished layers are skipped). A successful `certs-pull`
+clears the stale-certs check at once, so `agentcore-local` can start right after it. Cluster
+jobs and recipes run one at a time (409 while one runs, adopted ones included).
 
 The single cluster layers (`colima-up`, `kind-up`, `kind-temporal`, `kind-workers`,
 `certs-pull`, `pf`, `pf-stop`, `kind-down`) stay available as confirm-first jobs under
@@ -1017,7 +1022,7 @@ scripted stdout/exit codes), `FakeHttp` (ping/invocations), and a tmp `.temporal
 | `test_env.py` | `child_env()` strips `TEMPORAL_TLS`/`TEMPORAL_ADDRESS` outside local, sets `TEMPORAL_PROFILE`, `TEMPORAL_CONFIG_FILE` (absolute), `TEMPORAL_BUILD_ID` |
 | `test_procs.py` | start spawns `make -s <target>` in a new session; record written; adoption after "restart"; stop TERM→KILL; `external` detection; live variant needs confirm |
 | `test_actions.py` | cost gate (`confirm_required`); `register-version` argv per mode (`--poller`, `--local-wci`); recipes order |
-| `test_kind.py` | every recipe offered on a profile is accepted there (and teardown is not on kind); Bring up kind's plan per profile/variant; order from a cold Docker VM, skips on a warm cluster, plaintext reinstall of a TLS release; stop at a stopped Docker VM; a failed step's cause/tail; laptop-side refusal; one cluster job at a time; the `kind` facts, `cluster` pip and fixes per missing layer; stale certs |
+| `test_kind.py` | every recipe offered on a profile is accepted there (and teardown is not on kind); Bring up kind's plan per profile/variant; order from a cold Docker VM, skips on a warm cluster, plaintext reinstall of a TLS release; stop at a stopped Docker VM; a failed step's cause/tail; certs-pull clears stale certs before agentcore-local; a streamed step is held by the job and stopped with the console; an adopted recipe blocks until its step exits, then fails at it; laptop-side refusal; one cluster job at a time; the `kind` facts, `cluster` pip and fixes per missing layer; stale certs |
 | `test_routes.py` | Starlette `TestClient`: Host check, `X-Console` check, error shapes, approve 409/422/200 paths, `POST /api/runs` arguments match case-a.sh (ticket, mode, budget, `USE_EXISTING`) |
 | `test_stream.py` | the SSE generator emits `hello`, `stack`, `run`, `rows` and only on change (hash); heartbeat |
 | `test_static.py` | `index.html` references only local assets (fonts are vendored); every JS module imported exists; no `localhost` |

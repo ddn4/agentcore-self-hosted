@@ -221,8 +221,10 @@ class KindProbe:
         self._cached: tuple[float, str, KindFacts] | None = None
         self._certs: tuple[float, float, str] | None = None  # (when, ca.crt mtime, state)
         self._task: asyncio.Task[KindFacts] | None = None
+        self._gen = 0  # bumped by invalidate(): a refresh started earlier is not cached
 
     def invalidate(self) -> None:
+        self._gen += 1
         self._cached = None
         self._certs = None
 
@@ -254,11 +256,12 @@ class KindProbe:
             return None
 
     async def _refresh(self, profile: str) -> KindFacts:
+        gen = self._gen
         docker = await docker_up(self.runner, self.settings)
         cluster = await cluster_exists(self.runner, self.settings) if docker else None
         certs = await self.certs(cluster=bool(cluster)) if profile == "kind" else None
         found = KindFacts(docker, cluster, self.port_forward(), certs)
-        if self.settings.profile == profile:
+        if self.settings.profile == profile and gen == self._gen:
             self._cached = (time.monotonic(), profile, found)
         return found
 
