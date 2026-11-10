@@ -150,6 +150,9 @@ class Step:
 class Scenario:
     id: str
     title: str
+    short: str  # left-column list name
+    sub: str  # left-column subtitle
+    run_label: str  # names a run of this scenario (runs list, run view)
     summary: str
     story: dict[str, str]
     profiles: list[str]
@@ -198,6 +201,9 @@ def load_catalog(text: str | None = None) -> dict[str, Scenario]:
         out[raw["id"]] = Scenario(
             id=raw["id"],
             title=raw["title"],
+            short=raw.get("short", raw["title"]),
+            sub=raw.get("sub", raw["summary"]),
+            run_label=raw.get("run_label", raw.get("short", raw["title"])),
             summary=raw["summary"],
             story=dict(raw.get("story", {})),
             profiles=list(raw["profiles"]),
@@ -519,6 +525,9 @@ def scenario_json(
     return {
         "id": scenario.id,
         "title": scenario.title,
+        "short": scenario.short,
+        "sub": scenario.sub,
+        "run_label": scenario.run_label,
         "summary": scenario.summary,
         "story": scenario.story,
         "profiles": scenario.profiles,

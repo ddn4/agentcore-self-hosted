@@ -2,11 +2,6 @@
 import { enc } from "./api.js";
 import { h, hhmm, icon, stateGlyph } from "./format.js";
 
-const SCEN_WORD = {
-  "case-a": "Case A", "case-b": "Case B", crash: "Crash demo", "serverless-b": "Case B, invoke-local",
-  "wci-b": "Case B, WCI", failure: "Failure demo", load: "Load",
-};
-
 const ANSWERED = new Set(["completed", "rejected", "failed", "canceled"]);
 
 /** The badge follows Support's run; the A2A task state only says what it is waiting on. */
@@ -41,9 +36,10 @@ export function renderRuns(state) {
     el.innerHTML = String(h`<li><p class="empty-side">No runs yet. Start Case A to see the hop.</p></li>`);
     return;
   }
+  const label = (r) => (state.scenarios || []).find((s) => s.id === r.scenario)?.run_label;
   const items = runs.map((r) => h`<li><a href="#/runs/${enc(r.workflow_id)}" ${focus === r.workflow_id ? h`aria-current="page"` : ""}>
       <span class="id" title="${r.workflow_id}">${r.workflow_id}</span><span class="st">${statusOf(r)}</span>
-      <span class="when">${SCEN_WORD[r.scenario] || (r.case ? `Case ${r.case}` : "Conversation")}, ${r.status === "RUNNING" ? "started " : ""}${hhmm(r.started_at)}</span></a></li>`);
+      <span class="when">${label(r) || (r.case ? `Case ${r.case}` : "Conversation")}, ${r.status === "RUNNING" ? "started " : ""}${hhmm(r.started_at)}</span></a></li>`);
   const gs = groups.map((g) => {
     const done = g.running === 0;
     const ok = done && g.failed === 0;

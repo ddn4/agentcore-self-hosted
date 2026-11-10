@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import tomllib
+from importlib.resources import files
+
 import pytest
 
 from demo_console.scenarios import (
@@ -43,6 +46,13 @@ def test_catalog_profiles_are_known_and_costs_match_them() -> None:
         assert scenario.profiles, scenario.id
         assert set(scenario.profiles) <= set(PROFILES), scenario.id
         assert set(scenario.cost) <= set(scenario.profiles), scenario.id
+
+
+def test_catalog_names_every_scenario_explicitly() -> None:
+    text = (files("demo_console") / "data" / "scenarios.toml").read_text()
+    for raw in tomllib.loads(text)["scenario"]:
+        for key in ("title", "short", "sub", "run_label"):
+            assert raw.get(key), f"{raw['id']} has no {key}"
 
 
 @pytest.mark.parametrize(

@@ -1,5 +1,8 @@
 # Demo console scenario catalog (docs/console/DESIGN.md 2.2, 5.2).
 #
+# Names: title heads the scenario card; short and sub are the left-column list entry;
+# run_label names a run of this scenario in the runs list and the run view.
+#
 # {build} in a make string is Support's resolved Build ID (build-id.sh refuses a dirty tree).
 # Each step's done_when uses the closed predicate vocabulary of DESIGN.md 5.4; a unit test
 # parses every one. {wf} in a make string is the run's workflow ID. Cost per profile:
@@ -10,6 +13,9 @@
 [[scenario]]
 id = "case-a"
 title = "Case A: $40 headphones, auto-approved"
+short = "Case A"
+sub = "$40 headphones, auto-approved"
+run_label = "Case A"
 summary = "Support's agents look up the order, ask Finance over Nexus, and Finance approves on its own."
 story = { tag = "v0.5-a2a-over-nexus", doc = "docs/story/v0.5-a2a-over-nexus.md" }
 profiles = ["local", "kind", "kind-plaintext"]
@@ -65,6 +71,9 @@ notes = "Support can't move money, so it asks Finance: a different team's agent,
 [[scenario]]
 id = "case-b"
 title = "Case B: $450 laptop, a human approves"
+short = "Case B"
+sub = "$450 laptop, a human approves"
+run_label = "Case B"
 summary = "Over $100, Finance's agent asks a human. Support can be switched off while it waits."
 story = { tag = "v0.6-human-in-the-loop", doc = "docs/story/v0.6-human-in-the-loop.md" }
 profiles = ["local", "kind", "kind-plaintext"]
@@ -144,7 +153,10 @@ notes = "Over $100, Finance's agent says 'I need a human', and the task goes to 
 
 [[scenario]]
 id = "crash"
-title = "Durable agent: kill the worker mid-thought"
+title = "Worker crash: kill Support mid-thought"
+short = "Worker crash"
+sub = "Kill Support mid-thought; it resumes"
+run_label = "Case A, worker crash"
 summary = "SIGKILL the Support worker while a model turn runs; a new worker carries on from history."
 story = { tag = "v0.2-durable-agent", doc = "docs/story/v0.2-durable-agent.md" }
 profiles = ["local", "kind", "kind-plaintext"]
@@ -194,7 +206,10 @@ notes = "Every model call and tool call is an Activity. I kill the process mid-t
 
 [[scenario]]
 id = "serverless-b"
-title = "Case B, AgentCore shape, invoke-local"
+title = "AgentCore, you invoke: Case B with a worker built to die"
+short = "AgentCore: you invoke"
+sub = "Case B; you start each worker lifetime"
+run_label = "Case B, you invoke"
 summary = "Support's worker is built to die: it starts when invoked and drains when idle. You play the WCI."
 story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
 profiles = ["local", "kind", "kind-plaintext"]
@@ -279,7 +294,10 @@ notes = "Support's Worker is now built to die. It starts when invoked, drains wh
 
 [[scenario]]
 id = "wci-b"
-title = "Case B, the server's WCI starts the worker"
+title = "AgentCore, WCI invokes: Temporal starts the worker"
+short = "AgentCore: WCI invokes"
+sub = "Case B; Temporal starts the worker"
+run_label = "Case B, WCI invokes"
 summary = "Finance waits for a human while Support's compute is gone; the server restarts it."
 story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
 profiles = ["local"]
@@ -356,7 +374,10 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
 
 [[scenario]]
 id = "failure"
-title = "Finance disappears mid-call"
+title = "Finance outage: Finance disappears mid-call"
+short = "Finance outage"
+sub = "Finance goes away; Nexus retries"
+run_label = "Case A, Finance outage"
 summary = "The Finance worker goes away; Support's Nexus call retries until it comes back."
 story = { tag = "v0.5-a2a-over-nexus", doc = "docs/story/v0.5-a2a-over-nexus.md" }
 profiles = ["local"]
@@ -421,7 +442,10 @@ notes = "Finance's team has an outage. Support's call doesn't fail: the server k
 
 [[scenario]]
 id = "smoke"
-title = "The hop with no AI"
+title = "Nexus hop with no AI"
+short = "Nexus hop, no AI"
+sub = "Smoke caller and Agent Card"
+run_label = "Smoke"
 summary = "A2ASmokeWorkflow calls Finance over Nexus with no model on the caller; then a standalone get_agent_card."
 story = { tag = "v0.4-finance-agent", doc = "docs/story/v0.4-finance-agent.md" }
 profiles = ["local"]
@@ -455,7 +479,10 @@ notes = "The Finance team publishes exactly one thing, an A2A-shaped contract. N
 
 [[scenario]]
 id = "load"
-title = "N conversations at once"
+title = "Load: N conversations at once"
+short = "Load"
+sub = "Up to 20 conversations at once"
+run_label = "Load"
 summary = "N Workflows on support-tq with nothing polling; the WCI scales Support up and back to zero."
 story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
 profiles = ["local", "kind", "kind-plaintext"]
@@ -480,7 +507,10 @@ notes = "Ten conversations arrive at once. Nothing polls Support's queue until t
 
 [[scenario]]
 id = "cleanup"
-title = "Leftovers"
+title = "Clean up: runs still waiting for a human"
+short = "Clean up"
+sub = "Reject or terminate stuck runs"
+run_label = "Clean up"
 summary = "Runs still waiting in input-required. Reject or terminate them."
 story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
 profiles = ["local", "kind", "kind-plaintext"]

@@ -48,12 +48,6 @@ function follow(lanes) {
   lanes.scrollTop = lastTarget;
 }
 
-const SCEN_NAME = {
-  "case-a": "Case A, auto-approved", "case-b": "Case B, a human approves", crash: "Crash demo",
-  "serverless-b": "Case B, AgentCore shape with invoke-local", "wci-b": "Case B, the server's WCI starts the worker",
-  failure: "Failure demo",
-};
-
 function scaffold(el, wf) {
   // One compact strip above the lanes (ticket, meta, state word and three facts) so the lanes
   // get most of the height: they are the hero (the hop, the held call, the compute rail).
@@ -104,7 +98,7 @@ function head(run, state) {
   return h`<p class="ticket" title="${run.ticket || ""}"><q>${run.ticket || ""}</q></p>
     <div class="meta">
       <span class="wf id">${run.workflow_id}</span>
-      <span>${SCEN_NAME[run.scenario] || scen?.title || (run.case ? `Case ${run.case}` : "Conversation")}</span>
+      <span>${scen?.run_label || scen?.title || (run.case ? `Case ${run.case}` : "Conversation")}</span>
       <span>Queue <b class="id">${run.task_queue}</b></span>
       ${v && v.build_id ? h`<span>${v.behavior === "PINNED" ? "Pinned to" : "Version"} <b class="id">${v.deployment}:${v.build_id}</b></span>` : h`<span>Unversioned</span>`}
       <span>A2A mode <b>${run.a2a_mode}</b></span>

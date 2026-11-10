@@ -6,19 +6,6 @@ import { PROFILE_LABEL, costMark, h, icon, moneyShort, suffix, stateGlyph } from
 import { store } from "./store.js";
 import { copyBox } from "./ui.js";
 
-const SHORT_TITLE = {
-  "case-a": "Case A", "case-b": "Case B", crash: "Crash demo", "serverless-b": "AgentCore, invoke-local",
-  "wci-b": "AgentCore, server's WCI", failure: "Failure demo",
-  smoke: "The hop with no AI", load: "Load", cleanup: "Leftovers",
-};
-const SUB = {
-  "case-a": "$40 headphones, auto-approved", "case-b": "$450 laptop, a human approves",
-  crash: "Kill the worker mid-thought", "serverless-b": "You start each AgentCore lifetime",
-  "wci-b": "Temporal starts the worker when work arrives",
-  failure: "Finance disappears mid-call", smoke: "Smoke caller and Agent Card",
-  load: "Up to 20 conversations at once", cleanup: "Runs still waiting for a human",
-};
-
 function fitLabel(s, profile) {
   if (s.fit === "ready") return "ready";
   if (s.fit === "wrong_profile") {
@@ -39,8 +26,8 @@ export function renderScenarioList(state) {
   }
   const profile = state.config?.profile;
   el.innerHTML = list.map((s) => String(h`<li><a href="#/scenarios/${enc(s.id)}" ${cur === s.id ? h`aria-current="page"` : ""}>
-    <span class="t">${SHORT_TITLE[s.id] || s.title}</span><span class="fit" data-f="${s.fit}">${fitLabel(s, profile)}</span>
-    <span class="s">${s.cost !== "free" ? h`${costMark(s.cost, true)} ` : ""}${SUB[s.id] || s.summary}</span></a></li>`)).join("");
+    <span class="t">${s.short || s.title}</span><span class="fit" data-f="${s.fit}">${fitLabel(s, profile)}</span>
+    <span class="s">${s.cost !== "free" ? h`${costMark(s.cost, true)} ` : ""}${s.sub || s.summary}</span></a></li>`)).join("");
 }
 
 // ---------------------------------------------------------------- scenario card

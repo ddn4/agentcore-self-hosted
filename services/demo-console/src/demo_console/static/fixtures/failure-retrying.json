@@ -179,6 +179,9 @@
    {
     "id": "case-a",
     "title": "Case A: $40 headphones, auto-approved",
+    "short": "Case A",
+    "sub": "$40 headphones, auto-approved",
+    "run_label": "Case A",
     "summary": "Support's agents look up the order, then ask Finance over Nexus. Under $100 and low risk, Finance approves on its own.",
     "story": {
      "tag": "v0.5-a2a-over-nexus",
@@ -290,6 +293,9 @@
    {
     "id": "case-b",
     "title": "Case B: $450 laptop, a human approves",
+    "short": "Case B",
+    "sub": "$450 laptop, a human approves",
+    "run_label": "Case B",
     "summary": "Over $100, Finance's agent asks a person. Support can be stopped while Finance waits, and nothing is lost.",
     "story": {
      "tag": "v0.6-human-in-the-loop",
@@ -418,7 +424,10 @@
    },
    {
     "id": "crash",
-    "title": "Durable agent: kill the worker mid-thought",
+    "title": "Worker crash: kill Support mid-thought",
+    "short": "Worker crash",
+    "sub": "Kill Support mid-thought; it resumes",
+    "run_label": "Case A, worker crash",
     "summary": "Kill Support's worker while a model call is in flight, start it again, and the same run finishes.",
     "story": {
      "tag": "v0.2-durable-agent",
@@ -522,7 +531,10 @@
    },
    {
     "id": "serverless-b",
-    "title": "Case B, AgentCore shape, invoke-local",
+    "title": "AgentCore, you invoke: Case B with a worker built to die",
+    "short": "AgentCore: you invoke",
+    "sub": "Case B; you start each worker lifetime",
+    "run_label": "Case B, you invoke",
     "summary": "You start each AgentCore lifetime by hand. Between them, Support has no compute at all.",
     "story": {
      "tag": "v0.7-serverless-shape",
@@ -670,7 +682,10 @@
    },
    {
     "id": "wci-b",
-    "title": "Case B, the server's WCI starts the worker",
+    "title": "AgentCore, WCI invokes: Temporal starts the worker",
+    "short": "AgentCore: WCI invokes",
+    "sub": "Case B; Temporal starts the worker",
+    "run_label": "Case B, WCI invokes",
     "summary": "Finance waits for a human while Support's compute is gone; the server restarts it.",
     "story": {
      "tag": "v0.7-serverless-shape",
@@ -851,7 +866,10 @@
    },
    {
     "id": "failure",
-    "title": "Finance disappears mid-call",
+    "title": "Finance outage: Finance disappears mid-call",
+    "short": "Finance outage",
+    "sub": "Finance goes away; Nexus retries",
+    "run_label": "Case A, Finance outage",
     "summary": "Stop the Finance worker after discovery. The Nexus call retries on the server until Finance comes back.",
     "story": {
      "tag": "v0.5-a2a-over-nexus",
@@ -970,7 +988,10 @@
    },
    {
     "id": "smoke",
-    "title": "The hop with no AI",
+    "title": "Nexus hop with no AI",
+    "short": "Nexus hop, no AI",
+    "sub": "Smoke caller and Agent Card",
+    "run_label": "Smoke",
     "summary": "A plain workflow calls Finance over Nexus, then fetches the Agent Card.",
     "story": {
      "tag": "v0.4-finance-agent",
@@ -1041,7 +1062,10 @@
    },
    {
     "id": "load",
-    "title": "N conversations at once",
+    "title": "Load: N conversations at once",
+    "short": "Load",
+    "sub": "Up to 20 conversations at once",
+    "run_label": "Load",
     "summary": "Start up to 20 runs on support-tq and count the WCI's invokes.",
     "story": {
      "tag": "v0.7-serverless-shape",
@@ -1156,7 +1180,10 @@
    },
    {
     "id": "cleanup",
-    "title": "Leftovers",
+    "title": "Clean up: runs still waiting for a human",
+    "short": "Clean up",
+    "sub": "Reject or terminate stuck runs",
+    "run_label": "Clean up",
     "summary": "Runs still waiting for a human. Reject or terminate them.",
     "story": null,
     "profiles": [
