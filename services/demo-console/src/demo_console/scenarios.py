@@ -16,7 +16,14 @@ from dataclasses import dataclass, field
 from importlib import resources
 from typing import Any
 
-from demo_console.settings import DEFAULT_APPROVER
+from demo_console.settings import (
+    AGENTS_NS,
+    DEFAULT_APPROVER,
+    DEV_TQ,
+    FINANCE_TQ,
+    SERVICES_NS,
+    SMOKE_TQ,
+)
 
 # --- predicates ------------------------------------------------------------------------------
 
@@ -123,6 +130,11 @@ class Step:
     action: str | None = None
     params: dict[str, Any] = field(default_factory=dict)
     optional: bool = False
+    #: The stepper's label (the full title is its tooltip and the notes' heading).
+    short: str = ""
+    #: What the presenter points at; ``point_versioned`` replaces it on a versioned run.
+    point: str = ""
+    point_versioned: str = ""
 
     def to_json(self, wf: str | None, build: str | None = None) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -132,7 +144,12 @@ class Step:
             "kind": self.kind,
             "done_when": self.done_when,
             "talk": self.talk,
+            "short": self.short or self.title,
         }
+        if self.point:
+            body["point"] = self.point
+        if self.point_versioned:
+            body["point_versioned"] = self.point_versioned
         if self.action:
             body["action"] = self.action
         if self.params:
@@ -169,6 +186,16 @@ class Scenario:
     steps: list[Step]
     #: The scenario to suggest once a run of this one has finished (story order), or None.
     next: str | None = None
+    #: The action the Start button runs (``load``, ``smoke``); ``None`` starts a Support run.
+    start_action: str | None = None
+    #: What the Start button says; ``{option}`` is filled from the scenario's options.
+    start_label: str = "Start"
+    #: ``cleanup`` shows the waiting runs instead of a Start button.
+    view: str | None = None
+    #: One more button next to Start: ``{action, label}``.
+    extra_action: dict[str, str] | None = None
+    #: The Start button's options for a run-less scenario (a Support run's are built in).
+    options: list[dict[str, Any]] = field(default_factory=list)
 
 
 STEP_KINDS = ("action", "watch", "human", "manual")
@@ -198,6 +225,9 @@ def load_catalog(text: str | None = None) -> dict[str, Scenario]:
                     action=s.get("action"),
                     params=dict(s.get("params", {})),
                     optional=bool(s.get("optional", False)),
+                    short=s.get("short", ""),
+                    point=s.get("point", ""),
+                    point_versioned=s.get("point_versioned", ""),
                 )
             )
         out[raw["id"]] = Scenario(
@@ -221,6 +251,11 @@ def load_catalog(text: str | None = None) -> dict[str, Scenario]:
             notes=raw.get("notes", ""),
             steps=steps,
             next=raw.get("next"),
+            start_action=raw.get("start_action"),
+            start_label=raw.get("start_label", "Start"),
+            view=raw.get("view"),
+            extra_action=dict(raw["extra_action"]) if "extra_action" in raw else None,
+            options=[dict(o) for o in raw.get("option", [])],
         )
     for sc in out.values():
         if sc.next is not None and sc.next not in out:
@@ -307,6 +342,8 @@ class StackFacts:
     shape: str = "unknown"
     #: kind only: the first missing layer (kind.gap): ``{layer, cause, fix}`` or ``None``.
     kind_gap: dict[str, Any] | None = None
+    #: Reads that failed (``endpoint``, ``deployment``, ``<ns>/<tq>``): unknown, not missing.
+    read_errors: dict[str, str] = field(default_factory=dict)
 
 
 def _proc_fix(name: str, label: str) -> dict[str, Any]:
@@ -333,8 +370,36 @@ def _outside(pid: str, label: str, who: str) -> dict[str, Any]:
     }
 
 
+#: The read each precondition depends on: when it failed the line says so, with no fix.
+_READS = {
+    "endpoint": "endpoint",
+    "finance": f"{SERVICES_NS}/{FINANCE_TQ}",
+    "finance-managed": f"{SERVICES_NS}/{FINANCE_TQ}",
+    "support-plain": f"{AGENTS_NS}/{DEV_TQ}",
+    "support-plain-managed": f"{AGENTS_NS}/{DEV_TQ}",
+    "smoke-worker": f"{AGENTS_NS}/{SMOKE_TQ}",
+    "version": "deployment",
+    "version-current": "deployment",
+    "version-wci": "deployment",
+}
+
+
 def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
-    """One precondition evaluated now; ``None`` when it does not apply on this profile."""
+    """One precondition evaluated now; ``None`` when it does not apply on this profile.
+
+    When the read behind it failed it is ``unknown``: not ok, no fix (the fix would create
+    something that may exist), and a note with the error.
+    """
+    p = _precondition(pid, f)
+    error = f.read_errors.get(_READS.get(pid, ""))
+    if p is not None and not p["ok"] and error:
+        p.pop("fix", None)
+        p["unknown"] = True
+        p["note"] = f"Could not read it: {error}"
+    return p
+
+
+def _precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
     local = f.profile == "local"
     build = f.build_id or "<build>"
     # kind: the fix for a missing layer (Docker VM, cluster, port-forward) is its action.
@@ -556,8 +621,12 @@ def scenario_json(
     facts: StackFacts,
     model_mode: str = "scripted",
     catalog: dict[str, Scenario] | None = None,
+    wf: str | None = None,
 ) -> dict[str, Any]:
-    """``Scenario`` (DESIGN.md 5.2) with preconditions evaluated now."""
+    """``Scenario`` (DESIGN.md 5.2) with preconditions evaluated now.
+
+    ``wf`` is the default workflow ID to offer (a fresh one when ``None``; fixtures pin it).
+    """
     queue = default_queue(scenario, facts.shape)
     ids = scenario.preconditions
     if queue == "versioned" and scenario.preconditions_serverless:
@@ -581,9 +650,10 @@ def scenario_json(
     gap = facts.kind_gap
     if recipe == KIND_RECIPE and gap and gap["layer"] == "docker" and fit == "needs_setup":
         blocked = {"why": "Start the Docker VM first.", "fix": gap["fix"]}
-    wf = default_workflow_id(scenario)
-    options: list[dict[str, Any]] = []
-    if queue is not None:
+    wf = wf or default_workflow_id(scenario)
+    # A Support run's options; a scenario whose Start runs an action has that action's params.
+    options: list[dict[str, Any]] = [dict(o) for o in scenario.options]
+    if queue is not None and not scenario.start_action:
         options = [
             {
                 "id": "a2a_mode",
@@ -616,24 +686,6 @@ def scenario_json(
                     "default": DEFAULT_APPROVER,
                 }
             )
-    elif scenario.id == "load":
-        options = [
-            {
-                "id": "n",
-                "label": "Conversations",
-                "type": "number",
-                "default": 10,
-                "min": 1,
-                "max": 20,
-            },
-            {
-                "id": "kind",
-                "label": "What each one runs",
-                "type": "choice",
-                "choices": ["ping", "case-a"],
-                "default": "ping",
-            },
-        ]
     return {
         "id": scenario.id,
         "title": scenario.title,
@@ -656,4 +708,8 @@ def scenario_json(
         "setup_recipe": recipe,
         "setup_blocked": blocked,
         "next": next_json(scenario, catalog, facts),
+        "start_action": scenario.start_action,
+        "start_label": scenario.start_label,
+        "view": scenario.view,
+        "extra_action": scenario.extra_action,
     }

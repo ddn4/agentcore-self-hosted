@@ -218,7 +218,14 @@ labelled cell.)
 
 Each scenario has four names in the catalog: `title` heads the scenario card, `short` and
 `sub` are its entry in the left column, and `run_label` names its runs in the runs list and the
-run view. The UI keeps no names of its own.
+run view. The UI keeps no names of its own, and no copy or behaviour keyed on a scenario id:
+the catalog also carries what the Start button says (`start_label`, with `{option}` filled from
+the form, so Load reads "Start 10 conversations"), the action it runs for scenarios that start
+no Support run (`start_action`: `load`, `smoke`, with `[[scenario.option]]` for that action's
+params), one more button next to it (`extra_action`, the smoke caller's "Fetch the Agent
+Card") and `view = "cleanup"` for the card that lists waiting runs instead. Each step carries
+its stepper label (`short`) and what the presenter points at (`point`, and `point_versioned`
+for a versioned run). The home page's buttons are the first two scenarios on the profile.
 
 The catalog lists scenarios in **story order**, grouped so the stack changes shape as rarely as
 possible: Case A → Case B → Worker crash → Finance outage (all plain Support) → AgentCore: you
@@ -299,7 +306,9 @@ if the console died instead, the restarted console adopts the live group, keeps 
 running until the group exits, then marks it failed at that step ("the console restarted
 during <step>"; run it again and finished layers are skipped). A successful `certs-pull`
 clears the stale-certs check at once, so `agentcore-local` can start right after it. Cluster
-jobs and recipes run one at a time (409 while one runs, adopted ones included).
+jobs and recipes run one at a time (409 "<title> is still running." with the hint "One stack
+job runs at a time", adopted ones included; checked again right before the job is created,
+so two quick clicks cannot both start one).
 
 The single cluster layers (`colima-up`, `kind-up`, `kind-temporal`, `kind-workers`,
 `certs-pull`, `pf`, `pf-stop`, `kind-down`) stay available as confirm-first jobs under
@@ -474,6 +483,13 @@ A job that ends failed says where: "Bring up kind failed at kind-temporal: <caus
   Temporal (stack every 3 s, runs every 3 s, the focused run every 1 s; adaptive back-off when
   nothing changes) and emits only on change (hash per snapshot). On reconnect the browser just
   re-renders from the next snapshots, so there is no replay protocol.
+- **Re-renders keep the presenter's place**: each region (stack bar, banners, scenario list,
+  runs, main card, notes, stepper, Manage stack) is written through `patch(el, html)`, which
+  skips the write when the HTML is unchanged and otherwise puts focus (and the caret) back on
+  the element with the same `name` and `data-*` attributes. The sheet keeps typed values as
+  they are typed (`input`, not only `change`), and an open process log refreshes its own
+  `<pre>` every 3 s instead of re-rendering the sheet. Manual steps are toggle buttons (Enter
+  and Space tick them); an option's choices are a radio group with one tab stop and arrow keys.
 
 ### 4.2 Connection and profiles
 
@@ -662,6 +678,12 @@ Every non-2xx response:
 
 - `components[].status` ∈ `up | down | degraded | zero | unknown | external`. `zero` means
   up by design with nothing running (Support between lifetimes); it renders in `--off`, not red.
+- `read_errors` (only when a read failed): `{"endpoint" | "deployment" | "version" |
+  "<ns>/<tq>": "PermissionError: ..."}`. A failed read is not a missing thing: the component
+  it feeds is `unknown` with detail "could not read ...: <error>" (not "finance-agent is
+  missing"), the scenario precondition behind it is `unknown: true` with that error as its
+  `note` and no `fix` (Create endpoint would recreate something that may exist), and the
+  server log has one WARNING per read each time its error changes.
 - `shape` ∈ `plain | serverless-invoke | serverless-wci | unknown`. It is
   derived from the current deployment compute config, the WCI mode, the pollers and the
   managed processes.
@@ -734,6 +756,12 @@ Every non-2xx response:
 ```
 
 - `fit` ∈ `ready | needs_setup | wrong_profile`.
+- Also from the catalog (2.2): `start_label`, `start_action` (`null`: Start starts a Support
+  run with the run options; the `queue` option's default is the backend's choice for the
+  stack's shape), `extra_action` (`{action, label}` or `null`), `view` (`"cleanup"` or
+  `null`), and per step `short` (always set; the title when the catalog has none), `point`
+  and `point_versioned` (when set).
+- `preconditions[].unknown: true` when the read behind it failed (5.1 `read_errors`).
 - `setup_recipe`: the recipe id of the one-click setup on this profile, or `null` (2.2).
   `preconditions[].by_setup: true` marks a missing precondition that recipe fixes. A missing
   precondition no button can fix (a worker started outside the console) has no `fix` and a
@@ -959,8 +987,18 @@ optional step passed over (e.g. "stop the Support worker").
 
 Every Action also has `group` ∈ `recipe | oneshot | cluster` (where the sheet lists it).
 
+**One source for each command.** Each action's spec holds its make target and variables as
+templates (`("register-version", "MODE={mode}")`, `("kind-workers", "FINANCE_MODEL=scripted",
+"KIND_TLS={tls}")`); the job runs exactly `make -s <target> <VAR=value>...` (plus
+`TEMPORAL_PROFILE=<profile>` off local) and `make` is that argv without `-s`, so what the
+console shows is what a presenter can paste. `LOAD_KIND` is a make variable on the command
+line (make exports it to `load.sh`); the smoke caller's `WF` gets a fresh suffix per run
+(`<id>` in the listing). `invoke-local` and `agentcore-ping` run in-process; their `make` is the
+terminal equivalent.
+
 Action ids: `start-recipe` (`recipe` = `local-plain | local-invoke | local-wci | kind-up |
-kind-laptop | teardown`; default `kind-up` on kind), `nexus-endpoint`, `register-version`,
+kind-laptop | teardown`; the default is the recipe for the stack's current shape: `kind-up` on
+kind, and the sheet recommends it when no scenario is in view), `nexus-endpoint`, `register-version`,
 `invoke-local`, `agentcore-ping`, `smoke`, `card`, `load` (`n` 1..20, `kind` = `ping|case-a`),
 `wci-history`, `colima-up`, `kind-up`, `kind-temporal`, `kind-workers`, `certs-pull`, `pf`,
 `pf-stop`, `kind-down` (cluster group: long, confirm).
@@ -1091,7 +1129,13 @@ these additions and clarifications:
   variables given to `make console` never override the profile the console switched to.
 - **Process**: `dev-server` adds `wci` (`"0"`, `"1"` or `null`); `unavailable` comes
   with `why` (wrong profile, no Build ID, or no client certificate under `.certs/…`).
-- **Job**: `status` ∈ `running | succeeded | failed`. `start-recipe` takes
+- **Job**: `status` ∈ `running | succeeded | failed | ended`. No job stays running for good: a
+  command that cannot start fails at once ("make could not start: ..."); a `make` job past its
+  time (cluster jobs 1800 s, the others 600 s) has its process group stopped (TERM, KILL after
+  8 s) and fails "ran longer than ...s and was stopped". A command job adopted after a console
+  restart ends as `ended` (exit code unknown, with a `note`), never `succeeded`; the page says
+  "<title> ended" instead of "done". A sync action (`invoke-local`, `agentcore-ping`) still
+  running after 30 s answers `202` with the running job. `start-recipe` takes
   `params: {recipe, variant: "scripted"|"live"}` (live = `tokens`). A Job also has `title`
   (what the button said), `params`, and for recipes `steps`:
   `[{"id", "label", "status": "todo|running|done|skipped|failed", "note", "elapsed_s"}]`
@@ -1124,11 +1168,12 @@ scripted stdout/exit codes), `FakeHttp` (ping/invocations), and a tmp `.temporal
 | `test_runview.py` | RunView fields from history + describe; scenario inference; `held_open_s`; Q15 deltas; reply + refund ID; `get_task` timeout → `source: "history"` |
 | `test_ledger72.py` | building every RunView/route against `FakeAgents` issues **zero** queries in namespace `agents`; `AgentsClient.query` raises `SupportQueryForbidden` |
 | `test_steps.py` | every catalog `done_when` parses; statuses done/current/todo for each fixture; setup recipes and what they mark `by_setup`; a worker polling from a terminal is not left to setup; kind setup waits for a stopped Docker VM (`setup_blocked`) |
-| `test_stack.py` | component statuses from fake pollers/pidfiles/ports; `zero` vs `down`; shape and model inference; Build ID resolution order (env → deployment → build-id.sh refusing on dirty uv.lock → none) |
+| `test_stack.py` | component statuses from fake pollers/pidfiles/ports; `zero` vs `down`; shape and model inference; Build ID resolution order (env → deployment → build-id.sh refusing on dirty uv.lock → none); a failed read is `unknown` with its error, not missing, and its precondition has no fix |
 | `test_detect.py` | profile detection from pidfiles (tmp dir, `kill -0` faked) and the TLS probe outcome |
 | `test_env.py` | `child_env()` strips `TEMPORAL_TLS`/`TEMPORAL_ADDRESS` outside local, sets `TEMPORAL_PROFILE`, `TEMPORAL_CONFIG_FILE` (absolute), `TEMPORAL_BUILD_ID` |
 | `test_procs.py` | start spawns `make -s <target>` in a new session; record written; adoption after "restart"; stop TERM→KILL; `external` detection; live variant needs confirm |
-| `test_actions.py` | cost gate (`confirm_required`); `register-version` argv per mode (`--poller`, `--local-wci`); recipes order |
+| `test_actions.py` | cost gate (`confirm_required`); `register-version` argv per mode (`--poller`, `--local-wci`); recipes order; on every profile the shown `make` is the argv that runs (KIND_TLS=0 on kind-plaintext); a command that cannot start or runs past its time fails; an adopted job ends `ended`, not `succeeded`; a slow sync action answers 202; one recipe at a time (two concurrent starts: one 409); the catalog's `start_action`/`extra_action` name real actions and every step has a `short` |
+| `test_fixtures.py` | every `static/fixtures/*.json` is in its on-disk format (indent 1) and its `config`, `scenarios` and `actions` equal what the backend derives from the fixture's own stack (`demo_console.fixtures`); on drift: `make console-fixtures` |
 | `test_kind.py` | every recipe offered on a profile is accepted there (and teardown is not on kind); Bring up kind's plan per profile/variant; order from a cold Docker VM, skips on a warm cluster, plaintext reinstall of a TLS release; stop at a stopped Docker VM; a failed step's cause/tail; certs-pull clears stale certs before agentcore-local; a streamed step is held by the job and stopped with the console; an adopted recipe blocks until its step exits, then fails at it; laptop-side refusal; one cluster job at a time; the `kind` facts, `cluster` pip and fixes per missing layer; stale certs |
 | `test_routes.py` | Starlette `TestClient`: Host check, `X-Console` check, error shapes, approve 409/422/200 paths, `POST /api/runs` arguments match case-a.sh (ticket, mode, budget, `USE_EXISTING`) |
 | `test_stream.py` | the SSE generator emits `hello`, `stack`, `run`, `rows` and only on change (hash); heartbeat |
@@ -1173,6 +1218,11 @@ creates the endpoint with `demo_testing.nexus`. The console app is built with
   recorded_at}, branches: {approve: [...], reject: [...]}, reports: {...}}`: frames play at
   their offset `t` (seconds), pause at the gate, and Approve/Reject plays that branch.
   Every timestamp is shifted so the recording's `now` is the page's now.
+  `config`, `scenarios` and `actions` are not recorded but derived: `make console-fixtures`
+  (`python -m demo_console.fixtures`) recomputes them from the backend code with the facts read
+  off the fixture's own `stack` (its components, pollers, Build ID, deployment, kind layers),
+  keeping each scenario's recorded workflow ID, and `test_fixtures.py` fails when a fixture
+  drifts from them. The rest of a fixture is the recording and is kept as it is.
   `index.html?demo=1` replays `case-b-replay` live from the start (`&at=gate` jumps to the
   approval, `&at=end&verdict=approve|reject` to the end). A "Recorded data" badge in the
   stack bar marks both modes. In `case-b-input-required` the Approve and Reject buttons also
@@ -1221,6 +1271,7 @@ services/demo-console/
     jobs.py                      JobStore (.temporal/console/jobs)
     runner.py                    CommandRunner protocol + asyncio implementation
     stream.py                    SSE hub: pollers, change hashing, heartbeat
+    fixtures.py                  recompute the fixtures' config/scenarios/actions (make console-fixtures)
     static/
       index.html                 shell + SVG sprite + font preload
       styles.css                 tokens (section 3.2, BRAND.md), layout, lanes, motion
@@ -1244,6 +1295,9 @@ Makefile (new section `# --- v1.0: demo console ---`, all in `.PHONY`):
 ```make
 console: ## Demo console on http://127.0.0.1:8099 (TEMPORAL_PROFILE=local|kind|kind-plaintext)
 	$(UV) python -m demo_console --port $(or $(CONSOLE_PORT),8099)
+
+console-fixtures: ## Recompute the fixtures' config, scenarios and actions from the backend code
+	$(UV) python -m demo_console.fixtures
 
 console-shots: ## Screenshots of the console's fixture views (light/dark, laptop/phone) -> .temporal/console/shots/
 	scripts/console-shot.sh --all

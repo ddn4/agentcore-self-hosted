@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import json
 import re
+import signal
 import time
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -240,7 +241,16 @@ class JobStore:
                 },
             )
             return
-        self._finish(job, "succeeded", None, {"note": "exit code unknown (adopted after restart)"})
+        # Its exit code went to the console that started it: say so, never "succeeded".
+        self._finish(
+            job,
+            "ended",
+            None,
+            {
+                "note": "The console restarted while it ran, so its exit code is unknown.",
+                "hint": "Check the stack, or run it again.",
+            },
+        )
 
     def _save(self, job: Job) -> None:
         (self.dir / f"{job.id}.json").write_text(json.dumps(job.record(), indent=2))
@@ -341,26 +351,54 @@ class JobStore:
         parse: Callable[[str], Any] | None = None,
         display: str | None = None,
         title: str | None = None,
+        within: float = 600.0,
     ) -> Job:
-        """Start ``argv`` as a job and return at once (``202``)."""
+        """Start ``argv`` as a job and return at once (``202``).
+
+        A command that cannot start fails the job at once; one that runs longer than
+        ``within`` seconds has its process group stopped and fails, so no job stays running.
+        """
         job = self._create(action, display or " ".join(argv), cost, params, title)
-        spawned = await self.runner.spawn(
-            list(argv), env=env, cwd=self.settings.root, log_path=self.log_path(job.id)
-        )
+        try:
+            spawned = await self.runner.spawn(
+                list(argv), env=env, cwd=self.settings.root, log_path=self.log_path(job.id)
+            )
+        except OSError as err:
+            with self.log_path(job.id).open("a") as f:
+                f.write(f"could not start: {err}\n")
+            self._finish(job, "failed", None, {"error": f"{argv[0]} could not start: {err}"})
+            return job
         job.pgid = spawned.pid
         self._save(job)
 
         async def follow() -> None:
             waiter = asyncio.ensure_future(spawned.wait())
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + within
             size = -1
+            timed_out = False
             while not waiter.done():
-                await asyncio.sleep(PUSH_INTERVAL_S)
+                await asyncio.wait({waiter}, timeout=PUSH_INTERVAL_S)
                 new = self.log_path(job.id).stat().st_size
                 if new != size:
                     size = new
                     self._push(job)
+                if not waiter.done() and loop.time() > deadline and not timed_out:
+                    timed_out = True
+                    self.runner.signal_group(spawned.pid, signal.SIGTERM)
+                    try:
+                        await asyncio.wait_for(asyncio.shield(waiter), 8)
+                    except TimeoutError:
+                        self.runner.signal_group(spawned.pid, signal.SIGKILL)
             code = waiter.result()
             text = "\n".join(tail_file(self.log_path(job.id), 2000))
+            if timed_out:
+                result = {
+                    "error": f"{job.command} ran longer than {within:g}s and was stopped",
+                    "tail": meaningful(text)[-8:],
+                }
+                self._finish(job, "failed", code, result)
+                return
             result = None
             if parse is not None:
                 with contextlib.suppress(Exception):

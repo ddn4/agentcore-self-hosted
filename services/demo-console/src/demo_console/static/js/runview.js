@@ -116,8 +116,8 @@ function meta(run, state) {
 
 function links(run) {
   const l = run.links || {};
-  return h`${l.support ? h`<a class="lbtn" href="${l.support}" target="_blank" rel="noopener" title="Support's workflow in the Temporal UI (namespace agents)"><span class="sw" style="background:var(--support)"></span>Support${icon("ext")}</a>` : ""}
-    ${l.finance ? h`<a class="lbtn" href="${l.finance}" target="_blank" rel="noopener" title="Finance's A2A task workflow in the Temporal UI (namespace agent-services)"><span class="sw" style="background:var(--finance)"></span>Finance${icon("ext")}</a>` : ""}`;
+  return h`${l.support ? h`<a class="lbtn" href="${l.support}" target="_blank" rel="noopener" title="Support's workflow in the Temporal UI (namespace agents)"><span class="sw sup"></span>Support${icon("ext")}</a>` : ""}
+    ${l.finance ? h`<a class="lbtn" href="${l.finance}" target="_blank" rel="noopener" title="Finance's A2A task workflow in the Temporal UI (namespace agent-services)"><span class="sw fin"></span>Finance${icon("ext")}</a>` : ""}`;
 }
 
 function hadInputRequired(state) {

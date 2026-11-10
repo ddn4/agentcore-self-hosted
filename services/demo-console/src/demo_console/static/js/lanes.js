@@ -384,7 +384,7 @@ function nowHTML(last, ctx) {
   }
   let seamLab = "";
   if (pend && pend.attempt > 1) {
-    seamLab = h`<span class="lab bad" style="top:.45rem">attempt ${pend.attempt}</span>`;
+    seamLab = h`<span class="lab bad">attempt ${pend.attempt}</span>`;
   }
   const task = run.task;
   let fin = "";

@@ -13,7 +13,7 @@ import { openSheet, renderSheet, wireSheet } from "./js/sheet.js";
 import { pairNotes, renderBanners, renderStackBar, toggleNotes, toggleProjector, wireStackBar } from "./js/stackbar.js";
 import { toggleTick } from "./js/steps.js";
 import { store } from "./js/store.js";
-import { toast } from "./js/ui.js";
+import { patch, toast } from "./js/ui.js";
 
 const root = document.documentElement;
 const q = new URLSearchParams(location.search);
@@ -99,6 +99,9 @@ function announceJob(prev, job) {
   if (job.status === "failed") {
     const at = r.step_label ? ` at ${r.step_label}` : "";
     toast(`${title} failed${at}: ${r.error || "see its log"}.`.replace(/\.\.$/, "."), { level: "error", hint: r.hint || "Open Manage stack for the log." });
+  } else if (job.status === "ended") {
+    // Adopted after a console restart: it ended, but nobody saw how.
+    toast(`${title} ended. ${r.note || "Its exit code is unknown."}`, { hint: r.hint });
   } else if (job.action === "start-recipe" || actionById(job.action)?.long) {
     toast(`${title}: done.`, { level: "ok" });
   }
@@ -154,27 +157,23 @@ function onEvent(name, data) {
 
 function renderHome(state, el) {
   const waiting = (state.runs?.runs || []).filter((r) => r.status === "RUNNING");
-  el.innerHTML = String(h`<div class="welcome">
+  // The first two scenarios in story order that run on this profile.
+  const first = (state.scenarios || []).filter((s) => s.fit !== "wrong_profile").slice(0, 2);
+  patch(el, h`<div class="welcome">
     <h1>Support asks Finance for a refund</h1>
     <p>Two teams, two namespaces, one published contract over Nexus. Pick a scenario from the list to check the stack and start a run. Every run you start opens here, with both workflows side by side.</p>
     ${waiting.length ? h`<p>Still running:</p><ul class="leftovers">${waiting.slice(0, 5).map((r) => h`<li><a class="id" href="#/runs/${enc(r.workflow_id)}">${r.workflow_id}</a>${stateGlyph(r.task_state, r.task_state || "running")}</li>`)}</ul>` : ""}
-    <div class="acts"><a class="btn primary" href="#/scenarios/case-a">${icon("play")}Case A</a><a class="btn ghost" href="#/scenarios/case-b">${icon("play")}Case B</a>
+    <div class="acts">${first.map((s, i) => h`<a class="btn ${i ? "ghost" : "primary"}" href="#/scenarios/${enc(s.id)}">${icon("play")}${s.short || s.title}</a>`)}
     <button class="btn ghost" type="button" data-open-sheet>${icon("wrench")}Manage stack</button></div></div>`);
 }
 
 function renderMain(state) {
   const el = document.getElementById("main");
   const r = state.route;
-  if (r.name === "run") { renderRunView(state, el); return; }
+  if (r.name === "run") { el.__html = null; renderRunView(state, el); return; }
   if (r.name === "notes") return;
-  // Keep focus and caret in the scenario form across re-renders.
-  const a = document.activeElement;
-  const keep = a && el.contains(a) && a.name ? { name: a.name, s: a.selectionStart, e: a.selectionEnd } : null;
+  // patch() writes only what changed and keeps focus and caret across re-renders.
   if (r.name === "scenario") renderScenarioCard(state, el); else renderHome(state, el);
-  if (keep) {
-    const f = el.querySelector(`[name="${keep.name}"]`);
-    if (f) { f.focus(); try { f.setSelectionRange(keep.s, keep.e); } catch { /* number inputs */ } }
-  }
 }
 
 // ------------------------------------------------------------------ boot
@@ -201,6 +200,13 @@ function wire() {
   });
   document.addEventListener("keydown", (e) => {
     if (e.target.closest("input, textarea, select, dialog") || e.metaKey || e.ctrlKey || e.altKey) return;
+    // A manual step is a toggle button: Enter and Space tick it, like a click.
+    const tick = (e.key === "Enter" || e.key === " ") && e.target.closest("[data-tick]");
+    if (tick) {
+      e.preventDefault();
+      if (store.state.run) { toggleTick(store.state.run.workflow_id, tick.dataset.tick); store.touch("run"); }
+      return;
+    }
     if (e.key === "n" || e.key === "N") toggleNotes();
     else if (e.key === "p" || e.key === "P") toggleProjector();
     else if (e.key === "Escape") root.dataset.drawer = "closed";

@@ -12,8 +12,8 @@
   ],
   "ui_base": "http://127.0.0.1:8233",
   "console_version": "0.1.0",
-  "debounce_s": 20,
-  "auto_approve_limit_usd": 100,
+  "debounce_s": 20.0,
+  "auto_approve_limit_usd": 100.0,
   "default_approver": "dana.finance"
  },
  "stack": {
@@ -288,6 +288,8 @@
       "kind": "action",
       "done_when": "run.started",
       "talk": "A customer wants $40 back for broken headphones.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
       "action": "start-run",
       "make": "make case-a WF=support-1042-k3fb"
      },
@@ -297,7 +299,9 @@
       "title": "Support discovers Finance's Agent Card",
       "kind": "watch",
       "done_when": "card.discovered",
-      "talk": "First the A2A discovery: get_agent_card over the finance-agent endpoint."
+      "talk": "First the A2A discovery: get_agent_card over the finance-agent endpoint.",
+      "short": "Agent Card",
+      "point": "The short wire to the seam: get_agent_card, the one thing Finance publishes."
      },
      {
       "id": "ask",
@@ -305,7 +309,9 @@
       "title": "Support asks Finance for the refund",
       "kind": "watch",
       "done_when": "task.state in [submitted, working, input-required, completed, rejected, failed]",
-      "talk": "send_message crosses into namespace agent-services. Workers never talk to each other."
+      "talk": "send_message crosses into namespace agent-services. Workers never talk to each other.",
+      "short": "Ask Finance",
+      "point": "The wire crossing the seam into Finance's lane: one Nexus call between two namespaces."
      },
      {
       "id": "approved",
@@ -313,7 +319,9 @@
       "title": "Finance approves on its own",
       "kind": "watch",
       "done_when": "task.state in [completed, rejected, failed]",
-      "talk": "Under $100 at low risk, Finance's policy approves automatically: approved_by auto."
+      "talk": "Under $100 at low risk, Finance's policy approves automatically: approved_by auto.",
+      "short": "Approved",
+      "point": "Finance's lane: approved_by auto. No human was needed under $100."
      },
      {
       "id": "reply",
@@ -322,6 +330,9 @@
       "kind": "watch",
       "done_when": "run.closed",
       "talk": "The answer came back over Nexus, and Support quotes the refund ID.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish.",
+      "point_versioned": "The reply quoting the refund ID, and the pinned Build ID in the header.",
       "make": "make result WF=support-1042-k3fb"
      }
     ],
@@ -332,7 +343,11 @@
      "id": "case-b",
      "short": "Case B",
      "setup_recipe": null
-    }
+    },
+    "start_action": null,
+    "start_label": "Start Case A",
+    "view": null,
+    "extra_action": null
    },
    {
     "id": "case-b",
@@ -441,6 +456,8 @@
       "kind": "action",
       "done_when": "run.started",
       "talk": "A customer asks for $450 back on a laptop with a cracked screen.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
       "action": "start-run",
       "make": "make case-b WF=support-2077-k3fc"
      },
@@ -451,6 +468,8 @@
       "kind": "watch",
       "done_when": "task.state==input-required",
       "talk": "Over $100, Finance's agent says 'I need a human'. The task is input-required.",
+      "short": "A human is asked",
+      "point": "The big state, input-required, and the approval card waiting in Finance's lane.",
       "make": "make task-state WF=support-2077-k3fc"
      },
      {
@@ -460,6 +479,8 @@
       "kind": "action",
       "done_when": "compute.running==false",
       "talk": "I switch Support off completely. The Nexus call stays open on the server.",
+      "short": "Stop Support",
+      "point": "The compute rail goes dark: no Support worker runs. Finance keeps waiting; nothing is lost.",
       "action": "process.stop",
       "params": {
        "name": "worker-support",
@@ -475,6 +496,8 @@
       "kind": "human",
       "done_when": "task.state in [completed, rejected, failed]",
       "talk": "I approve as dana.finance.",
+      "short": "Approve",
+      "point": "The empty Support rail and the glowing held-open line in the seam, side by side. Then the approval card in Finance's lane.",
       "action": "approve",
       "make": "make approve WF=support-2077-k3fc APPROVER=dana.finance"
      },
@@ -485,6 +508,8 @@
       "kind": "action",
       "done_when": "compute.running==true",
       "talk": "A Support worker comes back and picks the conversation up where it was.",
+      "short": "Restart Support",
+      "point": "A new worker identity in Support's lane, on the same run.",
       "action": "process.start",
       "params": {
        "name": "worker-support"
@@ -498,6 +523,9 @@
       "kind": "watch",
       "done_when": "run.closed",
       "talk": "The reply quotes the refund ID, or apologises if Finance rejected it.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish.",
+      "point_versioned": "The reply quoting the refund ID, and the pinned Build ID in the header.",
       "make": "make result WF=support-2077-k3fc"
      },
      {
@@ -507,6 +535,9 @@
       "kind": "watch",
       "done_when": "run.closed",
       "talk": "Support's history went quiet while Finance waited: one Workflow Task recorded that the call started, then nothing until the answer.",
+      "short": "Report",
+      "point": "The report: how long the approval took, and seconds from approval to reply. This run is unversioned: plain workers on support-dev-tq.",
+      "point_versioned": "The report: lifetimes, one Build ID, and seconds from approval to reply.",
       "make": "make approval-report WF=support-2077-k3fc"
      }
     ],
@@ -517,7 +548,11 @@
      "id": "crash",
      "short": "Worker crash",
      "setup_recipe": "local-plain"
-    }
+    },
+    "start_action": null,
+    "start_label": "Start Case B",
+    "view": null,
+    "extra_action": null
    },
    {
     "id": "crash",
@@ -535,7 +570,7 @@
      "kind",
      "kind-plaintext"
     ],
-    "fit": "ready",
+    "fit": "needs_setup",
     "cost": "free",
     "cost_note": "scripted model",
     "case": "A",
@@ -599,7 +634,13 @@
      {
       "id": "support-plain-managed",
       "label": "The console runs the Support worker (so it can kill it)",
-      "ok": true
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "worker-support",
+       "label": "Start Support worker"
+      },
+      "by_setup": true
      }
     ],
     "steps": [
@@ -610,6 +651,8 @@
       "kind": "action",
       "done_when": "run.started",
       "talk": "Same Case A. Watch the Support lane: each model turn is an Activity.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
       "action": "start-run",
       "make": "make case-a WF=support-1042-crash-k3fd"
      },
@@ -620,6 +663,8 @@
       "kind": "action",
       "done_when": "process.worker-support==stopped",
       "talk": "kill -9 while the Supervisor is thinking. No graceful shutdown.",
+      "short": "Kill worker",
+      "point": "The rail: the lifetime ends abruptly with a red cut.",
       "action": "process.stop",
       "params": {
        "name": "worker-support",
@@ -633,6 +678,8 @@
       "kind": "action",
       "done_when": "compute.lifetimes>=2",
       "talk": "A new process with a new pid. It replays the history and carries on.",
+      "short": "Restart Support",
+      "point": "A new worker identity in Support's lane, on the same run.",
       "action": "process.start",
       "params": {
        "name": "worker-support"
@@ -644,7 +691,9 @@
       "title": "The same run finishes",
       "kind": "watch",
       "done_when": "run.closed",
-      "talk": "Two workers, one conversation, nothing repeated that had finished."
+      "talk": "Two workers, one conversation, nothing repeated that had finished.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish."
      }
     ],
     "notes": "Every model call and tool call is an Activity. I kill the process mid-thought, and it carries on from exactly where it stopped.",
@@ -654,7 +703,11 @@
      "id": "failure",
      "short": "Finance outage",
      "setup_recipe": "local-plain"
-    }
+    },
+    "start_action": null,
+    "start_label": "Start Case A",
+    "view": null,
+    "extra_action": null
    },
    {
     "id": "failure",
@@ -751,6 +804,8 @@
       "kind": "action",
       "done_when": "run.started",
       "talk": "Case A again.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
       "action": "start-run",
       "make": "make case-a WF=support-1042-fail-k31m"
      },
@@ -760,7 +815,9 @@
       "title": "Discovery completes",
       "kind": "watch",
       "done_when": "card.discovered",
-      "talk": "Discovery is synchronous: Finance must be up for it."
+      "talk": "Discovery is synchronous: Finance must be up for it.",
+      "short": "Agent Card",
+      "point": "The short wire to the seam: get_agent_card, the one thing Finance publishes."
      },
      {
       "id": "stop-finance",
@@ -769,6 +826,8 @@
       "kind": "action",
       "done_when": "process.worker-finance==stopped",
       "talk": "Finance goes away. Nobody polls agent-services-tq.",
+      "short": "Stop Finance",
+      "point": "Finance's pip in the stack bar goes down.",
       "action": "process.stop",
       "params": {
        "name": "worker-finance",
@@ -782,6 +841,8 @@
       "kind": "watch",
       "done_when": "nexus.attempt>=2",
       "talk": "Attempt 2, 3... with the last failure. Nothing fails on Support's side.",
+      "short": "Retries",
+      "point": "The seam: send_message on attempt 2, then 3, with the last failure. Support's code has no retry loop.",
       "make": "make pending WF=support-1042-fail-k31m"
      },
      {
@@ -791,6 +852,8 @@
       "kind": "action",
       "done_when": "nexus.completed",
       "talk": "Finance is back and the operation completes.",
+      "short": "Start Finance",
+      "point": "The same call completing as soon as Finance is back.",
       "action": "process.start",
       "params": {
        "name": "worker-finance"
@@ -802,7 +865,9 @@
       "title": "Support replies",
       "kind": "watch",
       "done_when": "run.closed",
-      "talk": "The customer never knew."
+      "talk": "The customer never knew.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish."
      }
     ],
     "notes": "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives.",
@@ -812,7 +877,11 @@
      "id": "serverless-b",
      "short": "AgentCore: you invoke",
      "setup_recipe": "local-invoke"
-    }
+    },
+    "start_action": null,
+    "start_label": "Start Case A",
+    "view": null,
+    "extra_action": null
    },
    {
     "id": "serverless-b",
@@ -921,6 +990,8 @@
       "kind": "action",
       "done_when": "run.started",
       "talk": "The conversation is pinned to support-supervisor at this Build ID. Nothing polls support-tq yet.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
       "action": "start-run",
       "make": "make case-b-serverless WF=support-2077-sl-k3fe"
      },
@@ -931,6 +1002,8 @@
       "kind": "action",
       "done_when": "compute.lifetimes>=1",
       "talk": "I am the WCI: POST /invocations asks for capacity, not work. Lifetime 1 picks the run up.",
+      "short": "Lifetime 1",
+      "point": "The compute rail lighting up: lifetime 1. Nothing polled support-tq until the AgentCore app was invoked.",
       "action": "invoke-local",
       "make": "TEMPORAL_BUILD_ID=4ee7f87 make invoke-local"
      },
@@ -940,7 +1013,9 @@
       "title": "Finance asks a human",
       "kind": "watch",
       "done_when": "task.state==input-required",
-      "talk": "Over $100, Finance's agent says 'I need a human'."
+      "talk": "Over $100, Finance's agent says 'I need a human'.",
+      "short": "A human is asked",
+      "point": "The big state, input-required, and the approval card waiting in Finance's lane."
      },
      {
       "id": "drained",
@@ -949,6 +1024,8 @@
       "kind": "watch",
       "done_when": "compute.drain==drained",
       "talk": "Nothing to do, so after the debounce the lifetime drains: /ping is Healthy again.",
+      "short": "Compute drains",
+      "point": "The rail on the left is an empty dashed lane: no Support worker exists. The glowing line in the Nexus seam: the server is holding Support's call to Finance open.",
       "make": "make agentcore-ping"
      },
      {
@@ -958,6 +1035,8 @@
       "kind": "human",
       "done_when": "task.state in [completed, rejected, failed]",
       "talk": "I approve as dana.finance.",
+      "short": "Approve",
+      "point": "The empty Support rail and the glowing held-open line in the seam, side by side. Then the approval card in Finance's lane.",
       "action": "approve",
       "make": "make approve WF=support-2077-sl-k3fe APPROVER=dana.finance"
      },
@@ -968,6 +1047,8 @@
       "kind": "action",
       "done_when": "compute.lifetimes>=2",
       "talk": "Finance's answer is in Support's history. A new lifetime picks it up.",
+      "short": "Lifetime 2",
+      "point": "The rail lights up again as lifetime 2 (with the server's WCI, its InvokeWorker row sits on the rail's edge).",
       "action": "invoke-local",
       "make": "TEMPORAL_BUILD_ID=4ee7f87 make invoke-local"
      },
@@ -977,7 +1058,10 @@
       "title": "Support replies with the refund ID",
       "kind": "watch",
       "done_when": "run.status==COMPLETED",
-      "talk": "Same build, pinned."
+      "talk": "Same build, pinned.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish.",
+      "point_versioned": "The reply quoting the refund ID, and the pinned Build ID in the header."
      },
      {
       "id": "report",
@@ -986,6 +1070,9 @@
       "kind": "watch",
       "done_when": "run.closed",
       "talk": "Two lifetimes, one Build ID.",
+      "short": "Report",
+      "point": "The report: how long the approval took, and seconds from approval to reply. This run is unversioned: plain workers on support-dev-tq.",
+      "point_versioned": "The report: lifetimes, one Build ID, and seconds from approval to reply.",
       "make": "uv run --frozen python scripts/serverless_report.py support-2077-sl-k3fe"
      }
     ],
@@ -996,7 +1083,11 @@
      "id": "wci-b",
      "short": "AgentCore: WCI invokes",
      "setup_recipe": null
-    }
+    },
+    "start_action": null,
+    "start_label": "Start Case B",
+    "view": null,
+    "extra_action": null
    },
    {
     "id": "wci-b",
@@ -1113,6 +1204,8 @@
       "kind": "action",
       "done_when": "run.started",
       "talk": "A customer asks for $450 back on a laptop.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
       "action": "start-run",
       "make": "make case-b-serverless WF=support-2077-wci-k3f9"
      },
@@ -1122,7 +1215,9 @@
       "title": "The WCI starts lifetime 1",
       "kind": "watch",
       "done_when": "compute.lifetimes>=1",
-      "talk": "Nothing was polling. The server's Worker Controller invoked AgentCore."
+      "talk": "Nothing was polling. The server's Worker Controller invoked AgentCore.",
+      "short": "Lifetime 1",
+      "point": "The compute rail lighting up: lifetime 1. Nothing polled support-tq until the AgentCore app was invoked."
      },
      {
       "id": "input-required",
@@ -1130,7 +1225,9 @@
       "title": "Finance asks a human",
       "kind": "watch",
       "done_when": "task.state==input-required",
-      "talk": "Over $100, Finance's agent says 'I need a human'."
+      "talk": "Over $100, Finance's agent says 'I need a human'.",
+      "short": "A human is asked",
+      "point": "The big state, input-required, and the approval card waiting in Finance's lane."
      },
      {
       "id": "drained",
@@ -1138,7 +1235,9 @@
       "title": "Support's compute drains",
       "kind": "watch",
       "done_when": "compute.drain==drained",
-      "talk": "Support's worker is gone. Nothing runs and nothing is billed."
+      "talk": "Support's worker is gone. Nothing runs and nothing is billed.",
+      "short": "Compute drains",
+      "point": "The rail on the left is an empty dashed lane: no Support worker exists. The glowing line in the Nexus seam: the server is holding Support's call to Finance open."
      },
      {
       "id": "approve",
@@ -1147,6 +1246,8 @@
       "kind": "human",
       "done_when": "task.state in [completed, rejected, failed]",
       "talk": "I approve as dana.finance.",
+      "short": "Approve",
+      "point": "The empty Support rail and the glowing held-open line in the seam, side by side. Then the approval card in Finance's lane.",
       "action": "approve",
       "make": "make approve WF=support-2077-wci-k3f9 APPROVER=dana.finance"
      },
@@ -1156,7 +1257,9 @@
       "title": "The WCI starts lifetime 2",
       "kind": "watch",
       "done_when": "compute.lifetimes>=2",
-      "talk": "Finance's answer landed in Support's history, so the server starts a worker."
+      "talk": "Finance's answer landed in Support's history, so the server starts a worker.",
+      "short": "Lifetime 2",
+      "point": "The rail lights up again as lifetime 2 (with the server's WCI, its InvokeWorker row sits on the rail's edge)."
      },
      {
       "id": "reply",
@@ -1164,7 +1267,10 @@
       "title": "Support replies with the refund ID",
       "kind": "watch",
       "done_when": "run.status==COMPLETED",
-      "talk": "Same build, pinned."
+      "talk": "Same build, pinned.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish.",
+      "point_versioned": "The reply quoting the refund ID, and the pinned Build ID in the header."
      },
      {
       "id": "report",
@@ -1173,6 +1279,9 @@
       "kind": "watch",
       "done_when": "run.closed",
       "talk": "Two lifetimes, one Build ID, reply seconds after the approval.",
+      "short": "Report",
+      "point": "The report: how long the approval took, and seconds from approval to reply. This run is unversioned: plain workers on support-dev-tq.",
+      "point_versioned": "The report: lifetimes, one Build ID, and seconds from approval to reply.",
       "make": "make wci-history BUILD=4ee7f87"
      }
     ],
@@ -1183,7 +1292,11 @@
      "id": "load",
      "short": "Load",
      "setup_recipe": null
-    }
+    },
+    "start_action": null,
+    "start_label": "Start Case B",
+    "view": null,
+    "extra_action": null
    },
    {
     "id": "load",
@@ -1209,36 +1322,22 @@
     "amount_usd": null,
     "options": [
      {
-      "id": "a2a_mode",
-      "label": "How Support asks Finance",
+      "id": "n",
+      "label": "Conversations",
+      "type": "number",
+      "default": 10,
+      "min": 1,
+      "max": 20
+     },
+     {
+      "id": "kind",
+      "label": "What each one runs",
       "type": "choice",
       "choices": [
-       "tool",
-       "handoff"
+       "ping",
+       "case-a"
       ],
-      "default": "tool"
-     },
-     {
-      "id": "nexus_send_timeout",
-      "label": "Support's budget for Finance's answer",
-      "type": "duration",
-      "default": "25h"
-     },
-     {
-      "id": "queue",
-      "label": "Support's task queue",
-      "type": "choice",
-      "choices": [
-       "dev",
-       "versioned"
-      ],
-      "default": "versioned"
-     },
-     {
-      "id": "workflow_id",
-      "label": "Workflow ID",
-      "type": "text",
-      "default": "load-q3k4"
+      "default": "ping"
      }
     ],
     "preconditions": [
@@ -1271,6 +1370,7 @@
       "kind": "action",
       "done_when": "job.load==succeeded",
       "talk": "N at once on support-tq.",
+      "short": "Load",
       "action": "load",
       "make": "make load N=10 LOAD_KIND=ping"
      }
@@ -1282,7 +1382,11 @@
      "id": "smoke",
      "short": "Nexus hop, no AI",
      "setup_recipe": null
-    }
+    },
+    "start_action": "load",
+    "start_label": "Start {n} conversations",
+    "view": null,
+    "extra_action": null
    },
    {
     "id": "smoke",
@@ -1345,6 +1449,7 @@
       "kind": "action",
       "done_when": "job.smoke==succeeded",
       "talk": "A Workflow in agents calls a named endpoint; the server routes it into agent-services.",
+      "short": "Smoke",
       "action": "smoke",
       "make": "make smoke"
      },
@@ -1355,6 +1460,8 @@
       "kind": "action",
       "done_when": "job.card==succeeded",
       "talk": "A Nexus operation with no Workflow at all, from the CLI.",
+      "short": "Agent Card",
+      "point": "The short wire to the seam: get_agent_card, the one thing Finance publishes.",
       "action": "card",
       "make": "make card"
      }
@@ -1366,6 +1473,13 @@
      "id": "cleanup",
      "short": "Clean up",
      "setup_recipe": null
+    },
+    "start_action": "smoke",
+    "start_label": "Run the smoke caller",
+    "view": null,
+    "extra_action": {
+     "action": "card",
+     "label": "Fetch the Agent Card"
     }
    },
    {
@@ -1402,7 +1516,11 @@
     "notes": "Housekeeping before the next demo.",
     "setup_recipe": null,
     "setup_blocked": null,
-    "next": null
+    "next": null,
+    "start_action": null,
+    "start_label": "Start",
+    "view": "cleanup",
+    "extra_action": null
    }
   ]
  },
@@ -1431,7 +1549,7 @@
        "kind-laptop",
        "teardown"
       ],
-      "default": "local-plain"
+      "default": "local-wci"
      },
      {
       "id": "variant",
@@ -1443,7 +1561,7 @@
       "default": "scripted"
      }
     ],
-    "make": "recipe Local, plain Support",
+    "make": "recipe Local, serverless (WCI emulator)",
     "long": false,
     "group": "recipe",
     "recipes": [
@@ -1934,7 +2052,8 @@
     "cost": "free",
     "profiles": [
      "local",
-     "kind"
+     "kind",
+     "kind-plaintext"
     ],
     "available": true,
     "why_not": null,
@@ -1959,12 +2078,13 @@
     "cost": "free",
     "profiles": [
      "local",
-     "kind"
+     "kind",
+     "kind-plaintext"
     ],
     "available": true,
     "why_not": null,
     "params": [],
-    "make": "make invoke-local",
+    "make": "make invoke-local TEMPORAL_BUILD_ID=4ee7f87",
     "long": false,
     "group": "oneshot"
    },
@@ -1974,7 +2094,8 @@
     "cost": "free",
     "profiles": [
      "local",
-     "kind"
+     "kind",
+     "kind-plaintext"
     ],
     "available": true,
     "why_not": null,
@@ -1988,14 +2109,12 @@
     "label": "Run the smoke caller",
     "cost": "free",
     "profiles": [
-     "local",
-     "kind",
-     "kind-plaintext"
+     "local"
     ],
     "available": true,
     "why_not": null,
     "params": [],
-    "make": "make smoke",
+    "make": "make smoke WF=smoke-1042-<id>",
     "long": false,
     "group": "oneshot"
    },
@@ -2060,7 +2179,7 @@
     "available": true,
     "why_not": null,
     "params": [],
-    "make": "make wci-history",
+    "make": "make wci-history BUILD=4ee7f87",
     "long": false,
     "group": "oneshot"
    },
@@ -2087,8 +2206,8 @@
      "kind",
      "kind-plaintext"
     ],
-    "available": true,
-    "why_not": null,
+    "available": false,
+    "why_not": "Not on profile local.",
     "params": [],
     "make": "make kind-up",
     "long": true,
@@ -2102,10 +2221,10 @@
      "kind",
      "kind-plaintext"
     ],
-    "available": true,
-    "why_not": null,
+    "available": false,
+    "why_not": "Not on profile local.",
     "params": [],
-    "make": "make kind-temporal",
+    "make": "make kind-temporal KIND_TLS=1",
     "long": true,
     "group": "cluster"
    },
@@ -2117,8 +2236,8 @@
      "kind",
      "kind-plaintext"
     ],
-    "available": true,
-    "why_not": null,
+    "available": false,
+    "why_not": "Not on profile local.",
     "params": [],
     "make": "make kind-workers FINANCE_MODEL=scripted KIND_TLS=1",
     "long": true,
@@ -2129,10 +2248,11 @@
     "label": "Pull client certs",
     "cost": "free",
     "profiles": [
-     "kind"
+     "kind",
+     "kind-plaintext"
     ],
-    "available": true,
-    "why_not": null,
+    "available": false,
+    "why_not": "Not on profile local.",
     "params": [],
     "make": "make certs-pull",
     "long": true,
@@ -2146,8 +2266,8 @@
      "kind",
      "kind-plaintext"
     ],
-    "available": true,
-    "why_not": null,
+    "available": false,
+    "why_not": "Not on profile local.",
     "params": [],
     "make": "make pf",
     "long": true,
@@ -2161,8 +2281,8 @@
      "kind",
      "kind-plaintext"
     ],
-    "available": true,
-    "why_not": null,
+    "available": false,
+    "why_not": "Not on profile local.",
     "params": [],
     "make": "make pf-stop",
     "long": true,
@@ -2176,8 +2296,8 @@
      "kind",
      "kind-plaintext"
     ],
-    "available": true,
-    "why_not": null,
+    "available": false,
+    "why_not": "Not on profile local.",
     "params": [],
     "make": "make kind-down",
     "long": true,

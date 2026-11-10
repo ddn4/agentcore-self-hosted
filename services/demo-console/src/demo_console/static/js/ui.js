@@ -105,3 +105,30 @@ document.addEventListener("click", (e) => {
 });
 /** `open` for a kept disclosure: what the presenter chose, else `dflt`. */
 export const openAttr = (key, dflt = false) => ((keptOpen.has(key) ? keptOpen.get(key) : dflt) ? "open" : "");
+
+/**
+ * Replace el's HTML only when it changed, so a re-render with nothing new (an unrelated stream
+ * event) keeps focus, typed values, open disclosures and scroll. When it does write, focus
+ * goes back to the element with the same name and data-* attributes, caret included.
+ * Returns true when it wrote. Code that writes el some other way sets el.__html = null.
+ */
+export function patch(el, html) {
+  const s = String(html);
+  if (el.__html === s) return false;
+  const a = document.activeElement;
+  let sel = null;
+  let caret = null;
+  if (a && a !== el && el.contains(a)) {
+    const keys = [...a.attributes].filter((x) => x.name === "name" || x.name.startsWith("data-"));
+    if (keys.length) sel = a.tagName.toLowerCase() + keys.map((x) => `[${x.name}="${CSS.escape(x.value)}"]`).join("");
+    try { caret = [a.selectionStart, a.selectionEnd]; } catch { /* number inputs have none */ }
+  }
+  el.__html = s;
+  el.innerHTML = s;
+  const f = sel && el.querySelector(sel);
+  if (f) {
+    f.focus({ preventScroll: true });
+    if (caret && caret[0] !== null) { try { f.setSelectionRange(caret[0], caret[1]); } catch { /* not a text field */ } }
+  }
+  return true;
+}

@@ -73,7 +73,7 @@ export function updateApproval(state) {
   if (forWf !== run.workflow_id) {
     forWf = run.workflow_id;
     n.classList.remove("done");
-    n.querySelector("[name=approver]").value = state.config?.default_approver || "dana.finance";
+    n.querySelector("[name=approver]").value = state.config?.default_approver || "";
   }
   if (run.task?.state === "input-required") n.classList.remove("done");
   const task = run.task || {};

@@ -29,13 +29,11 @@ export function upsertJob(j) {
 export const recipes = () => actionById("start-recipe")?.recipes || [];
 export const recipeById = (id) => recipes().find((r) => r.id === id) || null;
 
-const CASE_VERB = { A: "Start Case A", B: "Start Case B" };
-
-/** Start a conversation for a scenario. opts are the scenario card's option values. */
+/** Start a conversation for a scenario. opts are the scenario card's option values; the queue
+ *  defaults to the one the backend picked for this scenario and the stack's shape. */
 export async function startRun(scenario, opts = {}) {
-  const versioned = ["serverless-b", "wci-b"].includes(scenario.id)
-    || (String(scenario.id).startsWith("case-") && /^serverless/.test(S().stack?.shape || ""));
-  const queue = opts.queue || (versioned ? "versioned" : "dev");
+  const queueDefault = (scenario.options || []).find((o) => o.id === "queue")?.default;
+  const queue = opts.queue || queueDefault || "dev";
   const cost = scenario.cost || "free";
   const body = {
     scenario: scenario.id,
@@ -45,7 +43,7 @@ export async function startRun(scenario, opts = {}) {
     nexus_send_timeout: opts.nexus_send_timeout || "25h",
     ticket: null,
   };
-  const label = CASE_VERB[scenario.case] || "Start the run";
+  const label = scenario.start_label || "Start the run";
   const res = await gated({
     key: `start:${scenario.id}`, cost, title: label,
     body: `Starts ${body.workflow_id || "a new run"} on ${queue === "versioned" ? "support-tq" : "support-dev-tq"}.`,

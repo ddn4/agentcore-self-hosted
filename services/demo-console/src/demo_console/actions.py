@@ -16,7 +16,7 @@ import random
 import re
 import signal
 import time
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -32,12 +32,19 @@ from demo_console.kind import (
     postgres_ready,
 )
 from demo_console.procs import ProcessError, ProcessManager
-from demo_console.scenarios import suffix
-from demo_console.settings import DEPLOYMENT_NAME, FINANCE_TQ, SERVICES_NS, Settings
+from demo_console.scenarios import shape_recipe, suffix
+from demo_console.settings import (
+    DEPLOYMENT_NAME,
+    FINANCE_TQ,
+    KIND_PROFILES,
+    PROFILES,
+    SERVICES_NS,
+    Settings,
+)
 from demo_console.stack import HttpProbe, StackProbe, fresh, ping_status
 
-KIND = ("kind", "kind-plaintext")
-ALL = ("local", "kind", "kind-plaintext")
+KIND = KIND_PROFILES
+ALL = PROFILES
 #: Steps that may run longer than a plain make call: they stream into the job log.
 SHORT_S = 180.0
 
@@ -184,6 +191,14 @@ class ActionSpec:
     sync: bool = False
     #: Where the sheet lists it: ``recipe | oneshot | cluster``.
     group: str = "oneshot"
+    #: ``make -s <target> <VAR=value>...`` as templates over the params, ``{build}``,
+    #: ``{tls}`` (the profile's KIND_TLS) and ``{suffix}`` (fresh for each run). The job runs
+    #: exactly this argv, and the console shows it without ``-s``: one source for both.
+    make: tuple[str, ...] = ()
+    #: Run in-process (plain HTTP or a recipe body); ``make`` is then its terminal twin.
+    in_process: bool = False
+    #: The longest a ``make`` job may run before its process group is stopped.
+    within: float = 600.0
 
 
 SPECS: dict[str, ActionSpec] = {
@@ -208,8 +223,14 @@ SPECS: dict[str, ActionSpec] = {
                 },
             ],
             group="recipe",
+            in_process=True,
         ),
-        ActionSpec("nexus-endpoint", "Create the Nexus endpoint finance-agent", ALL),
+        ActionSpec(
+            "nexus-endpoint",
+            "Create the Nexus endpoint finance-agent",
+            ALL,
+            make=("nexus-endpoint",),
+        ),
         ActionSpec(
             "register-version",
             "Register Support's version",
@@ -223,11 +244,29 @@ SPECS: dict[str, ActionSpec] = {
                 }
             ],
             needs_build=True,
+            make=("register-version", "MODE={mode}"),
         ),
-        ActionSpec("invoke-local", "Invoke AgentCore app", ALL, needs_build=True, sync=True),
-        ActionSpec("agentcore-ping", "Ping the AgentCore app", ALL, sync=True),
-        ActionSpec("smoke", "Run the smoke caller", ("local",)),
-        ActionSpec("card", "Standalone get_agent_card", ALL),
+        ActionSpec(
+            "invoke-local",
+            "Invoke AgentCore app",
+            ALL,
+            needs_build=True,
+            sync=True,
+            make=("invoke-local", "TEMPORAL_BUILD_ID={build}"),
+            in_process=True,
+        ),
+        ActionSpec(
+            "agentcore-ping",
+            "Ping the AgentCore app",
+            ALL,
+            sync=True,
+            make=("agentcore-ping",),
+            in_process=True,
+        ),
+        ActionSpec(
+            "smoke", "Run the smoke caller", ("local",), make=("smoke", "WF=smoke-1042-{suffix}")
+        ),
+        ActionSpec("card", "Standalone get_agent_card", ALL, make=("card",)),
         ActionSpec(
             "load",
             "Start N conversations",
@@ -236,18 +275,34 @@ SPECS: dict[str, ActionSpec] = {
                 {"id": "n", "type": "number", "default": 10, "min": 1, "max": 20},
                 {"id": "kind", "type": "choice", "choices": ["ping", "case-a"], "default": "ping"},
             ],
+            make=("load", "N={n}", "LOAD_KIND={kind}"),
         ),
-        ActionSpec("wci-history", "Show the WCI's history", ALL, needs_build=True),
-        ActionSpec("colima-up", "Start Docker VM", KIND, long=True, group="cluster"),
-        ActionSpec("kind-up", "Create the kind cluster", KIND, long=True, group="cluster"),
-        ActionSpec("kind-temporal", "Install Temporal on kind", KIND, long=True, group="cluster"),
         ActionSpec(
-            "kind-workers", "Deploy Finance pods (scripted)", KIND, long=True, group="cluster"
+            "wci-history",
+            "Show the WCI's history",
+            ALL,
+            needs_build=True,
+            make=("wci-history", "BUILD={build}"),
         ),
-        ActionSpec("certs-pull", "Pull client certs", KIND, long=True, group="cluster"),
-        ActionSpec("pf", "Start port-forward", KIND, long=True, group="cluster"),
-        ActionSpec("pf-stop", "Stop port-forward", KIND, long=True, group="cluster"),
-        ActionSpec("kind-down", "Delete the kind cluster", KIND, long=True, group="cluster"),
+        *(
+            ActionSpec(
+                id, label, KIND, long=True, group="cluster", make=(id, *extra), within=1800.0
+            )
+            for id, label, extra in (
+                ("colima-up", "Start Docker VM", ()),
+                ("kind-up", "Create the kind cluster", ()),
+                ("kind-temporal", "Install Temporal on kind", ("KIND_TLS={tls}",)),
+                (
+                    "kind-workers",
+                    "Deploy Finance pods (scripted)",
+                    ("FINANCE_MODEL=scripted", "KIND_TLS={tls}"),
+                ),
+                ("certs-pull", "Pull client certs", ()),
+                ("pf", "Start port-forward", ()),
+                ("pf-stop", "Stop port-forward", ()),
+                ("kind-down", "Delete the kind cluster", ()),
+            )
+        ),
     )
 }
 
@@ -305,7 +360,9 @@ class ActionService:
         if spec.id == "register-version":
             out["mode"] = self._default_mode()
         if spec.id == "start-recipe":
-            out["recipe"] = "kind-up" if self.settings.profile in KIND else "local-plain"
+            # The recipe that produces the stack's current shape (the sheet recommends it).
+            shape = self.stack.facts.shape
+            out["recipe"] = shape_recipe(self.settings.profile, shape) or "local-plain"
         return out
 
     def _default_mode(self) -> str:
@@ -330,24 +387,29 @@ class ActionService:
                 return "No kind cluster: run Bring up kind."
         return None
 
-    def make_text(self, spec: ActionSpec, params: dict[str, Any]) -> str:
-        p = params
-        recipe = RECIPES.get(str(p.get("recipe")))
-        texts = {
-            "start-recipe": f"recipe {recipe.title if recipe else p.get('recipe')}",
-            "register-version": f"make register-version MODE={p.get('mode')}",
-            "load": f"make load N={p.get('n')} LOAD_KIND={p.get('kind')}",
-            "wci-history": f"make wci-history BUILD={self.stack.facts.build_id or '<build>'}",
-            "invoke-local": "TEMPORAL_BUILD_ID="
-            f"{self.stack.facts.build_id or '<build>'} make invoke-local",
-            "kind-temporal": f"make kind-temporal KIND_TLS={self._kind_tls()}",
-            "kind-workers": f"make kind-workers FINANCE_MODEL=scripted KIND_TLS={self._kind_tls()}",
-            "smoke": "make smoke",
-        }
-        text = texts.get(spec.id, f"make {spec.id}")
-        if self.settings.profile != "local" and text.startswith("make "):
-            text += f" TEMPORAL_PROFILE={self.settings.profile}"
-        return text
+    def argv(
+        self, spec: ActionSpec, params: dict[str, Any], build: str | None, tag: str
+    ) -> list[str]:
+        """``make -s <target> <VAR=value>...`` for ``spec``: what a ``make`` job runs."""
+        values = {**params, "build": build or "<build>", "tls": self._kind_tls(), "suffix": tag}
+        argv = ["make", "-s", *(part.format(**values) for part in spec.make)]
+        if self.settings.profile != "local":
+            argv.append(f"TEMPORAL_PROFILE={self.settings.profile}")
+        return argv
+
+    def make_text(
+        self,
+        spec: ActionSpec,
+        params: dict[str, Any],
+        build: str | None = None,
+        tag: str = "<id>",
+    ) -> str:
+        """The command the console shows: its argv without ``-s`` (a recipe: its title)."""
+        if spec.id == "start-recipe":
+            recipe = RECIPES.get(str(params.get("recipe")))
+            return f"recipe {recipe.title if recipe else params.get('recipe')}"
+        argv = self.argv(spec, params, build or self.stack.facts.build_id, tag)
+        return " ".join([argv[0], *argv[2:]])
 
     def _kind_tls(self) -> str:
         return "0" if self.settings.profile == "kind-plaintext" else "1"
@@ -471,7 +533,7 @@ class ActionService:
                 raise ActionError(
                     "precondition_failed",
                     f"{what} is still running.",
-                    "Wait for it to end (Manage stack, Jobs).",
+                    "One stack job runs at a time: wait for it to end (Manage stack, Jobs).",
                     job=job.id,
                 )
 
@@ -509,76 +571,42 @@ class ActionService:
                 "precondition_failed",
                 "No Build ID. Commit uv.lock, or start with TEMPORAL_BUILD_ID=<id>.",
             )
+        # Checked again with no await before the job exists: two quick clicks cannot both pass.
+        self._busy(spec.id)
         job = await self._start(spec, params, cost, build, title)
         if spec.sync:
-            job = await self.jobs.wait(job.id, within=30)
+            try:
+                job = await self.jobs.wait(job.id, within=30)
+            except TimeoutError:
+                return 202, self.jobs.view(job)  # still running: the stream reports the end
             return 200, self.jobs.view(job)
         return 202, self.jobs.view(job)
 
     async def _start(
         self, spec: ActionSpec, params: dict[str, Any], cost: str, build: str | None, title: str
     ) -> Job:
-        env = self.settings.child_env(build)
-        make = self.make_text(spec, params)
-
-        def cmd(*argv: str, extra: dict[str, str] | None = None) -> Awaitable[Job]:
-            return self.jobs.run_command(
+        tag = suffix()
+        make = self.make_text(spec, params, build, tag)
+        if not spec.in_process:
+            return await self.jobs.run_command(
                 spec.id,
-                list(argv),
-                env={**env, **(extra or {})},
+                self.argv(spec, params, build, tag),
+                env=self.settings.child_env(build),
                 cost=cost,
                 params=params,
                 display=make,
                 title=title,
+                within=spec.within,
             )
-
-        match spec.id:
-            case "nexus-endpoint":
-                return await cmd("make", "-s", "nexus-endpoint")
-            case "register-version":
-                return await cmd("make", "-s", "register-version", f"MODE={params['mode']}")
-            case "smoke":
-                return await cmd("make", "-s", "smoke", f"WF=smoke-1042-{suffix()}")
-            case "card":
-                return await cmd("make", "-s", "card")
-            case "load":
-                return await cmd(
-                    "make", "-s", "load", f"N={params['n']}", extra={"LOAD_KIND": params["kind"]}
-                )
-            case "wci-history":
-                return await cmd("make", "-s", "wci-history", f"BUILD={build}")
-            case "colima-up" | "kind-up" | "kind-down" | "certs-pull" | "pf" | "pf-stop":
-                return await cmd("make", "-s", spec.id)
-            case "kind-temporal":
-                return await cmd("make", "-s", "kind-temporal", f"KIND_TLS={self._kind_tls()}")
-            case "kind-workers":
-                return await cmd(
-                    "make",
-                    "-s",
-                    "kind-workers",
-                    "FINANCE_MODEL=scripted",
-                    f"KIND_TLS={self._kind_tls()}",
-                )
-            case "invoke-local":
-                return await self.jobs.run_body(
-                    spec.id, make, lambda log: self.invoke_local(log, build), cost=cost, title=title
-                )
-            case "agentcore-ping":
-                return await self.jobs.run_body(
-                    spec.id, "make agentcore-ping", self._ping_body, cost=cost, title=title
-                )
-            case "start-recipe":
-                recipe = params["recipe"]
-                variant = params["variant"]
-                return await self.jobs.run_body(
-                    spec.id,
-                    make,
-                    lambda log: self.recipe(log, recipe, variant),
-                    cost=cost,
-                    params=params,
-                    title=title,
-                )
-        raise ActionError("not_found", f"No action {spec.id!r}.")
+        body: Callable[[JobLog], Awaitable[Any]]
+        if spec.id == "invoke-local":
+            body = lambda log: self.invoke_local(log, build)  # noqa: E731
+        elif spec.id == "agentcore-ping":
+            body = self._ping_body
+        else:
+            recipe, variant = params["recipe"], params["variant"]
+            body = lambda log: self.recipe(log, recipe, variant)  # noqa: E731
+        return await self.jobs.run_body(spec.id, make, body, cost=cost, params=params, title=title)
 
     # --- in-process bodies -------------------------------------------------------------------
 

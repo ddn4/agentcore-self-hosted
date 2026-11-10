@@ -1,6 +1,7 @@
 // Recent conversations (visibility list) and load batches, in the left column (DESIGN 2.1, 5.3).
 import { enc } from "./api.js";
 import { h, hhmm, icon, stateGlyph } from "./format.js";
+import { patch } from "./ui.js";
 
 const ANSWERED = new Set(["completed", "rejected", "failed", "canceled"]);
 
@@ -27,13 +28,14 @@ export function renderRuns(state) {
   const focus = state.route.name === "run" ? state.route.wf : null;
   if (!body) {
     const down = (state.stack?.components || []).some((c) => c.id === "temporal" && c.status === "down");
-    el.innerHTML = String(h`<li><p class="empty-side">${down ? "Runs appear here once Temporal is reachable." : "Loading runs…"}</p></li>`);
+    patch(el, h`<li><p class="empty-side">${down ? "Runs appear here once Temporal is reachable." : "Loading runs…"}</p></li>`);
     return;
   }
   const runs = (body.runs || []).filter((r) => !r.group);
   const groups = body.groups || [];
   if (!runs.length && !groups.length) {
-    el.innerHTML = String(h`<li><p class="empty-side">No runs yet. Start Case A to see the hop.</p></li>`);
+    const first = (state.scenarios || []).find((s) => s.fit !== "wrong_profile");
+    patch(el, h`<li><p class="empty-side">No runs yet. ${first ? `Start ${first.short || first.title} to see the hop.` : "Pick a scenario to start one."}</p></li>`);
     return;
   }
   const label = (r) => (state.scenarios || []).find((s) => s.id === r.scenario)?.run_label;
@@ -47,5 +49,5 @@ export function renderRuns(state) {
       <span class="id">${g.id}</span><span class="st">${h`<span class="sg" data-s="${ok ? "completed" : done ? "failed" : "running"}">${icon(ok ? "check" : done ? "x" : "dot")}${g.completed} of ${g.n}</span>`}</span>
       <span class="when">Load, ${g.kind}${g.failed ? `, ${g.failed} failed` : ""}</span></div></li>`;
   });
-  el.innerHTML = [...items, ...gs].map(String).join("");
+  patch(el, [...items, ...gs].map(String).join(""));
 }

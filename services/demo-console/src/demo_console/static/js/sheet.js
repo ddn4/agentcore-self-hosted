@@ -8,7 +8,7 @@ import { recipeById, runAction, startProcess, stopProcess } from "./actions.js";
 import { PROFILE_LABEL, SHAPE_LABEL, ago, costMark, h, icon, ms } from "./format.js";
 import { buildBadge, pip, upSummary } from "./stackbar.js";
 import { store } from "./store.js";
-import { openAttr, toastError } from "./ui.js";
+import { openAttr, patch, toastError } from "./ui.js";
 
 const dlg = () => document.getElementById("sheet");
 const openLogs = new Map(); // "proc:<name>" | "job:<id>" -> lines[]
@@ -18,12 +18,14 @@ let logTimer = null;
 const STEP_MARK = { done: "✓", skipped: "–", failed: "✗", running: "…" };
 const STEP_WORD = { done: "done", skipped: "skipped", failed: "failed", running: "running" };
 const RECENT_MS = 30 * 60 * 1000;
-const STATUS_WORD = { running: "running", stopped: "stopped", exited: "exited", external: "running outside the console", unavailable: "unavailable", succeeded: "succeeded", failed: "failed" };
+const STATUS_WORD = { running: "running", stopped: "stopped", exited: "exited", external: "running outside the console", unavailable: "unavailable", succeeded: "succeeded", failed: "failed", ended: "ended, exit code unknown" };
+
+const logText = (lines) => (lines.length ? lines.join("\n") : "No output yet.");
 
 function logBox(key) {
   const lines = openLogs.get(key);
   if (!lines) return "";
-  return h`<pre class="log" aria-label="Log">${lines.length ? lines.join("\n") : "No output yet."}</pre>`;
+  return h`<pre class="log" aria-label="Log" data-log-of="${key}">${logText(lines)}</pre>`;
 }
 
 function procItem(p, profile, busy) {
@@ -59,7 +61,7 @@ function paramField(a, p) {
   if (p.type === "choice") {
     return h`<select aria-label="${p.id} for ${a.label}" data-choice="${key}">${p.choices.map((c) => h`<option value="${c}" ${String(c) === String(v) ? "selected" : ""}>${c}</option>`)}</select>`;
   }
-  return h`<input type="${p.type === "number" ? "number" : "text"}" style="width:5.5rem" aria-label="${p.id} for ${a.label}" data-choice="${key}" value="${v ?? ""}" ${p.min !== undefined ? h`min="${p.min}"` : ""} ${p.max !== undefined ? h`max="${p.max}"` : ""}>`;
+  return h`<input class="param" type="${p.type === "number" ? "number" : "text"}" aria-label="${p.id} for ${a.label}" data-choice="${key}" value="${v ?? ""}" ${p.min !== undefined ? h`min="${p.min}"` : ""} ${p.max !== undefined ? h`max="${p.max}"` : ""}>`;
 }
 
 function actionItem(a, profile, busy) {
@@ -104,15 +106,15 @@ function recipeCard(r, jobs, busy, rec) {
     <span class="rgo"><button class="btn small ${r.danger ? "no" : rec ? "primary" : "ghost"} ${busy["action:start-recipe"] || running ? "busy" : ""}" type="button" data-recipe="${r.id}" ${r.available === false || running ? "disabled" : ""}>${icon(r.danger ? "stop" : "play")}${verb}</button>${live ? costMark("tokens", true) : ""}${r.long && !running ? h`<span class="muted">several minutes</span>` : ""}${running ? h`<span class="muted">running, started ${ago(run.started_at)}</span>` : ""}</span></div>`;
 }
 
-/** The recipe for what is on screen: the scenario's own, else the stack's current shape. */
-const SHAPE_RECIPE = { plain: "local-plain", "serverless-invoke": "local-invoke", "serverless-wci": "local-wci" };
-function recommended(state, profile) {
+/** The recipe for what is on screen: the scenario's own, else the one for the stack's current
+ *  shape (the backend's default for the start-recipe action). */
+function recommended(state) {
   const r = state.route;
   const id = r.name === "scenario" ? r.scenario : state.run && state.run.workflow_id === r.wf ? state.run.scenario : null;
   const scen = (state.scenarios || []).find((x) => x.id === id);
   if (scen?.setup_recipe) return { id: scen.setup_recipe, why: `for ${scen.short || scen.title}` };
-  if (profile !== "local") return { id: "kind-up", why: "" };
-  return { id: SHAPE_RECIPE[state.stack?.shape] || "local-plain", why: "" };
+  const param = (state.actions || []).find((a) => a.id === "start-recipe")?.params?.find((p) => p.id === "recipe");
+  return { id: param?.default || null, why: "" };
 }
 
 /** The running job, pinned on top: where it is and its last lines. */
@@ -144,7 +146,7 @@ function failedJob(j) {
 
 function jobItem(j) {
   return h`<li>
-    <span class="nm">${j.title || j.action} <span class="pstate" data-s="${j.status}">${j.status}</span>${j.exit_code ? h` <span class="muted">exit ${j.exit_code}</span>` : ""}</span>
+    <span class="nm">${j.title || j.action} <span class="pstate" data-s="${j.status}">${STATUS_WORD[j.status] || j.status}</span>${j.exit_code ? h` <span class="muted">exit ${j.exit_code}</span>` : ""}</span>
     <span class="mk id">${j.command}${j.started_at ? h` <span class="muted">${ago(j.started_at)}</span>` : ""}</span>
     <span class="ctl"><button class="tbtn" type="button" data-log="job:${j.id}" aria-pressed="${String(openLogs.has(`job:${j.id}`))}">${icon("log")}Log</button></span>
     ${openLogs.has(`job:${j.id}`) ? h`<pre class="log">${(j.log_tail || []).join("\n") || "No output."}</pre>` : ""}
@@ -168,7 +170,7 @@ export function renderSheet(state) {
   const procs = state.processes || [];
   const actions = state.actions || [];
   const jobs = state.jobs || [];
-  const rec = recommended(state, profile);
+  const rec = recommended(state);
   const recipes = (actions.find((a) => a.id === "start-recipe")?.recipes || [])
     .filter((r) => r.profiles.includes(profile))
     .sort((a, b) => (b.id === rec.id) - (a.id === rec.id) || (a.danger ? 1 : 0) - (b.danger ? 1 : 0));
@@ -187,7 +189,7 @@ export function renderSheet(state) {
   const dockerStop = failed?.action === "start-recipe" && failed.result?.step === "docker";
   const clusterBox = kind ? advanced("cluster", "Cluster", "one layer at a time", dockerStop || failedFor(new Set(cluster.map((a) => a.id))),
     h`<p class="sub">Each layer takes a few minutes. Bring up kind runs them in order. Delete removes the cluster.</p><ul class="plist">${cluster.map((a) => actionItem(a, profile, busy))}</ul>`) : "";
-  d.innerHTML = String(h`<header><h2 id="sheet-title">Manage stack</h2><span class="muted">profile <b class="id">${profile}</b></span>
+  const wrote = patch(d, h`<header><h2 id="sheet-title">Manage stack</h2><span class="muted">profile <b class="id">${profile}</b></span>
       <button class="tbtn" type="button" data-close-sheet aria-label="Close">${icon("close")}</button>
       ${stackState(state.stack)}</header>
     <div class="body">
@@ -208,7 +210,7 @@ export function renderSheet(state) {
       </section>
     </div>`);
   const body = d.querySelector(".body");
-  if (body) body.scrollTop = scroll;
+  if (wrote && body) body.scrollTop = scroll;
 }
 
 async function refreshLogs() {
@@ -220,7 +222,12 @@ async function refreshLogs() {
       openLogs.set(k, res.lines || []);
     } catch { /* keep the last lines */ }
   }));
-  store.touch("processes");
+  // Only the open log boxes change: a full re-render would reset fields being typed in.
+  for (const k of procKeys) {
+    const pre = dlg().querySelector(`pre[data-log-of="${CSS.escape(k)}"]`);
+    const text = logText(openLogs.get(k) || []);
+    if (pre && pre.textContent !== text) pre.textContent = text;
+  }
 }
 
 export function openSheet() {
@@ -294,8 +301,12 @@ export function wireSheet() {
       } catch (err) { toastError(err); }
     }
   });
-  d.addEventListener("change", (e) => {
+  // Keep what is typed as it is typed, so a re-render (a job event, a stack change) puts it
+  // back instead of the default.
+  const keep = (e) => {
     const c = e.target.closest("[data-choice]");
     if (c) choice.set(c.dataset.choice, c.value);
-  });
+  };
+  d.addEventListener("input", keep);
+  d.addEventListener("change", keep);
 }

@@ -5,7 +5,7 @@ import { post } from "./api.js";
 import { runFix, startProcess } from "./actions.js";
 import { PROFILE_LABEL, SHAPE_LABEL, h, icon } from "./format.js";
 import { prefs, store } from "./store.js";
-import { copyBox, toast, toastError } from "./ui.js";
+import { copyBox, patch, toast, toastError } from "./ui.js";
 
 const KEY_PIPS = new Set(["temporal", "finance", "support"]);
 const root = document.documentElement;
@@ -63,13 +63,13 @@ export function renderStackBar(state) {
   const el = document.getElementById("stackbar");
   const cfg = state.config || {};
   const stack = state.stack;
-  const profiles = cfg.profiles || ["local", "kind", "kind-plaintext"];
+  const profiles = cfg.profiles || [];
   const comps = stack?.components || [];
   const sum = upSummary(stack);
   // Only the key pips that are not up earn a place in the bar; the rest is one count.
   const keyDown = comps.filter((c) => KEY_PIPS.has(c.id) && !notNeeded(c, stack?.shape) && !UP.has(c.status));
   const fx = state.fixture;
-  el.innerHTML = String(h`
+  patch(el, h`
     <button class="tbtn navbtn" type="button" id="t-drawer" aria-label="Scenarios and runs">${icon("menu")}</button>
     <span class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span><span><span class="full">AgentCore demo </span>console</span></span>
     ${fx ? h`<span class="recorded" title="${fx.description || ""}">${icon("replay")}${fx.replay ? "Recorded replay" : "Recorded data"}</span>` : ""}
@@ -123,7 +123,7 @@ export function renderBanners(state) {
     if (stackKnown && /^Temporal is not reachable/.test(a.message || "")) continue;
     out.push(h`<div class="banner" data-level="${a.level}">${icon("warn")}<p>${a.message}${a.hint ? h` <span class="muted">${a.hint}</span>` : ""}</p><button class="tbtn" type="button" data-dismiss="${a.id}" aria-label="Dismiss">${icon("close")}</button></div>`);
   }
-  el.innerHTML = out.map(String).join("");
+  patch(el, out.map(String).join(""));
 }
 
 const kindFix = (gap) => gap?.fix || { kind: "action", action: "pf", params: {}, label: "Start port-forward" };

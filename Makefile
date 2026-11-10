@@ -51,7 +51,7 @@ PYTEST := $(UV) pytest
         worker-support-versioned register-version wci-history case-b-serverless \
         case-a-serverless tools kind-up kind-temporal kind-images kind-workers kind-aws-creds \
         certs-pull pf pf-stop kind-status kind-down cert-renew kind-env env colima-up \
-        failure load ui-shot console console-shots
+        failure load ui-shot console console-fixtures console-shots
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -337,6 +337,9 @@ CONSOLE_PORT ?= 8099
 
 console: ## Demo console on http://127.0.0.1:8099 (TEMPORAL_PROFILE=local|kind|kind-plaintext)
 	$(UV) python -m demo_console --port $(CONSOLE_PORT)
+
+console-fixtures: ## Recompute the fixtures' config, scenarios and actions from the backend code (static/fixtures; no Temporal needed)
+	$(UV) python -m demo_console.fixtures
 
 console-shots: ## Screenshots of the console's fixture views (dark/light, 1440x900 + 390x844) -> .temporal/console/shots/ (no Temporal needed)
 	scripts/console-shot.sh --all

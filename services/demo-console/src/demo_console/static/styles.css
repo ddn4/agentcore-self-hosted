@@ -155,8 +155,8 @@ svg.i { width: 1.05em; height: 1.05em; flex: none; vertical-align: -.16em; fill:
 .recorded { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 500; color: var(--nexus); border: 1px dashed color-mix(in srgb, var(--nexus) 70%, transparent); border-radius: 999px; padding: .1rem .6rem; white-space: nowrap; }
 .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; padding: 2px; background: var(--panel); }
 .seg button { border: 0; background: none; padding: .2rem .75rem; border-radius: 999px; color: var(--muted); font-weight: 500; white-space: nowrap; }
-.seg button:hover:not(:disabled):not([aria-pressed="true"]) { color: var(--ink); }
-.seg button[aria-pressed="true"] { background: var(--nexus-fill); color: var(--on-uv); }
+.seg button:hover:not(:disabled):not([aria-pressed="true"]):not([aria-checked="true"]) { color: var(--ink); }
+.seg button[aria-pressed="true"], .seg button[aria-checked="true"] { background: var(--nexus-fill); color: var(--on-uv); }
 .seg button:disabled { opacity: .55; }
 .shape { display: flex; flex-wrap: wrap; gap: .2rem 1.1rem; color: var(--muted); font-size: .93rem; margin: 0; }
 .shape b { color: var(--ink); font-weight: 500; }
@@ -240,7 +240,6 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .runs .st { font-size: .8rem; display: inline-flex; gap: .3rem; align-items: center; white-space: nowrap; }
 .runs .when { grid-column: 1 / -1; font-size: .78rem; color: var(--muted); }
 .empty-side { font-size: .88rem; color: var(--muted); margin: 0; padding: 0 .6rem; }
-.more { margin: .4rem .6rem 0; }
 
 /* state glyph colours (shape + word + colour) */
 .sg { display: inline-flex; gap: .3rem; align-items: center; }
@@ -263,6 +262,8 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .lbtn { display: inline-flex; gap: .4rem; align-items: center; padding: .2rem .6rem; border: 1px solid var(--rule); border-radius: 8px; text-decoration: none; background: var(--panel); font-size: .86rem; white-space: nowrap; transition: border-color 120ms; }
 .lbtn:hover { border-color: var(--faint); }
 .lbtn .sw { width: .55rem; height: .55rem; border-radius: 50%; flex: none; }
+.lbtn .sw.sup { background: var(--support); }
+.lbtn .sw.fin { background: var(--finance); }
 .lbtn svg.i { color: var(--muted); }
 
 /* the state track: a small dot per other state (past filled, to come open), the current
@@ -447,10 +448,9 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .row.disco .c-seam .lab { top: .45rem; }
 /* A stub (attempt failed, started) can fall inside a held stretch: its label is a tag pinned
    on the line, on a solid ground, centred on its own wire. */
-.row.stub .c-seam .lab, .row.now .c-seam .lab { top: calc(var(--wy) - .62rem) !important; background: var(--panel); border: 1px solid color-mix(in srgb, var(--nexus-fill) 70%, transparent); border-radius: 999px; padding: .08rem .45rem; }
+.row.stub .c-seam .lab, .row.now .c-seam .lab { top: calc(var(--wy) - .62rem); background: var(--panel); border: 1px solid color-mix(in srgb, var(--nexus-fill) 70%, transparent); border-radius: 999px; padding: .08rem .45rem; }
 .row.stub .c-seam .lab.bad, .row.now .c-seam .lab.bad { border-color: color-mix(in srgb, var(--bad) 70%, transparent); }
 .row.stub .c-seam .wire { right: 50%; }
-.row.stub .c-seam .wire.from-seam { left: 0; right: 50%; }
 
 /* gap band and the live "now" row */
 .row.gap .c-sup, .row.gap .c-fin { padding: .55rem .8rem; }
@@ -567,8 +567,10 @@ input:focus-visible, select:focus-visible { border-color: var(--nexus-fill); out
 .notes .maint summary { cursor: pointer; color: var(--faint); font-size: .82rem; }
 .notes .maint p { margin: .3rem 0 0; overflow-wrap: anywhere; }
 :root[data-route="notes"] .stack, :root[data-route="notes"] .side, :root[data-route="notes"] .main, :root[data-route="notes"] .banners { display: none; }
+/* The notes window is one column whatever layout mode it inherits (notes off, projector, the
+   narrow-screen grids): the one !important here that is a rule, not a patch. */
 :root[data-route="notes"] .shell { grid-template-columns: minmax(0, 1fr) !important; }
-:root[data-route="notes"] .notes { display: block !important; border: 0; padding: 2rem 2.5rem; font-size: 1.25rem; max-width: 64rem; background: var(--page); }
+:root[data-route="notes"] .notes { display: block; border: 0; padding: 2rem 2.5rem; font-size: 1.25rem; max-width: 64rem; background: var(--page); }
 :root[data-route="notes"] .notes .say { font-size: 2rem; font-weight: 300; letter-spacing: -.015em; line-height: 1.35; max-width: 34ch; }
 
 /* ---------- stack sheet ---------- */
@@ -588,6 +590,7 @@ dialog::backdrop { background: rgb(0 0 0 / .6); }
 .plist .mk { font-size: .78rem; color: var(--muted); grid-column: 1; overflow-wrap: anywhere; }
 .plist .ctl { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .plist .ctl select { width: auto; padding: .25rem .4rem; font-size: .85rem; }
+.plist .ctl input.param { width: 5.5rem; }
 .plist .why { grid-column: 1 / -1; font-size: .82rem; color: var(--muted); }
 .plist .log, .sheet .failed .log { grid-column: 1 / -1; margin: .3rem 0 0; max-height: 14rem; overflow: auto; font-family: var(--mono); font-size: .76rem; background: var(--well); border: 1px solid var(--rule); border-radius: 8px; padding: .5rem .6rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .pstate { display: inline-flex; gap: .3rem; align-items: center; font-size: .8rem; font-weight: 600; }

@@ -2,10 +2,10 @@
 // state, one "Set up for <short>" button running the scenario's recipe, the checklist with
 // compact fixes, the step plan and options behind a disclosure (DESIGN 2.1, 2.2, 5.2).
 import { enc } from "./api.js";
-import { recipeById, recipeJob, runAction, runFix, setUp, startRun, terminate, decide } from "./actions.js";
+import { actionById, recipeById, recipeJob, runAction, runFix, setUp, startRun, terminate, decide } from "./actions.js";
 import { PROFILE_LABEL, costMark, h, icon, moneyShort, suffix, stateGlyph } from "./format.js";
 import { store } from "./store.js";
-import { copyBox, openAttr } from "./ui.js";
+import { copyBox, openAttr, patch } from "./ui.js";
 
 const temporalDown = (state) => (state.stack?.components || []).some((c) => c.id === "temporal" && c.status === "down");
 const missingOf = (s) => (s.preconditions || []).filter((p) => !p.ok);
@@ -27,17 +27,17 @@ export function renderScenarioList(state) {
   const cur = state.route.name === "scenario" ? state.route.scenario : null;
   const list = state.scenarios || [];
   if (!list.length) {
-    el.innerHTML = String(h`<li><p class="empty-side">Loading scenarios…</p></li>`);
+    patch(el, h`<li><p class="empty-side">Loading scenarios…</p></li>`);
     return;
   }
   const down = temporalDown(state);
   const head = down ? h`<li class="side-state"><p>Stack not ready: Temporal is down. Open a scenario to set it up.</p></li>` : "";
-  el.innerHTML = String(head) + list.map((s) => {
+  patch(el, String(head) + list.map((s) => {
     const fit = fitLabel(s, down);
     return String(h`<li><a href="#/scenarios/${enc(s.id)}" ${cur === s.id ? h`aria-current="page"` : ""}>
     <span class="t">${s.short || s.title}</span>${fit ? h`<span class="fit" data-f="${s.fit}">${fit}</span>` : ""}
     <span class="s">${s.cost !== "free" ? h`${costMark(s.cost, true)} ` : ""}${s.sub || s.summary}</span></a></li>`);
-  }).join("");
+  }).join(""));
 }
 
 // ---------------------------------------------------------------- scenario card
@@ -65,8 +65,9 @@ function freshId(def) {
 
 function optionField(o, val) {
   if (o.type === "choice") {
+    // A radio group: one tab stop (the checked choice), arrow keys move between choices.
     return h`<div class="field"><span>${o.label || o.id}</span><div class="seg" role="radiogroup" aria-label="${o.label || o.id}">
-      ${o.choices.map((c) => h`<button type="button" role="radio" aria-checked="${String(c === val)}" aria-pressed="${String(c === val)}" data-opt="${o.id}" data-val="${c}">${c}</button>`)}
+      ${o.choices.map((c) => h`<button type="button" role="radio" aria-checked="${String(c === val)}" tabindex="${c === val ? "0" : "-1"}" data-opt="${o.id}" data-val="${c}">${c}</button>`)}
     </div></div>`;
   }
   const type = o.type === "number" ? "number" : "text";
@@ -85,7 +86,7 @@ function preList(s, busy, primary = null) {
     seen.add(k);
     return true;
   };
-  return h`<ul class="pre">${s.preconditions.map((p) => h`<li class="${p.ok ? "ok" : "bad"}">${icon(p.ok ? "check" : "ring")}<div class="pc"><span class="lab">${p.label}<span class="sr">${p.ok ? ": ready" : ": missing"}</span></span>
+  return h`<ul class="pre">${s.preconditions.map((p) => h`<li class="${p.ok ? "ok" : "bad"}">${icon(p.ok ? "check" : "ring")}<div class="pc"><span class="lab">${p.label}<span class="sr">${p.ok ? ": ready" : p.unknown ? ": could not check" : ": missing"}</span></span>
     ${!p.ok && once(p) ? (p.fix.kind === "command" || p.fix.kind === "make"
       ? copyBox(p.fix.command || p.fix.make)
       : h`<button class="btn small ghost ${busy[fixKey(p.fix)] ? "busy" : ""}" type="button" data-fix="${p.id}">${p.fix.label || "Fix"}</button>`) : ""}
@@ -110,7 +111,7 @@ function setupProgress(job) {
 function optionSummary(s, v) {
   return (s.options || [])
     .filter((o) => !["queue", "approver"].includes(o.id) || v[o.id] !== o.default)
-    .map((o) => (o.id === "n" ? `${v[o.id]} conversations` : String(v[o.id] ?? "")))
+    .map((o) => (o.type === "number" ? `${v[o.id]} ${String(o.label || o.id).toLowerCase()}` : String(v[o.id] ?? "")))
     .filter(Boolean).join(" · ");
 }
 
@@ -122,12 +123,21 @@ function plan(s) {
     : h`<span>${st.title}<span class="k">${KIND_WORD[st.kind] || ""}</span></span>`}</li>`)}</ol>`;
 }
 
-function startLabel(s, v) {
-  if (s.case === "A") return "Start Case A";
-  if (s.case === "B") return "Start Case B";
-  if (s.id === "load") return `Start ${v.n || 10} conversations`;
-  if (s.id === "smoke") return "Run the smoke caller";
-  return "Start";
+/** The catalog's start_label with {option} filled from the form ("Start {n} conversations"). */
+const startLabel = (s, v) => String(s.start_label || "Start").replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ""));
+/** The busy key of what Start runs: the scenario's action, or a Support run. */
+const startKey = (s) => (s.start_action ? `action:${s.start_action}` : `start:${s.id}`);
+
+/** What Start sends: a Support run with the form's options, or the action with its params. */
+async function start(s, v) {
+  if (!s.start_action) {
+    await startRun(s, v);
+    formValues.delete(s.id); // a fresh workflow ID next time
+    return;
+  }
+  const params = {};
+  for (const p of actionById(s.start_action)?.params || []) if (v[p.id] !== undefined) params[p.id] = v[p.id];
+  await runAction(s.start_action, params);
 }
 
 function leftovers(state) {
@@ -142,7 +152,7 @@ function leftovers(state) {
 export function renderScenarioCard(state, el) {
   const s = (state.scenarios || []).find((x) => x.id === state.route.scenario);
   if (!s) {
-    el.innerHTML = String(h`<div class="welcome"><h1>No scenario called ${state.route.scenario}</h1><p>Pick one from the list.</p></div>`);
+    patch(el, h`<div class="welcome"><h1>No scenario called ${state.route.scenario}</h1><p>Pick one from the list.</p></div>`);
     return;
   }
   if (!formValues.has(s.id)) formValues.set(s.id, defaults(s));
@@ -160,7 +170,6 @@ export function renderScenarioCard(state, el) {
   // the VM (it asks first) is the primary button and Set up waits, saying why.
   const blocked = canSetUp ? s.setup_blocked : null;
   const setupWhy = blocked ? blocked.why : canSetUp && recipe?.available === false ? recipe.why_not : null;
-  const startKey = s.case ? `start:${s.id}` : `action:${s.id === "load" ? "load" : "smoke"}`;
   const chip = wrong ? h`<span class="chip">${(s.profiles || []).map((p) => PROFILE_LABEL[p] || p).join(" or ")} only</span>`
     : missing.length ? h`<span class="chip">${missing.length} missing</span>`
     : (s.preconditions || []).length ? h`<span class="chip" data-s="ready">${icon("check")}Ready</span>` : "";
@@ -174,8 +183,8 @@ export function renderScenarioCard(state, el) {
     : setupWhy ? h`<p class="why">${setupWhy}</p>`
     : missing.length && !canSetUp ? h`<p class="why">You can start anyway; the run waits for what is missing.</p>` : "";
   const checklist = missing.length && !wrong ? h`<section class="block" aria-labelledby="pre-h"><h2 id="pre-h">Before you start</h2>${setupProgress(job)}${preList(s, busy, blocked?.fix)}</section>` : "";
-  if (s.id === "cleanup") {
-    el.innerHTML = String(h`<article class="card-view" aria-labelledby="sc-title">
+  if (s.view === "cleanup") {
+    patch(el, h`<article class="card-view" aria-labelledby="sc-title">
       <h1 id="sc-title">${s.title}</h1><p class="lede">${s.summary}</p>${facts}
       ${checklist}
       <section class="block" aria-labelledby="left-h"><h2 id="left-h">Waiting runs</h2>${leftovers(state)}</section>
@@ -184,14 +193,15 @@ export function renderScenarioCard(state, el) {
   }
   const opts = (s.options || []).length ? h`<details class="disc opts-d" data-keep="opts:${s.id}" ${openAttr(`opts:${s.id}`)}><summary>Options <span class="muted">${optionSummary(s, v)}</span></summary>
       <form class="opts" id="scen-form" data-scenario="${s.id}">${s.options.map((o) => optionField(o, v[o.id]))}</form></details>` : "";
-  el.innerHTML = String(h`<article class="card-view" aria-labelledby="sc-title">
+  const extra = s.extra_action;
+  patch(el, h`<article class="card-view" aria-labelledby="sc-title">
     <h1 id="sc-title">${s.title}</h1>
     <p class="lede">${s.summary}</p>
     ${facts}
     <div class="startbar">
       ${setupBtn}
-      <button class="btn ${canSetUp ? "ghost" : "primary"} start ${busy[startKey] ? "busy" : ""}" type="button" data-start="${s.id}" ${wrong ? "disabled" : ""}>${icon("play")}${startLabel(s, v)}</button>
-      ${s.id === "smoke" ? h`<button class="btn ghost ${busy["action:card"] ? "busy" : ""}" type="button" data-card>${icon("ledger")}Fetch the Agent Card</button>` : ""}
+      <button class="btn ${canSetUp ? "ghost" : "primary"} start ${busy[startKey(s)] ? "busy" : ""}" type="button" data-start="${s.id}" ${wrong ? "disabled" : ""}>${icon("play")}${startLabel(s, v)}</button>
+      ${extra ? h`<button class="btn ghost ${busy[`action:${extra.action}`] ? "busy" : ""}" type="button" data-extra="${extra.action}" ${wrong ? "disabled" : ""}>${icon("ledger")}${extra.label}</button>` : ""}
       ${chip}
     </div>
     ${why}
@@ -251,22 +261,26 @@ export function wireLauncher() {
     const sb = t.closest("[data-start]");
     if (sb) {
       const s = scen(); if (!s) return;
-      const v = { ...formValues.get(s.id) };
-      if (s.case) {
-        await startRun(s, v);
-        formValues.delete(s.id); // a fresh workflow ID next time
-      } else if (s.id === "load") {
-        await runAction("load", { n: Number(v.n) || 10, kind: v.kind || "ping" });
-      } else if (s.id === "smoke") {
-        await runAction("smoke", {});
-      }
+      await start(s, { ...formValues.get(s.id) });
       return;
     }
-    if (t.closest("[data-card]")) { await runAction("card", {}); return; }
+    const ex = t.closest("[data-extra]");
+    if (ex) { await runAction(ex.dataset.extra, {}); return; }
     const rj = t.closest("[data-cleanup-reject]");
-    if (rj) { await decide(rj.dataset.cleanupReject, "reject", st.config?.default_approver || "dana.finance", "console cleanup"); return; }
+    if (rj) { await decide(rj.dataset.cleanupReject, "reject", st.config?.default_approver, "console cleanup"); return; }
     const tm = t.closest("[data-cleanup-term]");
     if (tm) await terminate(tm.dataset.cleanupTerm);
+  });
+  // Arrow keys move the checked choice inside an option's radio group.
+  document.addEventListener("keydown", (e) => {
+    const opt = e.target.closest?.("[data-opt]");
+    if (!opt || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
+    const all = [...opt.parentElement.querySelectorAll("[data-opt]")];
+    const step = e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 1;
+    const next = all[(all.indexOf(opt) + step + all.length) % all.length];
+    e.preventDefault();
+    next.focus();
+    next.click();
   });
   document.addEventListener("input", (e) => {
     const f = e.target.closest("#scen-form");

@@ -80,13 +80,6 @@ export const money = (n) => (n === null || n === undefined ? "–"
 
 export const moneyShort = (n) => (n === null || n === undefined ? "" : `$${Math.round(Number(n))}`);
 
-/** Parse Temporal duration text like "25h", "90m", "1h30m", "45s" into seconds. */
-export function parseDuration(text) {
-  const m = String(text || "").trim().match(/^(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?$/);
-  if (!m || !(m[1] || m[2] || m[3])) return null;
-  return (Number(m[1] || 0) * 3600) + (Number(m[2] || 0) * 60) + Number(m[3] || 0);
-}
-
 export const COST_LABEL = { free: "Free", tokens: "Uses Bedrock tokens" };
 export function costMark(cost, short = false) {
   if (!cost) return "";
