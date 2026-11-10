@@ -296,6 +296,34 @@ def test_scenario_json_marks_what_the_setup_recipe_fixes() -> None:
     )
 
 
+def test_worker_started_outside_the_console_is_not_left_to_setup() -> None:
+    # local-plain's _ensure skips a worker that is already polling, so it cannot fix these.
+    c = load_catalog()
+    for sid, pid, outside in (
+        ("crash", "support-plain-managed", StackFacts(profile="local", support_dev_pollers=1)),
+        ("failure", "finance-managed", StackFacts(profile="local", finance_pollers=1)),
+    ):
+        f = outside
+        p = next(x for x in scenario_json(c[sid], f, catalog=c)["preconditions"] if x["id"] == pid)
+        assert not p["ok"] and "fix" not in p and not p.get("by_setup")
+        assert "outside the console" in p["note"]
+        # Nothing polling: the setup recipe starts it under the console.
+        f = StackFacts(profile="local", temporal_up=True, managed={})
+        p = next(x for x in scenario_json(c[sid], f, catalog=c)["preconditions"] if x["id"] == pid)
+        assert p["by_setup"] and "note" not in p
+
+
+def test_kind_setup_waits_for_the_docker_vm() -> None:
+    c = load_catalog()
+    fix = {"kind": "action", "action": "colima-up", "params": {}, "label": "Start Docker VM"}
+    gap = {"layer": "docker", "cause": "Docker VM agentcore is stopped", "fix": fix}
+    body = scenario_json(c["case-b"], StackFacts(profile="kind", kind_gap=gap), catalog=c)
+    assert body["setup_recipe"] == "kind-up"
+    assert body["setup_blocked"] == {"why": "Start the Docker VM first.", "fix": fix}
+    body = scenario_json(c["case-b"], StackFacts(profile="kind"), catalog=c)
+    assert body["setup_blocked"] is None
+
+
 def test_next_links_follow_story_order() -> None:
     c = load_catalog()
     chain, sid = [], "case-a"

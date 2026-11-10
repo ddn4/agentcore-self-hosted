@@ -183,7 +183,9 @@ export function renderSheet(state) {
   const procUp = procs.filter((p) => p.status === "running" || p.status === "external").length;
   const jobsBad = jobs.filter((j) => j.status === "failed").length;
   const scroll = d.querySelector(".body")?.scrollTop || 0;
-  const clusterBox = kind ? advanced("cluster", "Cluster", "one layer at a time", failedFor(new Set(cluster.map((a) => a.id))),
+  // Bring up kind stopped at its Docker step: Start Docker VM lives under Cluster, so open it.
+  const dockerStop = failed?.action === "start-recipe" && failed.result?.step === "docker";
+  const clusterBox = kind ? advanced("cluster", "Cluster", "one layer at a time", dockerStop || failedFor(new Set(cluster.map((a) => a.id))),
     h`<p class="sub">Each layer takes a few minutes. Bring up kind runs them in order. Delete removes the cluster.</p><ul class="plist">${cluster.map((a) => actionItem(a, profile, busy))}</ul>`) : "";
   d.innerHTML = String(h`<header><h2 id="sheet-title">Manage stack</h2><span class="muted">profile <b class="id">${profile}</b></span>
       <button class="tbtn" type="button" data-close-sheet aria-label="Close">${icon("close")}</button>

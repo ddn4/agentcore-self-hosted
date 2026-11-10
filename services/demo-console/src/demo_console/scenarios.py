@@ -321,6 +321,18 @@ def _cmd_fix(command: str) -> dict[str, Any]:
     return {"kind": "command", "command": command, "label": "Copy command"}
 
 
+def _outside(pid: str, label: str, who: str) -> dict[str, Any]:
+    """A worker the console must own, already polling from a terminal: the console cannot stop
+    it, and starting its own would only add a second poller, so there is no fix button."""
+    return {
+        "id": pid,
+        "label": label,
+        "ok": False,
+        "note": f"A {who} worker started outside the console is polling. Stop it in its "
+        "terminal; the console then starts its own.",
+    }
+
+
 def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
     """One precondition evaluated now; ``None`` when it does not apply on this profile."""
     local = f.profile == "local"
@@ -353,6 +365,8 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
             if pid == "finance-managed":
                 ok = f.managed.get("worker-finance", False)
                 label = "The console runs the Finance worker (so it can stop it)"
+                if not ok and f.finance_pollers > 0:
+                    return _outside(pid, label, "Finance")
             return {
                 "id": pid,
                 "label": label,
@@ -380,6 +394,8 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
         if pid == "support-plain-managed":
             ok = f.managed.get("worker-support", False)
             label = "The console runs the Support worker (so it can kill it)"
+            if not ok and f.support_dev_pollers > 0:
+                return _outside(pid, label, "Support")
         return {
             "id": pid,
             "label": label,
@@ -552,7 +568,7 @@ def scenario_json(
     for p in pres:
         if p["ok"]:
             p.pop("fix", None)
-        elif p["id"] in fixes:
+        elif p["id"] in fixes and "fix" in p:
             p["by_setup"] = True
     if facts.profile not in scenario.profiles:
         fit = "wrong_profile"
@@ -560,6 +576,11 @@ def scenario_json(
         fit = "ready"
     else:
         fit = "needs_setup"
+    # kind-up never starts the Docker VM (2.3): while it is stopped, starting it comes first.
+    blocked = None
+    gap = facts.kind_gap
+    if recipe == KIND_RECIPE and gap and gap["layer"] == "docker" and fit == "needs_setup":
+        blocked = {"why": "Start the Docker VM first.", "fix": gap["fix"]}
     wf = default_workflow_id(scenario)
     options: list[dict[str, Any]] = []
     if queue is not None:
@@ -633,5 +654,6 @@ def scenario_json(
         "steps": [step.to_json(wf, facts.build_id) for step in scenario.steps],
         "notes": scenario.notes,
         "setup_recipe": recipe,
+        "setup_blocked": blocked,
         "next": next_json(scenario, catalog, facts),
     }

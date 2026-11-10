@@ -523,8 +523,11 @@ input:focus-visible, select:focus-visible { border-color: var(--nexus-fill); out
 /* The checklist: one line each, the fix at the end of its line. Missing is not a fault: a
    hollow ring in ink; a check in muted when it is there. */
 .pre { list-style: none; margin: 0; padding: 0; display: grid; gap: .15rem; max-width: 46rem; }
-.pre li { display: flex; flex-wrap: wrap; gap: .25rem .6rem; align-items: center; min-height: 1.9rem; }
-.pre li > svg.i { flex: none; }
+/* Icon column plus content column: a fix that wraps lines up under its label, not the ring. */
+.pre li { display: grid; grid-template-columns: 1.05em minmax(0, 1fr); column-gap: .6rem; align-items: start; }
+.pre li > svg.i { margin-top: calc((1.9rem - 1.05em) / 2); }
+.pre .pc { display: flex; flex-wrap: wrap; gap: .25rem .6rem; align-items: center; min-height: 1.9rem; }
+.pre .pnote { flex-basis: 100%; font-size: .86rem; color: var(--muted); padding-bottom: .2rem; }
 .pre li .btn.small { padding: .14rem .55rem; font-size: .82rem; font-weight: 500; }
 .pre li.ok { color: var(--muted); }
 .pre li.ok > svg.i { color: var(--faint); }

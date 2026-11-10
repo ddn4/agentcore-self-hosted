@@ -292,6 +292,15 @@
     ],
     "notes": "Support can't move money, so it asks Finance: a different team's agent, through a published contract and a named endpoint. It isn't a child workflow, and only the contract is shared.",
     "setup_recipe": "kind-up",
+    "setup_blocked": {
+     "why": "Start the Docker VM first.",
+     "fix": {
+      "kind": "action",
+      "action": "colima-up",
+      "params": {},
+      "label": "Start Docker VM"
+     }
+    },
     "next": {
      "id": "case-b",
      "short": "Case B",
@@ -487,6 +496,15 @@
     ],
     "notes": "Over $100, Finance's agent says 'I need a human', and the task goes to input-required. I switch Support off completely. Nothing is lost, and when the approver signals, the conversation picks up again.",
     "setup_recipe": "kind-up",
+    "setup_blocked": {
+     "why": "Start the Docker VM first.",
+     "fix": {
+      "kind": "action",
+      "action": "colima-up",
+      "params": {},
+      "label": "Start Docker VM"
+     }
+    },
     "next": {
      "id": "crash",
      "short": "Worker crash",
@@ -644,6 +662,15 @@
     ],
     "notes": "Every model call and tool call is an Activity. I kill the process mid-thought, and it carries on from exactly where it stopped.",
     "setup_recipe": "kind-up",
+    "setup_blocked": {
+     "why": "Start the Docker VM first.",
+     "fix": {
+      "kind": "action",
+      "action": "colima-up",
+      "params": {},
+      "label": "Start Docker VM"
+     }
+    },
     "next": {
      "id": "serverless-b",
      "short": "AgentCore: you invoke",
@@ -813,6 +840,7 @@
     ],
     "notes": "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives.",
     "setup_recipe": null,
+    "setup_blocked": null,
     "next": {
      "id": "serverless-b",
      "short": "AgentCore: you invoke",
@@ -1027,6 +1055,15 @@
     ],
     "notes": "Support's Worker is now built to die. It starts when invoked, drains when idle, and when Finance answers, a new invocation picks the conversation up, pinned to the exact build.",
     "setup_recipe": "kind-up",
+    "setup_blocked": {
+     "why": "Start the Docker VM first.",
+     "fix": {
+      "kind": "action",
+      "action": "colima-up",
+      "params": {},
+      "label": "Start Docker VM"
+     }
+    },
     "next": {
      "id": "load",
      "short": "Load",
@@ -1252,6 +1289,7 @@
     ],
     "notes": "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh worker to finish the reply.",
     "setup_recipe": null,
+    "setup_blocked": null,
     "next": {
      "id": "load",
      "short": "Load",
@@ -1372,6 +1410,15 @@
     ],
     "notes": "Ten conversations arrive at once. Nothing polls Support's queue until the server's Worker Controller starts capacity, and it all drains back to zero.",
     "setup_recipe": "kind-up",
+    "setup_blocked": {
+     "why": "Start the Docker VM first.",
+     "fix": {
+      "kind": "action",
+      "action": "colima-up",
+      "params": {},
+      "label": "Start Docker VM"
+     }
+    },
     "next": {
      "id": "cleanup",
      "short": "Clean up",
@@ -1468,6 +1515,7 @@
     ],
     "notes": "The Finance team publishes exactly one thing, an A2A-shaped contract. No AI on the caller yet, just the hop.",
     "setup_recipe": null,
+    "setup_blocked": null,
     "next": {
      "id": "cleanup",
      "short": "Clean up",
@@ -1513,6 +1561,7 @@
     "steps": [],
     "notes": "Housekeeping before the next demo.",
     "setup_recipe": null,
+    "setup_blocked": null,
     "next": null
    }
   ]

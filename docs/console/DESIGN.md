@@ -109,8 +109,9 @@ labelled cell.)
   holds the stack recipes first (the one for the scenario on screen has the primary button,
   each recipe's steps folded behind "N steps"), then **Advanced** disclosures for Cluster (kind
   only, first), Processes, One-shot actions and Jobs, each one line with a count until opened.
-  A disclosure opens by itself when something in it failed. A running job is pinned at the top
-  with its current step and last lines; otherwise the newest job, when it failed. `N` toggles presenter notes, `P` toggles
+  A disclosure opens by itself when something in it failed; Cluster also opens when Bring up
+  kind stopped at its Docker VM step, since Start Docker VM lives there. A running job is
+  pinned at the top with its current step and last lines; otherwise the newest job, when it failed. `N` toggles presenter notes, `P` toggles
   projector mode and `◐` switches between the dark theme (default) and light.
 - **Scenario launcher** (left column), in story order. Each scenario shows its short name and
   sub, and a muted fit marker for the current profile: "ready", "N missing", or "local only".
@@ -240,7 +241,13 @@ Each precondition the recipe fixes is marked `by_setup`; the others (the Build I
 worker, the laptop Support worker on kind) keep only their own fix. The button runs the same
 `start-recipe` job as Manage stack, in the stack's current model (scripted or live; live asks
 first because it costs tokens). Bring up kind is long, so it asks first, and it never starts
-the Docker VM by itself (2.3). The next link carries a `setup_recipe` only when the next
+the Docker VM by itself (2.3): while the VM is stopped the card's primary button is Start Docker
+VM (it asks first), Set up is disabled with the visible reason "Start the Docker VM first.",
+and the checklist does not repeat the button. When a recipe is unavailable its reason is shown
+under the start bar, not only in a tooltip. A worker the console must own (Worker crash,
+Finance outage) that is already polling from a terminal is not marked `by_setup`: the recipe
+would skip it as already running. Its line has no fix button and says to stop it in its
+terminal. The next link carries a `setup_recipe` only when the next
 scenario's recipe differs from the one that produces the stack's current shape; its button
 then reads "Set up and go to <short>", opens that scenario's card and starts the recipe.
 
@@ -728,7 +735,11 @@ Every non-2xx response:
 
 - `fit` ∈ `ready | needs_setup | wrong_profile`.
 - `setup_recipe`: the recipe id of the one-click setup on this profile, or `null` (2.2).
-  `preconditions[].by_setup: true` marks a missing precondition that recipe fixes.
+  `preconditions[].by_setup: true` marks a missing precondition that recipe fixes. A missing
+  precondition no button can fix (a worker started outside the console) has no `fix` and a
+  `note` saying what to do instead.
+- `setup_blocked`: `{"why", "fix"}` when the setup recipe cannot get past its first step yet
+  (kind with the Docker VM stopped: `fix` is Start Docker VM), else `null`.
 - `next`: `{"id", "short", "setup_recipe"}` for the scenario after this one in story order on
   this profile (or `null` after the last); `setup_recipe` is set only when going there changes
   the stack's shape.
@@ -1112,7 +1123,7 @@ scripted stdout/exit codes), `FakeHttp` (ping/invocations), and a tmp `.temporal
 | `test_rows.py` | Support/Finance/WCI/lifetime row builders on recorded histories (Case A, B approve, B reject, crash with two pids, failure with attempt 3); pairs across the seam; stable `seq` |
 | `test_runview.py` | RunView fields from history + describe; scenario inference; `held_open_s`; Q15 deltas; reply + refund ID; `get_task` timeout → `source: "history"` |
 | `test_ledger72.py` | building every RunView/route against `FakeAgents` issues **zero** queries in namespace `agents`; `AgentsClient.query` raises `SupportQueryForbidden` |
-| `test_steps.py` | every catalog `done_when` parses; statuses done/current/todo for each fixture |
+| `test_steps.py` | every catalog `done_when` parses; statuses done/current/todo for each fixture; setup recipes and what they mark `by_setup`; a worker polling from a terminal is not left to setup; kind setup waits for a stopped Docker VM (`setup_blocked`) |
 | `test_stack.py` | component statuses from fake pollers/pidfiles/ports; `zero` vs `down`; shape and model inference; Build ID resolution order (env → deployment → build-id.sh refusing on dirty uv.lock → none) |
 | `test_detect.py` | profile detection from pidfiles (tmp dir, `kill -0` faked) and the TLS probe outcome |
 | `test_env.py` | `child_env()` strips `TEMPORAL_TLS`/`TEMPORAL_ADDRESS` outside local, sets `TEMPORAL_PROFILE`, `TEMPORAL_CONFIG_FILE` (absolute), `TEMPORAL_BUILD_ID` |

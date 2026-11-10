@@ -74,20 +74,22 @@ function optionField(o, val) {
 }
 
 /** The checklist, shown while something is missing. Each line keeps its own fix (a single
- *  missing piece mid-demo, a killed worker, is fastest to fix by itself), on the same line. */
-function preList(s, busy) {
+ *  missing piece mid-demo, a killed worker, is fastest to fix by itself), on the same line.
+ *  `primary` is a fix the start bar already offers, so no line repeats it. */
+function preList(s, busy, primary = null) {
   // One button per distinct fix: on kind a stopped Docker VM is the fix for several lines.
-  const seen = new Set();
+  const seen = new Set(primary ? [JSON.stringify(primary)] : []);
   const once = (p) => {
     const k = p.fix && JSON.stringify(p.fix);
     if (!k || seen.has(k)) return false;
     seen.add(k);
     return true;
   };
-  return h`<ul class="pre">${s.preconditions.map((p) => h`<li class="${p.ok ? "ok" : "bad"}">${icon(p.ok ? "check" : "ring")}<span class="lab">${p.label}<span class="sr">${p.ok ? ": ready" : ": missing"}</span></span>
+  return h`<ul class="pre">${s.preconditions.map((p) => h`<li class="${p.ok ? "ok" : "bad"}">${icon(p.ok ? "check" : "ring")}<div class="pc"><span class="lab">${p.label}<span class="sr">${p.ok ? ": ready" : ": missing"}</span></span>
     ${!p.ok && once(p) ? (p.fix.kind === "command" || p.fix.kind === "make"
       ? copyBox(p.fix.command || p.fix.make)
-      : h`<button class="btn small ghost ${busy[fixKey(p.fix)] ? "busy" : ""}" type="button" data-fix="${p.id}">${p.fix.label || "Fix"}</button>`) : ""}</li>`)}</ul>`;
+      : h`<button class="btn small ghost ${busy[fixKey(p.fix)] ? "busy" : ""}" type="button" data-fix="${p.id}">${p.fix.label || "Fix"}</button>`) : ""}
+    ${!p.ok && p.note ? h`<span class="pnote">${p.note}</span>` : ""}</div></li>`)}</ul>`;
 }
 const fixKey = (f) => (f.kind === "process" ? `proc:${f.process}` : `action:${f.action}`);
 
@@ -154,18 +156,24 @@ export function renderScenarioCard(state, el) {
   const running = job?.status === "running";
   // One button sets the stack up when the recipe fixes something that is missing.
   const canSetUp = !wrong && s.setup_recipe && missing.some((p) => p.by_setup);
+  // kind with the Docker VM stopped: Bring up kind would stop at its first step, so starting
+  // the VM (it asks first) is the primary button and Set up waits, saying why.
+  const blocked = canSetUp ? s.setup_blocked : null;
+  const setupWhy = blocked ? blocked.why : canSetUp && recipe?.available === false ? recipe.why_not : null;
   const startKey = s.case ? `start:${s.id}` : `action:${s.id === "load" ? "load" : "smoke"}`;
   const chip = wrong ? h`<span class="chip">${(s.profiles || []).map((p) => PROFILE_LABEL[p] || p).join(" or ")} only</span>`
     : missing.length ? h`<span class="chip">${missing.length} missing</span>`
     : (s.preconditions || []).length ? h`<span class="chip" data-s="ready">${icon("check")}Ready</span>` : "";
-  const setupBtn = canSetUp ? h`<button class="btn primary start ${busy["action:start-recipe"] || running ? "busy" : ""}" type="button" data-setup="${s.setup_recipe}" ${running || recipe?.available === false ? "disabled" : ""} ${recipe?.why_not ? h`title="${recipe.why_not}"` : ""}>${icon("play")}Set up for ${s.short}</button>` : "";
+  const blockBtn = blocked ? h`<button class="btn primary start ${busy[fixKey(blocked.fix)] ? "busy" : ""}" type="button" data-block-fix>${icon("play")}${blocked.fix.label}</button>` : "";
+  const setupBtn = canSetUp ? h`${blockBtn}<button class="btn ${blocked ? "ghost" : "primary"} start ${busy["action:start-recipe"] || running ? "busy" : ""}" type="button" data-setup="${s.setup_recipe}" ${running || setupWhy ? "disabled" : ""}>${icon("play")}Set up for ${s.short}</button>` : "";
   const facts = h`<div class="facts-row">
       ${costMark(s.cost)}${s.cost_note ? h`<span>${s.cost_note}</span>` : ""}
       ${s.amount_usd ? h`<span>Refund <b>${moneyShort(s.amount_usd)}</b> for order <b>${s.order_id}</b></span>` : ""}
     </div>`;
   const why = wrong ? h`<p class="why">Switch to ${(s.profiles || []).map((p) => PROFILE_LABEL[p] || p).join(" or ")} to run this. The console is on ${PROFILE_LABEL[profile] || profile}.</p>`
+    : setupWhy ? h`<p class="why">${setupWhy}</p>`
     : missing.length && !canSetUp ? h`<p class="why">You can start anyway; the run waits for what is missing.</p>` : "";
-  const checklist = missing.length && !wrong ? h`<section class="block" aria-labelledby="pre-h"><h2 id="pre-h">Before you start</h2>${setupProgress(job)}${preList(s, busy)}</section>` : "";
+  const checklist = missing.length && !wrong ? h`<section class="block" aria-labelledby="pre-h"><h2 id="pre-h">Before you start</h2>${setupProgress(job)}${preList(s, busy, blocked?.fix)}</section>` : "";
   if (s.id === "cleanup") {
     el.innerHTML = String(h`<article class="card-view" aria-labelledby="sc-title">
       <h1 id="sc-title">${s.title}</h1><p class="lede">${s.summary}</p>${facts}
@@ -227,6 +235,11 @@ export function wireLauncher() {
     if (nx) {
       location.hash = `#/scenarios/${enc(nx.dataset.next)}`;
       await setUp(nx.dataset.nextSetup, nx.dataset.nextShort);
+      return;
+    }
+    if (t.closest("[data-block-fix]")) {
+      const s = scen();
+      if (s?.setup_blocked) await runFix(s.setup_blocked.fix);
       return;
     }
     const fx = t.closest("[data-fix]");
