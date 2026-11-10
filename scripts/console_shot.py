@@ -44,6 +44,7 @@ FIXTURES = (
     "case-b-completed-serverless",
     "failure-retrying",
     "empty-stack",
+    "kind-cold",
 )
 SIZES = ((1440, 900), (390, 844))
 

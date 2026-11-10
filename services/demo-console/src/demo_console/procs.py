@@ -186,6 +186,8 @@ class ProcessManager:
         #: The Build ID the last stack probe resolved (``known`` once it ran).
         self.build_id_hint: str | None = None
         self.build_id_known = False
+        #: kind client certs from the last stack probe: ok | missing | stale | unknown | None.
+        self.certs_state: str | None = None
         self.proc_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -278,6 +280,8 @@ class ProcessManager:
         cert_dir = spec.certs.get(profile)
         if cert_dir and not (self.settings.root / cert_dir / "tls.crt").is_file():
             return f"No client certificate in {cert_dir}/ (make certs-pull)."
+        if cert_dir and self.certs_state == "stale":
+            return "Client certs in .certs/ are from an older cluster (make certs-pull)."
         return None
 
     def _external(self, spec: ProcSpec) -> bool:

@@ -187,7 +187,7 @@ def unreachable_alert(settings: Settings, detail: str) -> dict[str, Any]:
     if settings.profile == "local":
         hint = "Start the dev server (Manage stack), or run make dev-server-up."
     else:
-        hint = f"Run make pf TEMPORAL_PROFILE={settings.profile}."
+        hint = "Run Bring up kind (Manage stack): it starts whichever kind layer is missing."
     return {
         "level": "error",
         "message": f"Temporal is not reachable at 127.0.0.1:7233 ({detail}).",

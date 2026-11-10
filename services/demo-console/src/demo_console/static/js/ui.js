@@ -55,12 +55,14 @@ export const copyBox = (text) => h`<div class="copy"><code>${text}</code><button
 
 /**
  * Run a mutating call behind the cost gate. `call(confirm)` performs the request.
+ * Asks first when it costs tokens or when `ask` is set (long or destructive jobs).
  * Handles the server's own 409 confirm_required by asking and retrying once.
  */
-export async function gated({ key, cost = "free", title, body = null, command = null, ok = null, call }) {
+export async function gated({ key, cost = "free", ask = false, danger = false, title, body = null, command = null, confirmLabel = null, ok = null, call }) {
   let confirm = false;
-  if (cost === "tokens") {
-    confirm = await confirmDialog({ title, body, cost, command, confirmLabel: title });
+  const label = confirmLabel || title;
+  if (cost === "tokens" || ask) {
+    confirm = await confirmDialog({ title, body, cost, command, confirmLabel: label, danger });
     if (!confirm) return null;
   }
   store.busy(key, true);
@@ -70,7 +72,7 @@ export async function gated({ key, cost = "free", title, body = null, command = 
     return res;
   } catch (err) {
     if (err instanceof ApiError && err.code === "confirm_required" && !confirm) {
-      const yes = await confirmDialog({ title, body: err.message, cost: cost === "free" ? "tokens" : cost, command, confirmLabel: title });
+      const yes = await confirmDialog({ title, body: err.message, cost, command, confirmLabel: label, danger });
       if (yes) {
         try {
           const res = await call(true);

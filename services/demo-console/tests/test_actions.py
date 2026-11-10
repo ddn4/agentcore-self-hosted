@@ -166,4 +166,7 @@ async def test_actions_listing(
     kind = await ready(console(tmp_path / "k", gateway, runner, http, profile="kind"))
     k = {a["id"]: a for a in kind.actions.describe_all()}
     assert k["kind-temporal"]["make"] == "make kind-temporal KIND_TLS=1 TEMPORAL_PROFILE=kind"
-    assert k["start-recipe"]["params"][0]["default"] == "kind-laptop"
+    assert k["start-recipe"]["params"][0]["default"] == "kind-up"
+    assert k["kind-workers"]["make"] == (
+        "make kind-workers FINANCE_MODEL=scripted KIND_TLS=1 TEMPORAL_PROFILE=kind"
+    )

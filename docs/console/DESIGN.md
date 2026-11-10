@@ -53,7 +53,7 @@ small runs.
 
 **Presenter flow** (for every scenario):
 1. Pick the scenario in the launcher. Its preconditions are checked against the live stack,
-   and each missing piece has a fix button (local) or the exact make command (kind).
+   and each missing piece has a fix button (on kind: the first missing layer's action).
 2. Press **Start**. The console starts the workflow with a fresh ID and opens the run view.
 3. Follow the guided step list. Each step ticks itself when Temporal shows it happened
    (derived from history, task state and the compute signals; never from button clicks). The
@@ -186,22 +186,42 @@ Default workflow IDs follow the make defaults with a short base-36 suffix so tha
 do not collide: `support-1042-<sfx>`, `support-2077-sl-<sfx>`, `support-2077-wci-<sfx>`.
 The suffix is never 12 digits (scrub-check).
 
-### 2.3 Stack recipes (local profiles)
+### 2.3 Stack recipes
 
-One button per recipe brings the stack to a known shape as a job with a visible checklist.
-Each line is the make target the console runs, so the presenter can say what happened.
+One button per recipe brings the stack to a known shape as a job with a visible, numbered
+checklist. Each line is the make target (or check) the console runs, so the presenter can say
+what happened. The recipes are data in `actions.py` (`RECIPES`); `GET /api/actions` serves them
+on the `start-recipe` action (5.5) and the sheet renders exactly that list, so the card cannot
+drift from what runs (a recipe body that enters a step outside its plan fails).
 
-| Recipe | Starts (in order) | Stops |
+| Recipe | Profiles | Steps (in order) |
 |---|---|---|
-| Local, plain Support | `dev-server-up` (WCI=0), `payments-mock`, `worker-finance[-scripted]`, `nexus-endpoint`, `worker-support[-scripted]` | `agentcore-local*`, emulator |
-| Local, serverless (invoke-local) | as above without `worker-support`, then `agentcore-local[-scripted]`, `invoke-local`, `register-version MODE=--poller` | `worker-support*` |
-| Local, serverless (WCI emulator) | waits for `/ping` Healthy, `dev-server-down`, `dev-server-up WCI=1`, `agentcore-emulator`, `agentcore-local[-scripted]`, `register-version` (`--local-wci`) | `worker-support*` |
-| kind (laptop side only) | `nexus-endpoint`, `agentcore-local[-scripted]`, `invoke-local`, `register-version MODE=--poller` | — |
-| Tear down local | stops every managed process, `dev-server-down` | everything |
+| Local, plain Support | local | `dev-server-up WCI=0`, stop `agentcore-local`/emulator, `payments-mock`, `worker-finance[-scripted]`, `nexus-endpoint`, `worker-support[-scripted]` |
+| Local, serverless (invoke-local) | local | `dev-server-up WCI=0`, stop `worker-support`, `payments-mock`, `worker-finance[-scripted]`, `nexus-endpoint`, `agentcore-local[-scripted]`, wait for `/ping`, `invoke-local`, `register-version MODE=--poller` |
+| Local, serverless (WCI emulator) | local | wait for `/ping` Healthy, `dev-server-up WCI=1` (restarts a WCI=0 server), stop `worker-support`, `payments-mock`, `worker-finance[-scripted]`, `nexus-endpoint`, `agentcore-emulator`, `agentcore-local[-scripted]`, wait for `/ping`, `register-version MODE=--local-wci` |
+| **Bring up kind** (long, confirm first) | kind, kind-plaintext | check Docker VM `agentcore`; `kind-up` unless the cluster exists and postgres is ready; `kind-temporal KIND_TLS=<profile>` unless release `temporal` is deployed with that TLS setting; `certs-pull` (kind only, every time); `pf`, then wait up to 60 s for Temporal; `kind-aws-creds` (live only); `kind-workers FINANCE_MODEL=scripted\|bedrock` unless that image already polls; then the laptop side below |
+| Laptop side only (cluster already up) | kind, kind-plaintext | check `:7233` (refused at once with "Temporal on kind is not reachable: run Bring up kind first"), `nexus-endpoint`, `agentcore-local[-scripted]`, wait for `/ping`, `invoke-local`, `register-version MODE=--poller` |
+| Tear down local | local | stop every managed process, `dev-server-down` |
 
-The cluster lifecycle on kind (`kind-up kind-temporal kind-workers FINANCE_MODEL=scripted
-certs-pull pf`, `kind-down`) is offered as confirm-first jobs: Docker only, several minutes,
-and `kind-down` is destructive.
+Bring up kind is idempotent: a second press skips every layer that is up and continues where
+the last run stopped. It never starts the Docker VM: when `docker --context colima-agentcore
+info` fails it stops at step 1 with "Docker VM agentcore is stopped" and the fix **Start Docker
+VM** (`make colima-up`, its own confirm-first job). Cluster steps stream their output into the
+job log while they run and have their own time limits (kind-up 900 s, kind-temporal 1500 s,
+kind-workers 1200 s; other steps 180 s). Cluster jobs and recipes run one at a time (409 while
+one runs).
+
+The single cluster layers (`colima-up`, `kind-up`, `kind-temporal`, `kind-workers`,
+`certs-pull`, `pf`, `pf-stop`, `kind-down`) stay available as confirm-first jobs under
+**Cluster**; `kind-down` is destructive. Each is disabled with the reason when the layer under
+it is missing (Docker VM stopped, no cluster).
+
+**Failures** say where and why. A failed job's `result` names the step (`step`, `step_label`),
+the cause in one line (`error`: the last output line that names an error, never make's own
+`*** Error 1`), a fixed `hint` for known causes (Docker daemon down, port 7233 refused, x509 on
+kind, AWS credentials) and the last meaningful lines (`tail`). The page raises an error toast
+"<title> failed at <step>: <cause>" when a job it watched ends failed, and the sheet opens with
+the newest job on top, expanded, when it failed.
 
 ### 2.4 Phone width (≤ 640 px)
 
@@ -326,8 +346,8 @@ Name things by what the audience sees ("Support workers running", "Nexus call he
 `send_message`). Buttons say exactly what happens: **Start Case B**, **Approve refund**,
 **Reject refund**, **Invoke AgentCore app**, **Stop Support worker**. Results reuse the
 button's verb ("Refund approved by dana.finance"). An error says what happened and how to fix
-it: "Temporal is not reachable at 127.0.0.1:7233. Start the dev server, or run `make pf` for
-kind." An empty state invites the next action: "No runs yet. Start Case A to see the hop."
+it: "Temporal on kind is not reachable: Docker VM agentcore is stopped. [Start Docker VM]".
+A job that ends failed says where: "Bring up kind failed at kind-temporal: <cause>." An empty state invites the next action: "No runs yet. Start Case A to see the hop."
 
 ---
 
@@ -377,7 +397,8 @@ kind." An empty state invites the next action: "No runs yet. Start Case A to see
   console is on profile local. Switch to kind."
 - **Startup order**: the clients connect lazily, with 1 s → 10 s back-off. Until Temporal
   answers, the stack bar shows "Temporal is not reachable", plus a **Start dev server** button
-  on local or the `make pf` command on kind. The page itself always loads.
+  on local, or on kind the first missing layer (`kind.gap`, 5.1) and its button (Start Docker
+  VM, Bring up kind, Start port-forward). The page itself always loads.
 
 ### 4.3 Ledger 72: never query Support
 
@@ -426,7 +447,8 @@ TEMPORAL_BUILD_ID=<id>." The content hash covers only support-agent's exports, s
   `worker-smoke`. On kind only the laptop-side Support processes are offered
   (`agentcore-local*`, `worker-support*`; hybrid). This is a deliberate reading of "observe
   only": scenario 4 needs the laptop AgentCore app. Cluster lifecycle stays out except the
-  confirm-first kind jobs in 2.3.
+  confirm-first kind jobs and the Bring up kind recipe in 2.3. The Docker VM is started only
+  by its own button (Start Docker VM), never as a side effect.
 - **How**: each process is `make -s <target>` (so the Makefile stays the single source of truth
   for args and per-identity client certs, Makefile 452–470), spawned with
   `asyncio.create_subprocess_exec(..., start_new_session=True)`. It gets stdout/stderr to
@@ -542,6 +564,22 @@ Every non-2xx response:
   managed processes.
 - `model.mode` ∈ `scripted | live | mixed | unknown`; `source` ∈ `managed | unknown`.
 - `port_forward`: `null` on local, else `{"kind": "kind", "frontend": true, "web": true}`.
+- `kind` (kind profiles; `null` on local): the layers under Temporal, bottom up, from cheap
+  checks with short timeouts, cached 15 s and refreshed in the background (never blocking the
+  snapshot), dropped after every cluster job:
+  `{"docker": bool, "cluster": bool|null, "port_forward": bool, "certs": "ok|missing|stale|unknown"|null,
+  "gap": {"layer": "docker|cluster|port-forward|temporal|certs", "cause": "Docker VM agentcore is stopped",
+  "fix": {"kind": "action", "action": "colima-up", "params": {}, "label": "Start Docker VM"}}|null}`.
+  `docker` = `docker --context colima-agentcore info` exits 0; `cluster` = `kind get clusters`
+  lists `agentcore-demo` (`null` while Docker is down); `port_forward` = the
+  `kind-pf-frontend` pidfile is alive; `certs` (profile kind only) compares `.certs/ca.crt`
+  with the cluster's CA (Secret `temporal-operator-tls`, cached 60 s): `stale` means the certs
+  are from an older cluster. The fixes are console actions: Start Docker VM (`colima-up`),
+  Bring up kind (`start-recipe` `kind-up`), Start port-forward (`pf`), Pull client certs
+  (`certs-pull`). On kind, `components` starts with a `cluster` pip ("Cluster") whose
+  `detail` is that cause and whose `fix` is that action; the Temporal-down banner names the
+  same cause with the same button (no copy box), and the scenario preconditions `temporal`
+  and `finance` use it too (`finance` otherwise: Deploy Finance pods, `kind-workers`).
 
 ### 5.2 Scenarios
 
@@ -807,10 +845,27 @@ optional step passed over (e.g. "stop the Support worker").
   "make": "make register-version MODE=--local-wci", "long": false }
 ```
 
-Action ids: `start-recipe` (`recipe` = `local-plain | local-invoke | local-wci | kind-laptop |
-teardown`), `nexus-endpoint`, `register-version`, `invoke-local`, `agentcore-ping`, `smoke`,
-`card`, `load` (`n` 1..20, `kind` = `ping|case-a`), `wci-history`, `kind-up`, `kind-temporal`,
-`kind-workers`, `certs-pull`, `pf`, `pf-stop`, `kind-down` (long, confirm).
+Every Action also has `group` ∈ `recipe | oneshot | cluster` (where the sheet lists it).
+
+Action ids: `start-recipe` (`recipe` = `local-plain | local-invoke | local-wci | kind-up |
+kind-laptop | teardown`; default `kind-up` on kind), `nexus-endpoint`, `register-version`,
+`invoke-local`, `agentcore-ping`, `smoke`, `card`, `load` (`n` 1..20, `kind` = `ping|case-a`),
+`wci-history`, `colima-up`, `kind-up`, `kind-temporal`, `kind-workers`, `certs-pull`, `pf`,
+`pf-stop`, `kind-down` (cluster group: long, confirm).
+
+`start-recipe` also carries `recipes`, the single source the sheet renders (2.3):
+
+```json
+{ "id": "kind-up", "title": "Bring up kind", "profiles": ["kind", "kind-plaintext"],
+  "long": true, "danger": false, "variants": ["scripted", "live"],
+  "steps": { "scripted": [ { "id": "docker", "label": "check Docker VM agentcore" }, "…" ],
+             "live": [ "…" ] },
+  "available": true, "why_not": null }
+```
+
+Steps are rendered for the current profile and each variant (`{v}` -scripted suffixes,
+`KIND_TLS`, certs-pull on kind only, kind-aws-creds on live only). A long recipe needs
+`confirm: true` like a long action.
 
 `POST /api/actions/{id}` with body `{"params": {"mode": "--local-wci"}, "confirm": false}` →
 `202` **Job**:
@@ -925,7 +980,13 @@ these additions and clarifications:
 - **Process**: `dev-server` adds `wci` (`"0"`, `"1"` or `null`); `unavailable` comes
   with `why` (wrong profile, no Build ID, or no client certificate under `.certs/…`).
 - **Job**: `status` ∈ `running | succeeded | failed`. `start-recipe` takes
-  `params: {recipe, variant: "scripted"|"live"}` (live = `tokens`).
+  `params: {recipe, variant: "scripted"|"live"}` (live = `tokens`). A Job also has `title`
+  (what the button said), `params`, and for recipes `steps`:
+  `[{"id", "label", "status": "todo|running|done|skipped|failed", "note", "elapsed_s"}]`
+  (pushed as each step changes). A failed job's `result` is
+  `{"error", "step", "step_label", "hint", "tail"}` (2.3); a failed command job's is
+  `{"error", "tail"}`. Cluster jobs and recipes are exclusive: starting one while another runs
+  is `409 precondition_failed` with `job` (the running job's id).
 - **Errors** may carry extra fields next to `code/message/hint` (e.g. `processes` on a
   refused profile switch).
 - **Tests**: the fakes are in `demo_console.fakes` (pytest's `--import-mode=importlib` cannot
@@ -956,6 +1017,7 @@ scripted stdout/exit codes), `FakeHttp` (ping/invocations), and a tmp `.temporal
 | `test_env.py` | `child_env()` strips `TEMPORAL_TLS`/`TEMPORAL_ADDRESS` outside local, sets `TEMPORAL_PROFILE`, `TEMPORAL_CONFIG_FILE` (absolute), `TEMPORAL_BUILD_ID` |
 | `test_procs.py` | start spawns `make -s <target>` in a new session; record written; adoption after "restart"; stop TERM→KILL; `external` detection; live variant needs confirm |
 | `test_actions.py` | cost gate (`confirm_required`); `register-version` argv per mode (`--poller`, `--local-wci`); recipes order |
+| `test_kind.py` | every recipe offered on a profile is accepted there (and teardown is not on kind); Bring up kind's plan per profile/variant; order from a cold Docker VM, skips on a warm cluster, plaintext reinstall of a TLS release; stop at a stopped Docker VM; a failed step's cause/tail; laptop-side refusal; one cluster job at a time; the `kind` facts, `cluster` pip and fixes per missing layer; stale certs |
 | `test_routes.py` | Starlette `TestClient`: Host check, `X-Console` check, error shapes, approve 409/422/200 paths, `POST /api/runs` arguments match case-a.sh (ticket, mode, budget, `USE_EXISTING`) |
 | `test_stream.py` | the SSE generator emits `hello`, `stack`, `run`, `rows` and only on change (hash); heartbeat |
 | `test_static.py` | `index.html` references only local assets (fonts are vendored); every JS module imported exists; no `localhost` |
@@ -991,7 +1053,8 @@ creates the endpoint with `demo_testing.nexus`. The console app is built with
   `app.js` read `static/fixtures/<name>.json` (StackSnapshot + RunView + rows) instead of the
   API and stream. It needs no Temporal, and presenters can use it to rehearse offline.
   Fixtures: `case-a-completed`, `case-b-input-required`, `case-b-completed-serverless`,
-  `failure-retrying`, `empty-stack`, plus `case-b-replay`. A fixture file is
+  `failure-retrying`, `empty-stack`, `kind-cold` (profile kind, Docker VM stopped, a failed
+  Bring up kind), plus `case-b-replay`. A fixture file is
   `{fixture, description, now, focus, route?, config, stack, runs, scenarios, actions,
   processes, jobs, run, rows, report, extra_runs: {wf: {run, rows}}, replay?}`, each value in
   its API shape. `replay` is `{frames: [{t, rows?, run?, stack?, runs?}], gate: {after, on,
@@ -1035,6 +1098,7 @@ services/demo-console/
                                  AgentsClient guard (SupportQueryForbidden)
     detect.py                    profile detection (pidfiles, kill -0, TLS probe)
     stack.py                     StackProbe -> StackSnapshot (pollers, endpoint, deployment, ports, ping)
+    kind.py                      kind layers: Docker VM, cluster, port-forward, certs (cached facts, gap)
     rows.py                      Row model + builders: support, finance, nexus pairs, wci, lifetimes
     runs.py                      list_runs, run_view, report (approval + serverless + q15)
     lifetimes.py                 identities -> lifetimes; app-log parser; emulator jsonl; WCI chain walk

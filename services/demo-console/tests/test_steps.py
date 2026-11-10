@@ -190,16 +190,28 @@ def test_scenario_json_preconditions_and_fit() -> None:
     assert scenario_json(catalog["case-a"], ready)["fit"] == "ready"
     assert scenario_json(catalog["case-a"], ready, "live")["cost"] == "tokens"
     assert scenario_json(catalog["wci-b"], StackFacts(profile="kind"))["fit"] == "wrong_profile"
-    # kind: no payments precondition (a pod), fixes are commands.
+    # kind: no payments precondition (a pod); fixes are the console's own actions.
     kind = StackFacts(profile="kind", temporal_up=False)
     body = scenario_json(catalog["case-a"], kind)
     assert "payments" not in {p["id"] for p in body["preconditions"]}
-    temporal = body["preconditions"][0]
-    assert temporal["fix"] == {
-        "kind": "command",
-        "command": "make pf TEMPORAL_PROFILE=kind",
-        "label": "Copy command",
+    pre = {p["id"]: p for p in body["preconditions"]}
+    assert pre["temporal"]["fix"] == {
+        "kind": "action",
+        "action": "pf",
+        "params": {},
+        "label": "Start port-forward",
     }
+    assert pre["finance"]["fix"]["action"] == "kind-workers"
+    # With the Docker VM stopped, both point at the first missing layer instead.
+    stopped = {
+        "layer": "docker",
+        "cause": "Docker VM agentcore is stopped",
+        "fix": {"kind": "action", "action": "colima-up", "params": {}, "label": "Start Docker VM"},
+    }
+    cold = StackFacts(profile="kind", kind_gap=stopped)
+    pre = {p["id"]: p for p in scenario_json(catalog["case-a"], cold)["preconditions"]}
+    assert pre["temporal"]["fix"]["action"] == "colima-up"
+    assert pre["finance"]["fix"]["action"] == "colima-up"
 
 
 def test_serverless_shape_switches_queue_and_preconditions() -> None:

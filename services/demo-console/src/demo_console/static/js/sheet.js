@@ -1,28 +1,21 @@
-// "Manage stack": laptop processes, stack recipes, one-shot actions, cluster commands and jobs
-// (DESIGN 2.3, 4.5, 5.5). Each line shows the make target the console runs.
+// "Manage stack": a failed job first, then stack recipes, laptop processes, one-shot actions,
+// cluster commands and jobs (DESIGN 2.3, 4.5, 5.5). Each line shows the make target the console
+// runs. Recipes and their checklists come from the backend (the start-recipe action's
+// `recipes`), so the card lists exactly the steps the recipe walks.
 import { enc, get } from "./api.js";
-import { runAction, startProcess, stopProcess } from "./actions.js";
-import { PROFILE_LABEL, ago, costMark, h, icon } from "./format.js";
+import { recipeById, runAction, startProcess, stopProcess } from "./actions.js";
+import { PROFILE_LABEL, ago, costMark, h, icon, ms } from "./format.js";
 import { store } from "./store.js";
-import { confirmDialog, toastError } from "./ui.js";
+import { toastError } from "./ui.js";
 
 const dlg = () => document.getElementById("sheet");
 const openLogs = new Map(); // "proc:<name>" | "job:<id>" -> lines[]
 const choice = new Map();   // "<name>:variant" etc -> value
 let logTimer = null;
 
-const RECIPES = {
-  "local-plain": { title: "Local, plain Support", steps: ["dev-server-up WCI=0", "payments-mock", "worker-finance-scripted", "nexus-endpoint", "worker-support-scripted"], stops: "agentcore-local*, emulator" },
-  "local-invoke": { title: "Local, serverless (invoke-local)", steps: ["dev-server-up WCI=0", "payments-mock", "worker-finance-scripted", "nexus-endpoint", "agentcore-local-scripted", "invoke-local", "register-version MODE=--poller"], stops: "worker-support*" },
-  "local-wci": { title: "Local, serverless (WCI emulator)", steps: ["wait for /ping Healthy", "dev-server-down", "dev-server-up WCI=1", "agentcore-emulator", "agentcore-local-scripted", "register-version"], stops: "worker-support*" },
-  "kind-laptop": { title: "kind, laptop side", steps: ["nexus-endpoint", "agentcore-local-scripted", "invoke-local", "register-version MODE=--poller"], stops: null },
-  teardown: { title: "Tear down local", steps: ["stop every managed process", "dev-server-down"], stops: "everything", danger: true },
-};
-// The make targets a recipe's worker steps run for each model variant (procs.py SPECS).
-const LIVE_TARGET = { "worker-finance-scripted": "worker-finance", "worker-support-scripted": "worker-support", "agentcore-local-scripted": "agentcore-local" };
-const recipeSteps = (R, variant) => R.steps.map((s) => (variant === "live" ? LIVE_TARGET[s] || s : s));
-const RECIPE_PROFILES = { "local-plain": ["local"], "local-invoke": ["local"], "local-wci": ["local"], "kind-laptop": ["kind", "kind-plaintext"], teardown: ["local", "kind", "kind-plaintext"] };
-const CLUSTER = new Set(["kind-up", "kind-temporal", "kind-workers", "certs-pull", "pf", "pf-stop", "kind-down"]);
+const STEP_MARK = { done: "✓", skipped: "–", failed: "✗", running: "…" };
+const STEP_WORD = { done: "done", skipped: "skipped", failed: "failed", running: "running" };
+const RECENT_MS = 30 * 60 * 1000;
 const STATUS_WORD = { running: "running", stopped: "stopped", exited: "exited", external: "running outside the console", unavailable: "unavailable", succeeded: "succeeded", failed: "failed" };
 
 function logBox(key) {
@@ -79,9 +72,48 @@ function actionItem(a, profile, busy) {
   </li>`;
 }
 
+/** A recipe's numbered checklist: the plan, or the latest run's step states. */
+function checklist(steps) {
+  return h`<ol class="checklist">${steps.map((s) => {
+    const st = s.status || "todo";
+    const note = st === "skipped" ? s.note : st === "todo" || !s.elapsed_s ? "" : `${s.elapsed_s}s`;
+    return h`<li data-s="${st}">${s.label}${STEP_MARK[st] ? h` <span class="mark" title="${STEP_WORD[st]}">${STEP_MARK[st]}</span><span class="sr"> ${STEP_WORD[st]}</span>` : ""}${note ? h` <span class="note">${note}</span>` : ""}</li>`;
+  })}</ol>`;
+}
+
+function latestRun(jobs, id) {
+  const j = jobs.find((x) => x.action === "start-recipe" && x.params?.recipe === id && x.steps);
+  if (!j) return null;
+  return j.status === "running" || Date.now() - ms(j.ended_at || j.started_at) < RECENT_MS ? j : null;
+}
+
+function recipeCard(r, jobs, busy) {
+  const variant = r.variants.length ? choice.get(`recipe:${r.id}:variant`) || "scripted" : "scripted";
+  const live = variant === "live";
+  const run = latestRun(jobs, r.id);
+  const steps = run && (run.status === "running" || run.params?.variant === variant) ? run.steps : r.steps[variant] || r.steps.scripted;
+  const running = run?.status === "running";
+  return h`<div class="recipe" data-recipe-card="${r.id}"><b>${r.title}</b>
+    ${r.variants.length > 1 ? h`<div class="seg vseg" role="group" aria-label="Model for ${r.title}">${r.variants.map((v) => h`<button type="button" data-recipe-variant="${r.id}:${v}" aria-pressed="${String(v === variant)}">${v === "live" ? "live (Opus 5.5)" : "scripted"}</button>`)}</div>` : ""}
+    ${checklist(steps)}
+    ${r.why_not ? h`<span class="why">${r.why_not}</span>` : ""}
+    <span class="rgo"><button class="btn small ${r.danger ? "no" : "ghost"} ${busy["action:start-recipe"] || running ? "busy" : ""}" type="button" data-recipe="${r.id}" ${r.available === false || running ? "disabled" : ""}>${icon(r.danger ? "stop" : "play")}${r.danger ? "Tear down" : r.long ? r.title : "Bring up"}</button>${live ? costMark("tokens", true) : ""}${r.long && !running ? h`<span class="muted">several minutes</span>` : ""}${running ? h`<span class="muted">running, started ${ago(run.started_at)}</span>` : ""}</span></div>`;
+}
+
+/** The newest job, when it failed: where, why, the next move and its last lines. */
+function failedJob(j) {
+  const r = j.result || {};
+  const lines = (r.tail && r.tail.length ? r.tail : (j.log_tail || []).slice(-12));
+  return h`<section class="failed" aria-labelledby="failed-title"><h3 id="failed-title"><span class="pstate" data-s="failed">failed</span> ${j.title || j.action}</h3>
+    <p>${r.step_label ? h`At <b class="id">${r.step_label}</b>: ` : ""}${r.error || "See the log."}</p>
+    ${r.hint ? h`<p class="sub">${r.hint}</p>` : ""}
+    ${lines.length ? h`<pre class="log">${lines.join("\n")}</pre>` : ""}
+    <span class="muted">${ago(j.ended_at || j.started_at)} · ${j.command}</span></section>`;
+}
+
 function jobItem(j) {
   return h`<li>
-    <span class="nm">${j.action} <span class="pstate" data-s="${j.status}">${j.status}</span>${j.exit_code ? h` <span class="muted">exit ${j.exit_code}</span>` : ""}</span>
+    <span class="nm">${j.title || j.action} <span class="pstate" data-s="${j.status}">${j.status}</span>${j.exit_code ? h` <span class="muted">exit ${j.exit_code}</span>` : ""}</span>
     <span class="mk id">${j.command}${j.started_at ? h` <span class="muted">${ago(j.started_at)}</span>` : ""}</span>
     <span class="ctl"><button class="tbtn" type="button" data-log="job:${j.id}" aria-pressed="${String(openLogs.has(`job:${j.id}`))}">${icon("log")}Log</button></span>
     ${openLogs.has(`job:${j.id}`) ? h`<pre class="log">${(j.log_tail || []).join("\n") || "No output."}</pre>` : ""}
@@ -95,34 +127,31 @@ export function renderSheet(state) {
   const busy = state.ui.busy || {};
   const procs = state.processes || [];
   const actions = state.actions || [];
-  const recipe = actions.find((a) => a.id === "start-recipe");
-  const recipes = (recipe?.params?.[0]?.choices || Object.keys(RECIPES)).filter((r) => (RECIPE_PROFILES[r] || []).includes(profile));
-  const oneShots = actions.filter((a) => a.id !== "start-recipe" && !CLUSTER.has(a.id));
-  const cluster = actions.filter((a) => CLUSTER.has(a.id));
+  const jobs = state.jobs || [];
+  const recipes = (actions.find((a) => a.id === "start-recipe")?.recipes || []).filter((r) => r.profiles.includes(profile));
+  const oneShots = actions.filter((a) => (a.group || "oneshot") === "oneshot");
+  const cluster = actions.filter((a) => a.group === "cluster");
+  const failed = jobs[0]?.status === "failed" ? jobs[0] : null;
+  const kind = profile !== "local";
   const scroll = d.querySelector(".body")?.scrollTop || 0;
   d.innerHTML = String(h`<header><h2 id="sheet-title">Manage stack</h2><span class="muted">profile <b class="id">${profile}</b></span>
       <button class="tbtn" type="button" data-close-sheet aria-label="Close">${icon("close")}</button></header>
     <div class="body">
+      ${failed ? failedJob(failed) : ""}
+      ${recipes.length ? h`<section><h3>Stack recipes</h3><p class="sub">${kind
+        ? "Bring up kind starts each missing layer in order and skips the ones that are up. The laptop side alone needs a running cluster."
+        : "One button brings the stack to a known shape. The job's log lists each make target as it runs."}</p>
+        <div class="recipes">${recipes.map((r) => recipeCard(r, jobs, busy))}</div></section>` : ""}
       <section><h3>Processes on this laptop</h3>
         <p class="sub">Each runs as a make target in its own process group and survives a console restart. Live variants call Bedrock.</p>
         ${procs.length ? h`<ul class="plist">${procs.map((p) => procItem(p, profile, busy))}</ul>` : h`<p class="muted">The backend lists no processes.</p>`}</section>
-      ${recipes.length ? h`<section><h3>Stack recipes</h3><p class="sub">One button brings the stack to a known shape. The job's log lists each make target as it runs.</p>
-        <div class="recipes">${recipes.map((r) => {
-          const R = RECIPES[r] || { title: r, steps: [] };
-          const variant = choice.get(`recipe:${r}:variant`) || "scripted";
-          const live = variant === "live";
-          return h`<div class="recipe"><b>${R.title}</b>
-            ${R.danger ? "" : h`<div class="seg vseg" role="group" aria-label="Model for ${R.title}">${["scripted", "live"].map((v) => h`<button type="button" data-recipe-variant="${r}:${v}" aria-pressed="${String(v === variant)}">${v === "live" ? "live (Opus 5.5)" : "scripted"}</button>`)}</div>`}
-            <ol>${recipeSteps(R, variant).map((s) => h`<li>${s}</li>`)}</ol>${R.stops ? h`<span class="muted" style="font-size:.82rem">Stops ${R.stops}${live ? "; restarts scripted workers as live" : ""}</span>` : ""}
-            <span class="rgo"><button class="btn small ${R.danger ? "no" : "ghost"} ${busy["action:start-recipe"] ? "busy" : ""}" type="button" data-recipe="${r}">${icon(R.danger ? "stop" : "play")}${R.danger ? "Tear down" : "Bring up"}</button>${live ? costMark("tokens", true) : ""}</span></div>`;
-        })}</div></section>` : ""}
       <section><h3>One-shot actions</h3>
         <ul class="plist">${oneShots.map((a) => actionItem(a, profile, busy))}</ul></section>
       <section><h3>Cluster</h3>
-        ${profile.startsWith("kind") ? h`<p class="sub">Docker only. Each takes a few minutes; Delete removes the cluster.</p><ul class="plist">${cluster.map((a) => actionItem(a, profile, busy))}</ul>`
+        ${kind ? h`<p class="sub">One layer at a time, each a few minutes. Bring up kind runs them in order. Delete removes the cluster.</p><ul class="plist">${cluster.map((a) => actionItem(a, profile, busy))}</ul>`
           : h`<p class="sub">On kind, the cluster commands live here. Switch the profile in the stack bar.</p>`}</section>
       <section><h3>Jobs</h3>
-        ${(state.jobs || []).length ? h`<ul class="plist">${state.jobs.slice(0, 20).map(jobItem)}</ul>` : h`<p class="muted">No jobs yet. Recipes and one-shot actions show up here with their logs.</p>`}</section>
+        ${jobs.length ? h`<ul class="plist">${jobs.slice(0, 20).map(jobItem)}</ul>` : h`<p class="muted">No jobs yet. Recipes and one-shot actions show up here with their logs.</p>`}</section>
     </div>`);
   const body = d.querySelector(".body");
   if (body) body.scrollTop = scroll;
@@ -181,35 +210,34 @@ export function wireSheet() {
     }
     const rc = t.closest("[data-recipe]");
     if (rc) {
-      const r = rc.dataset.recipe;
-      if (RECIPES[r]?.danger) {
-        const ok = await confirmDialog({ title: "Tear down local", body: "Stops every process the console started, then the dev server. Workflow history stays in .temporal/dev.db.", confirmLabel: "Tear down", danger: true });
-        if (!ok) return;
-        await runAction("start-recipe", { recipe: r }, { title: RECIPES[r]?.title || r });
+      const r = recipeById(rc.dataset.recipe);
+      if (!r) return;
+      if (r.danger) {
+        await runAction("start-recipe", { recipe: r.id }, { danger: true, confirmLabel: "Tear down", body: "Stops every process the console started, then the dev server. Workflow history stays in .temporal/dev.db." });
         return;
       }
-      const variant = choice.get(`recipe:${r}:variant`) || "scripted";
-      const title = `${RECIPES[r]?.title || r}${variant === "live" ? ", live" : ""}`;
-      // live: the gate asks first (Bedrock tokens); the backend refuses without confirm too.
-      await runAction("start-recipe", { recipe: r, variant }, variant === "live"
-        ? { title, cost: "tokens", body: "Starts (or restarts) the model workers on their live targets: Opus 5.5 on Bedrock. Needs aws sso login.", command: recipeSteps(RECIPES[r] || { steps: [] }, "live").join(" -> ") }
-        : { title });
+      const variant = choice.get(`recipe:${r.id}:variant`) || "scripted";
+      const live = variant === "live";
+      // Long or live: the gate asks first; the backend refuses without confirm too.
+      await runAction("start-recipe", { recipe: r.id, variant }, {
+        title: `${r.title}${live ? ", live" : ""}`,
+        body: live ? `Starts (or restarts) the model workers on their live targets: Opus 5.5 on Bedrock. Needs aws sso login.${r.long ? " Takes several minutes." : ""}` : null,
+      });
       return;
     }
     const ac = t.closest("[data-action]");
     if (ac) {
       const a = (store.state.actions || []).find((x) => x.id === ac.dataset.action);
       if (!a) return;
-      if (a.long || a.id === "kind-down") {
-        const ok = await confirmDialog({ title: a.label, body: a.id === "kind-down" ? "Deletes the kind cluster and everything in it." : "This takes several minutes. Follow it under Jobs.", command: a.make, confirmLabel: a.id === "kind-down" ? "Delete cluster" : "Run", danger: a.id === "kind-down" });
-        if (!ok) return;
-      }
       const params = {};
       for (const p of a.params || []) {
         const v = choice.get(`${a.id}:${p.id}`) ?? p.default;
         params[p.id] = p.type === "number" ? Number(v) : v;
       }
-      try { await runAction(a.id, params); } catch (err) { toastError(err); }
+      const del = a.id === "kind-down";
+      try {
+        await runAction(a.id, params, del ? { danger: true, confirmLabel: "Delete cluster", body: "Deletes the kind cluster and everything in it." } : {});
+      } catch (err) { toastError(err); }
     }
   });
   d.addEventListener("change", (e) => {

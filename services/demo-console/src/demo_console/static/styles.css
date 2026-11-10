@@ -543,7 +543,7 @@ dialog::backdrop { background: rgb(0 0 0 / .6); }
 .plist .ctl { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .plist .ctl select { width: auto; padding: .25rem .4rem; font-size: .85rem; }
 .plist .why { grid-column: 1 / -1; font-size: .82rem; color: var(--muted); }
-.plist .log { grid-column: 1 / -1; margin: .3rem 0 0; max-height: 14rem; overflow: auto; font-family: var(--mono); font-size: .76rem; background: var(--well); border: 1px solid var(--rule); border-radius: 8px; padding: .5rem .6rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.plist .log, .sheet .failed .log { grid-column: 1 / -1; margin: .3rem 0 0; max-height: 14rem; overflow: auto; font-family: var(--mono); font-size: .76rem; background: var(--well); border: 1px solid var(--rule); border-radius: 8px; padding: .5rem .6rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .pstate { display: inline-flex; gap: .3rem; align-items: center; font-size: .8rem; font-weight: 600; }
 .pstate::before { content: ""; width: .55rem; height: .55rem; border-radius: 50%; }
 .pstate[data-s="running"] { color: var(--ok); } .pstate[data-s="running"]::before { background: var(--ok); box-shadow: 0 0 6px rgb(31 241 165 / .55); }
@@ -558,6 +558,21 @@ dialog::backdrop { background: rgb(0 0 0 / .6); }
 .recipe .rgo { display: flex; gap: .6rem; align-items: center; }
 .recipe .vseg { width: max-content; }
 .recipe .vseg button { padding: .12rem .6rem; font-size: .82rem; }
+.recipe .why { font-size: .82rem; color: var(--muted); }
+/* A recipe's checklist: numbered (a sequence); the mark after each line says how it went.
+   Done and skipped stay neutral; only a failed step takes the fault colour. */
+.recipe ol.checklist li + li { margin-top: .12rem; }
+.recipe ol.checklist .note { color: var(--muted); font-family: inherit; }
+.recipe ol.checklist li[data-s="done"], .recipe ol.checklist li[data-s="running"] { color: var(--ink); }
+.recipe ol.checklist li[data-s="running"] { font-weight: 600; }
+.recipe ol.checklist li[data-s="failed"] { color: var(--bad); }
+.recipe .rgo .muted { font-size: .82rem; }
+.sheet .failed { display: grid; gap: .4rem; padding: .8rem .9rem; background: var(--panel); border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--rule)); border-radius: 10px; }
+.sheet .failed h3 { margin: 0; display: flex; gap: .6rem; align-items: center; }
+.sheet .failed p { margin: 0; }
+.sheet .failed .sub { margin: 0; }
+.sheet .failed > .muted { font-size: .8rem; overflow-wrap: anywhere; }
+#confirm .copy code { white-space: pre-line; }
 
 /* confirm dialog */
 .confirm { border: 0; border-radius: 14px; padding: 0; width: min(30rem, calc(100% - 2rem)); background: var(--raised); box-shadow: var(--lift); }

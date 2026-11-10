@@ -19,7 +19,15 @@ function upsert(listKey, item, key) {
   store.set({ [listKey]: list });
 }
 export const upsertProcess = (p) => upsert("processes", p, "name");
-export const upsertJob = (j) => upsert("jobs", j, "id");
+export function upsertJob(j) {
+  // The POST answer (running) can arrive after the stream's final event for a quick job.
+  const prev = (S().jobs || []).find((x) => x.id === j.id);
+  if (prev && prev.status !== "running" && j.status === "running") return;
+  upsert("jobs", j, "id");
+}
+/** Recipe metadata as the backend serves it on the start-recipe action (DESIGN 2.3, 5.5). */
+export const recipes = () => actionById("start-recipe")?.recipes || [];
+export const recipeById = (id) => recipes().find((r) => r.id === id) || null;
 
 const CASE_VERB = { A: "Start Case A", B: "Start Case B" };
 
@@ -94,19 +102,22 @@ export async function stopProcess(name, signal = "TERM") {
   return res;
 }
 
-export async function runAction(id, params = {}, { title = null, cost: forced = null, body = null, command = null } = {}) {
+export async function runAction(id, params = {}, { title = null, cost: forced = null, body = null, command = null, danger = false, confirmLabel = null } = {}) {
   const a = actionById(id);
-  // The listing's cost is for the default params; a caller that changes them (a live recipe)
-  // says what they cost so the gate asks first.
-  const cost = forced || a?.cost || "free";
-  const label = title || a?.label || id;
+  const r = id === "start-recipe" ? recipeById(params.recipe || a?.params?.find((p) => p.id === "recipe")?.default) : null;
+  // The listing's cost is for the default params; a live recipe costs tokens.
+  const cost = forced || (r && params.variant === "live" ? "tokens" : null) || a?.cost || "free";
+  const label = title || r?.title || a?.label || id;
+  const long = !!(a?.long || r?.long);
+  const steps = r ? r.steps[params.variant || "scripted"] || r.steps.scripted || [] : null;
   const res = await gated({
-    key: `action:${id}`, cost, title: label, command: command || a?.make || null,
-    body: body || (a?.long ? "This takes a few minutes. The job's log shows progress in Manage stack." : null),
+    key: `action:${id}`, cost, ask: long || danger, danger, title: label, confirmLabel,
+    command: command || (steps ? steps.map((s, i) => `${i + 1}. ${s.label}`).join("\n") : a?.make) || null,
+    body: body || (long ? "Takes several minutes. The checklist and log are under Manage stack." : null),
     call: (confirm) => post(`/api/actions/${enc(id)}`, { params, confirm }),
-    ok: (r) => {
-      if (r && r.result && r.result.message) return `${label}: ${r.result.message}${r.result.ping ? ` (${r.result.ping})` : ""}.`;
-      return r && r.status === "running" ? `${label}: started. Follow it in Manage stack.` : `${label}: done.`;
+    ok: (res) => {
+      if (res && res.result && res.result.message) return `${label}: ${res.result.message}${res.result.ping ? ` (${res.result.ping})` : ""}.`;
+      return res && res.status === "running" ? `${label}: started.` : `${label}: done.`;
     },
   });
   if (res && res.id && res.action) upsertJob(res);

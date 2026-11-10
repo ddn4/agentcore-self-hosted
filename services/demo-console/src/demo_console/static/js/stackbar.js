@@ -1,7 +1,7 @@
 // The stack bar (profile, Support shape, model, component pips, Build ID, toggles) and the
 // banners under it (Temporal unreachable, profile mismatch, backend lost, stream alerts).
 import { post } from "./api.js";
-import { startProcess } from "./actions.js";
+import { runFix, startProcess } from "./actions.js";
 import { PROFILE_LABEL, SHAPE_LABEL, h, icon } from "./format.js";
 import { prefs, store } from "./store.js";
 import { copyBox, toast, toastError } from "./ui.js";
@@ -82,11 +82,20 @@ export function renderBanners(state) {
     out.push(h`<div class="banner" data-level="error">${icon("warn")}<p>The console backend stopped answering. The page reconnects by itself when it is back.</p>${copyBox("make console")}</div>`);
   }
   const t = (state.stack?.components || []).find((c) => c.id === "temporal");
+  const gap = state.stack?.kind?.gap || null;
   if (t && t.status === "down") {
-    const local = cfg.profile === "local";
-    out.push(h`<div class="banner" data-level="error">${icon("warn")}<p>${(t.detail || "Temporal is not reachable at 127.0.0.1:7233").replace(/\.?$/, ".")} ${local ? "Start the dev server." : `Run the port-forward for ${cfg.profile}.`}</p>
-      ${local ? h`<button class="btn small primary" type="button" data-start-dev>${icon("play")}Start dev server</button>`
-        : copyBox(`make pf TEMPORAL_PROFILE=${cfg.profile}`)}</div>`);
+    if (cfg.profile === "local") {
+      out.push(h`<div class="banner" data-level="error">${icon("warn")}<p>${(t.detail || "Temporal is not reachable at 127.0.0.1:7233").replace(/\.?$/, ".")} Start the dev server.</p>
+        <button class="btn small primary" type="button" data-start-dev>${icon("play")}Start dev server</button></div>`);
+    } else {
+      // kind: name the first missing layer (Docker VM, cluster, port-forward) and its action.
+      const fix = kindFix(gap);
+      out.push(h`<div class="banner" data-level="error">${icon("warn")}<p>Temporal on kind is not reachable: ${gap ? gap.cause : "the port-forward to 127.0.0.1:7233 does not answer"}.</p>
+        <button class="btn small primary" type="button" data-kind-fix>${icon("play")}${fix.label}</button></div>`);
+    }
+  } else if (t && gap && gap.layer === "certs") {
+    out.push(h`<div class="banner" data-level="warn">${icon("warn")}<p>${gap.cause}. Laptop workers would fail the mTLS handshake.</p>
+      <button class="btn small ghost" type="button" data-kind-fix>${gap.fix.label}</button></div>`);
   }
   const mm = state.stack?.profile?.mismatch;
   if (mm) {
@@ -102,6 +111,8 @@ export function renderBanners(state) {
   }
   el.innerHTML = out.map(String).join("");
 }
+
+const kindFix = (gap) => gap?.fix || { kind: "action", action: "pf", params: {}, label: "Start port-forward" };
 
 async function switchProfile(p) {
   const cfg = store.state.config || {};
@@ -153,6 +164,7 @@ export function wireStackBar(openSheet) {
     }
     if (t.closest("#t-drawer")) { root.dataset.drawer = root.dataset.drawer === "open" ? "closed" : "open"; return; }
     if (t.closest("[data-start-dev]")) { startProcess("dev-server", { wci: 0 }); return; }
+    if (t.closest("[data-kind-fix]")) { runFix(kindFix(store.state.stack?.kind?.gap)); return; }
     const d = t.closest("[data-dismiss]");
     if (d) store.set({ alerts: store.state.alerts.filter((a) => String(a.id) !== d.dataset.dismiss) });
   });

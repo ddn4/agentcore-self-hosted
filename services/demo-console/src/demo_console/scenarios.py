@@ -299,6 +299,8 @@ class StackFacts:
     compute: str | None = None  # none | local-wci | unknown
     managed: dict[str, bool] = field(default_factory=dict)
     shape: str = "unknown"
+    #: kind only: the first missing layer (kind.gap): ``{layer, cause, fix}`` or ``None``.
+    kind_gap: dict[str, Any] | None = None
 
 
 def _proc_fix(name: str, label: str) -> dict[str, Any]:
@@ -317,12 +319,19 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
     """One precondition evaluated now; ``None`` when it does not apply on this profile."""
     local = f.profile == "local"
     build = f.build_id or "<build>"
+    # kind: the fix for a missing layer (Docker VM, cluster, port-forward) is its action.
+    below = (
+        f.kind_gap
+        if f.kind_gap and f.kind_gap["layer"] in ("docker", "cluster", "port-forward", "temporal")
+        else None
+    )
     if pid == "temporal":
-        fix = (
-            _proc_fix("dev-server", "Start dev server")
-            if local
-            else _cmd_fix(f"make pf TEMPORAL_PROFILE={f.profile}")
-        )
+        if local:
+            fix = _proc_fix("dev-server", "Start dev server")
+        elif below:
+            fix = below["fix"]
+        else:
+            fix = _action_fix("pf", "Start port-forward")
         return {"id": pid, "label": "Temporal is up", "ok": f.temporal_up, "fix": fix}
     if pid == "endpoint":
         return {
@@ -348,7 +357,7 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
             "id": pid,
             "label": "A Finance worker polls agent-services-tq",
             "ok": f.finance_pollers > 0,
-            "fix": _cmd_fix("make kind-workers FINANCE_MODEL=scripted"),
+            "fix": below["fix"] if below else _action_fix("kind-workers", "Deploy Finance pods"),
         }
     if pid == "payments":
         if not local:

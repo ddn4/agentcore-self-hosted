@@ -21,6 +21,7 @@ import httpx
 
 from demo_console.clients import Gateway, TemporalUnreachable
 from demo_console.detect import Detection, detect, mismatch, plaintext_probe
+from demo_console.kind import KindFacts, KindProbe, gap
 from demo_console.lifetimes import app_state, parse_app_log, read_emulator
 from demo_console.payloads import iso, now, parse_iso
 from demo_console.procs import ProcessManager, tail_file
@@ -212,6 +213,8 @@ class StackProbe:
         self.http = http or RealHttp()
         self._detector = detector
         self._detection: tuple[float, Detection] | None = None
+        #: Docker VM, cluster, port-forward and certs on the kind profiles (cached 15 s).
+        self.kind = KindProbe(settings, runner)
         self._script_build: tuple[float, str | None] | None = None
         self.last: dict[str, Any] | None = None
         self.facts = StackFacts(profile=settings.profile)
@@ -359,9 +362,11 @@ class StackProbe:
 
     async def snapshot(self) -> dict[str, Any]:
         s = self.settings
-        temporal, laptop, detection = await asyncio.gather(
-            self._temporal(), self._laptop(), self.detection()
+        temporal, laptop, detection, kind = await asyncio.gather(
+            self._temporal(), self._laptop(), self.detection(), self.kind.facts()
         )
+        kind_gap = gap(kind, temporal["up"])
+        self.procs.certs_state = kind.certs if kind else None
         ports: set[int] = laptop["ports"]
         pollers: dict[str, list[dict[str, Any]]] = temporal.get("pollers") or {
             f"{ns}/{tq}": [] for ns, tq in QUEUES
@@ -441,7 +446,7 @@ class StackProbe:
             model = {"mode": "mixed", "source": "managed"}
 
         components = self._components(
-            temporal, laptop, n_fin, n_dev, n_ver, shape, agentcore_up, emulator_up, app
+            temporal, laptop, n_fin, n_dev, n_ver, shape, agentcore_up, emulator_up, app, kind
         )
         configured = s.profile
         snap: dict[str, Any] = {
@@ -474,6 +479,17 @@ class StackProbe:
             "components": components,
             "pollers": pollers,
             "port_forward": detection.port_forward if configured != "local" else None,
+            "kind": (
+                {
+                    "docker": kind.docker,
+                    "cluster": kind.cluster,
+                    "port_forward": kind.port_forward,
+                    "certs": kind.certs,
+                    "gap": kind_gap,
+                }
+                if kind
+                else None
+            ),
         }
         if temporal.get("error") and not temporal["up"]:
             snap["temporal_error"] = temporal["error"]
@@ -493,6 +509,7 @@ class StackProbe:
             compute=compute,
             managed=dict.fromkeys(self.procs.records, True),
             shape=shape,
+            kind_gap=kind_gap,
         )
         self.last = snap
         return snap
@@ -508,6 +525,7 @@ class StackProbe:
         agentcore_up: bool,
         emulator_up: bool,
         app: dict[str, Any],
+        kind: KindFacts | None = None,
     ) -> list[dict[str, Any]]:
         s = self.settings
         local = s.profile == "local"
@@ -519,11 +537,13 @@ class StackProbe:
             return "up" if name in self.procs.records else "external"
 
         out: list[dict[str, Any]] = []
+        if kind is not None:
+            out.append(self._cluster_component(kind, temporal["up"]))
         if temporal["up"]:
             detail = f"127.0.0.1:7233, server {temporal.get('server_version') or '?'}"
             status = proc_status(True, "dev-server") if local else "up"
         else:
-            # The page adds the fix (a Start button locally, the pf command elsewhere).
+            # The page adds the fix: Start dev server locally, the kind gap's action on kind.
             detail = "Temporal is not reachable at 127.0.0.1:7233"
             status = "down"
         comp: dict[str, Any] = {
@@ -637,3 +657,17 @@ class StackProbe:
                 }
             )
         return out
+
+    def _cluster_component(self, kind: KindFacts, temporal_up: bool) -> dict[str, Any]:
+        """One pip for the kind layers under Temporal; ``fix`` is the first missing one's action."""
+        first = gap(kind, temporal_up)
+        comp: dict[str, Any] = {"id": "cluster", "label": "Cluster", "group": "temporal"}
+        if first is None:
+            certs = {"ok": ", client certs match", "unknown": ", client certs not compared"}
+            comp["status"] = "up"
+            comp["detail"] = "agentcore-demo, port-forward on" + certs.get(kind.certs or "", "")
+        else:
+            comp["status"] = "degraded" if first["layer"] == "certs" else "down"
+            comp["detail"] = first["cause"]
+            comp["fix"] = first["fix"]
+        return comp

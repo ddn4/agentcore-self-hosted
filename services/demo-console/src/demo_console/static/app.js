@@ -1,7 +1,7 @@
 // Demo console entry: router (#/runs/<wf>, #/scenarios/<id>, #/notes), the SSE stream, the
 // store and fixture mode (?fixture=<name> or ?demo=1). No build step; ES modules only.
 import { enc, get, isFixture, openStream, useBackend } from "./js/api.js";
-import { refreshLists, upsertJob, upsertProcess } from "./js/actions.js";
+import { actionById, refreshLists, upsertJob, upsertProcess } from "./js/actions.js";
 import { updateApproval } from "./js/approval.js";
 import { loadFixture } from "./js/fixture.js";
 import { clock, h, icon, ms, stateGlyph } from "./js/format.js";
@@ -78,6 +78,22 @@ function scheduleListRefresh() {
   }, wait);
 }
 
+// A job that ended while the page watched it: failures always say where and why; long jobs
+// and recipes also say when they are done (the button's own words, DESIGN 3.6).
+function announceJob(prev, job) {
+  if (job.status === "running") return;
+  const watched = prev ? prev.status === "running" : Date.now() - ms(job.ended_at) < 15000;
+  if (!watched) return;
+  const title = job.title || actionById(job.action)?.label || job.action;
+  const r = job.result || {};
+  if (job.status === "failed") {
+    const at = r.step_label ? ` at ${r.step_label}` : "";
+    toast(`${title} failed${at}: ${r.error || "see its log"}.`.replace(/\.\.$/, "."), { level: "error", hint: r.hint || "Open Manage stack for the log." });
+  } else if (job.action === "start-recipe" || actionById(job.action)?.long) {
+    toast(`${title}: done.`, { level: "ok" });
+  }
+}
+
 function onEvent(name, data) {
   const st = store.state;
   switch (name) {
@@ -106,7 +122,12 @@ function onEvent(name, data) {
       store.set({ rows: { workflow_id: data.workflow_id, t0: data.t0 || st.rows.t0, rows_version: data.rows_version, rows } });
       break;
     }
-    case "job": upsertJob(data); break;
+    case "job": {
+      const prev = (st.jobs || []).find((j) => j.id === data.id);
+      upsertJob(data);
+      announceJob(prev, data);
+      break;
+    }
     case "process": upsertProcess(data); break;
     case "alert":
       if (data.level === "info") { toast(data.message, { hint: data.hint }); break; }
