@@ -7,7 +7,10 @@ from importlib.resources import files
 
 import pytest
 
+from demo_console.actions import RECIPES
 from demo_console.scenarios import (
+    RECIPE_FIXES,
+    SHAPE_RECIPE,
     PredicateError,
     StackFacts,
     StepContext,
@@ -15,6 +18,7 @@ from demo_console.scenarios import (
     load_catalog,
     parse_predicate,
     scenario_json,
+    setup_recipe,
     step_statuses,
     suffix,
 )
@@ -233,3 +237,102 @@ def test_suffix_is_never_twelve_digits() -> None:
     for _ in range(200):
         sfx = suffix()
         assert len(sfx) == 4 and sfx[0].isalpha()
+
+
+# --- one-click setup and the next scenario (DESIGN.md 2.2) ---------------------------------
+
+
+def test_setup_recipe_follows_queue_and_shape() -> None:
+    c = load_catalog()
+
+    def local(shape: str) -> dict[str, str | None]:
+        return {sid: setup_recipe(s, "local", shape) for sid, s in c.items()}
+
+    cold = local("unknown")
+    # Plain Support (support-dev-tq) is local-plain whatever the stack is now.
+    assert cold["crash"] == cold["failure"] == "local-plain"
+    # The presenter invokes the app -> invoke-local; the server must invoke it -> the WCI.
+    assert cold["serverless-b"] == "local-invoke"
+    assert cold["wci-b"] == cold["load"] == "local-wci"
+    # Case A, Case B and the smoke caller run on any shape: keep the stack's, or plain.
+    assert cold["case-a"] == cold["case-b"] == cold["smoke"] == "local-plain"
+    assert local("serverless-wci")["case-b"] == "local-wci"
+    assert local("serverless-invoke")["case-a"] == "local-invoke"
+    assert local("serverless-invoke")["crash"] == "local-plain"
+    # Clean up starts nothing.
+    assert cold["cleanup"] is None
+    # Every kind profile brings up kind; local-only scenarios have no recipe there.
+    for profile in ("kind", "kind-plaintext"):
+        assert setup_recipe(c["case-b"], profile, "unknown") == "kind-up"
+        assert setup_recipe(c["wci-b"], profile, "plain") is None
+
+
+def test_setup_recipes_exist_and_cover_what_they_claim() -> None:
+    named = {*SHAPE_RECIPE.values(), *RECIPE_FIXES}
+    assert named <= set(RECIPES)
+    for sid, s in load_catalog().items():
+        for profile in PROFILES:
+            for shape in ("unknown", *SHAPE_RECIPE):
+                recipe = setup_recipe(s, profile, shape)
+                assert recipe is None or recipe in RECIPE_FIXES, (sid, profile, shape)
+
+
+def test_scenario_json_marks_what_the_setup_recipe_fixes() -> None:
+    c = load_catalog()
+    cold = StackFacts(profile="local")
+    body = scenario_json(c["smoke"], cold, catalog=c)
+    assert body["setup_recipe"] == "local-plain"
+    by_setup = {p["id"] for p in body["preconditions"] if p.get("by_setup")}
+    # The smoke worker is not part of any recipe: it keeps its own fix button only.
+    assert by_setup == {"temporal", "endpoint", "finance", "payments"}
+    body = scenario_json(c["wci-b"], cold, catalog=c)
+    assert body["setup_recipe"] == "local-wci"
+    missing = {p["id"] for p in body["preconditions"] if not p["ok"]}
+    assert {p["id"] for p in body["preconditions"] if p.get("by_setup")} == missing - {"build-id"}
+    ready = StackFacts(profile="local", temporal_up=True)
+    body = scenario_json(c["cleanup"], ready, catalog=c)
+    assert body["setup_recipe"] is None and not any(
+        p.get("by_setup") for p in body["preconditions"]
+    )
+
+
+def test_next_links_follow_story_order() -> None:
+    c = load_catalog()
+    chain, sid = [], "case-a"
+    while sid:
+        chain.append(sid)
+        sid = c[sid].next
+    # Every scenario once, in the catalog's (story) order, ending at Clean up.
+    assert chain == list(c) and chain[-1] == "cleanup"
+
+
+def test_next_json_skips_other_profiles_and_names_a_shape_change() -> None:
+    c = load_catalog()
+    plain = StackFacts(profile="local", shape="plain")
+    assert scenario_json(c["case-a"], plain, catalog=c)["next"] == {
+        "id": "case-b",
+        "short": "Case B",
+        "setup_recipe": None,
+    }
+    # Plain -> you invoke changes the stack's shape: the link sets it up first.
+    nxt = scenario_json(c["failure"], plain, catalog=c)["next"]
+    assert nxt["id"] == "serverless-b" and nxt["setup_recipe"] == "local-invoke"
+    wci = StackFacts(profile="local", shape="serverless-wci")
+    assert scenario_json(c["wci-b"], wci, catalog=c)["next"]["setup_recipe"] is None
+    # On kind, the local-only scenarios are skipped and kind-up already is the shape.
+    kind = StackFacts(profile="kind", shape="serverless-invoke")
+    assert scenario_json(c["crash"], kind, catalog=c)["next"]["id"] == "serverless-b"
+    assert scenario_json(c["serverless-b"], kind, catalog=c)["next"] == {
+        "id": "load",
+        "short": "Load",
+        "setup_recipe": None,
+    }
+    assert scenario_json(c["cleanup"], plain, catalog=c)["next"] is None
+    # Without the catalog (older callers) there is no link.
+    assert scenario_json(c["case-a"], plain)["next"] is None
+
+
+def test_unknown_next_is_a_startup_error() -> None:
+    text = (files("demo_console") / "data" / "scenarios.toml").read_text()
+    with pytest.raises(PredicateError, match="unknown scenario"):
+        load_catalog(text.replace('next = "case-b"', 'next = "case-z"'))

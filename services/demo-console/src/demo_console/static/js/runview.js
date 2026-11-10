@@ -4,6 +4,7 @@
 import { updateApproval } from "./approval.js";
 import { TERMINAL, dur, h, icon, sinceText } from "./format.js";
 import { lanesKey, renderLanes } from "./lanes.js";
+import { nextButton } from "./launcher.js";
 import { mergedSteps, renderSteps } from "./steps.js";
 
 let mounted = null;   // workflow id the scaffold belongs to
@@ -267,7 +268,8 @@ export function renderRunView(state, el) {
     renderLanes(state, el.querySelector("#rows"));
     if (!lanes.classList.contains("paused")) follow(lanes);
   }
-  el.querySelector("#rv-report").innerHTML = String(report(run));
+  // Once the run has closed, the report ends with where the story goes next (DESIGN 2.2).
+  el.querySelector("#rv-report").innerHTML = String(report(run)) + (closed ? String(nextButton(scen)) : "");
   el.querySelector("#rv-q15").innerHTML = String(q15(run));
 }
 

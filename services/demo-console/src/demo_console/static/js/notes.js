@@ -1,7 +1,7 @@
 // Presenter notes: what to say for the current step, what to point at, the step's button,
 // and the equivalent make command (DESIGN 2.1). Also rendered alone at #/notes.
 import { actionById, procByName, runStep } from "./actions.js";
-import { formWorkflowId } from "./launcher.js";
+import { formWorkflowId, nextButton } from "./launcher.js";
 import { costMark, h, icon } from "./format.js";
 import { currentStep, mergedSteps, renderSteps } from "./steps.js";
 import { store } from "./store.js";
@@ -83,6 +83,7 @@ export function renderNotes(state) {
       <p class="say">${say}</p>
       ${cur && POINT_AT[cur.id] ? h`<h2>Point at</h2><p class="point">${pointAt(cur.id, run)}</p>` : ""}
       ${cur && run.status === "RUNNING" && stepButton(cur) ? h`<div class="do">${stepButton(cur)}</div>` : ""}
+      ${run.status !== "RUNNING" && nextButton(scen) ? h`<div class="do">${nextButton(scen)}</div>` : ""}
       ${cur?.make ? h`<h2>Same thing from a terminal</h2>${copyBox(cur.make)}` : ""}
       ${scen?.notes ? h`<div class="story"><p>${scen.notes}</p>${storyDoc(scen)}</div>` : ""}`;
   } else if (scen) {

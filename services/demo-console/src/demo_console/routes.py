@@ -192,7 +192,7 @@ async def get_scenarios(request: Request) -> Response:
     c = console(request)
     await c.hub.stack_cache.get()
     model = ((c.stack.last or {}).get("model") or {}).get("mode", "unknown")
-    out = [scenario_json(s, c.stack.facts, model) for s in c.catalog.values()]
+    out = [scenario_json(s, c.stack.facts, model, c.catalog) for s in c.catalog.values()]
     return JSONResponse({"scenarios": out})
 
 

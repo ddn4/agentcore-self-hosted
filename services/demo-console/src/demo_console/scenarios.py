@@ -167,6 +167,8 @@ class Scenario:
     preconditions_serverless: list[str]
     notes: str
     steps: list[Step]
+    #: The scenario to suggest once a run of this one has finished (story order), or None.
+    next: str | None = None
 
 
 STEP_KINDS = ("action", "watch", "human", "manual")
@@ -218,7 +220,11 @@ def load_catalog(text: str | None = None) -> dict[str, Scenario]:
             preconditions_serverless=list(raw.get("preconditions_serverless", [])),
             notes=raw.get("notes", ""),
             steps=steps,
+            next=raw.get("next"),
         )
+    for sc in out.values():
+        if sc.next is not None and sc.next not in out:
+            raise PredicateError(f"{sc.id}: next names an unknown scenario {sc.next!r}")
     return out
 
 
@@ -453,6 +459,57 @@ def default_queue(scenario: Scenario, shape: str) -> str | None:
     return None
 
 
+# --- setup recipes (DESIGN.md 2.2) ----------------------------------------------------------
+#
+# Each scenario's one-click setup is a stack recipe (actions.RECIPES; this module cannot import
+# actions, a unit test checks the ids). It is derived from the scenario's queue and steps, not
+# kept by hand: plain Support (support-dev-tq) is local-plain; a versioned scenario where the
+# presenter invokes the AgentCore app is local-invoke, and one where the server must invoke it
+# is local-wci; every kind profile brings up kind. "auto" scenarios (Case A, Case B) and the
+# smoke caller run on any shape, so they keep the one the stack has.
+
+KIND_RECIPE = "kind-up"
+SHAPE_RECIPE = {
+    "plain": "local-plain",
+    "serverless-invoke": "local-invoke",
+    "serverless-wci": "local-wci",
+}
+#: The preconditions each recipe fixes (the rest keep their own fix buttons).
+_BASE = frozenset(("temporal", "endpoint", "finance", "finance-managed", "payments"))
+_SERVERLESS = frozenset(("agentcore", "serverless-compute", "version", "version-current"))
+RECIPE_FIXES: dict[str, frozenset[str]] = {
+    "local-plain": _BASE | {"support-plain", "support-plain-managed"},
+    "local-invoke": _BASE | _SERVERLESS,
+    "local-wci": _BASE | _SERVERLESS | {"wci", "emulator", "version-wci"},
+    # kind-up deploys Finance on the cluster; payments and plain Support stay on the laptop.
+    KIND_RECIPE: (_BASE - {"finance-managed", "payments"}) | _SERVERLESS,
+}
+
+
+def shape_recipe(profile: str, shape: str) -> str | None:
+    """The recipe that produces the stack's current shape (``None`` when it is unknown)."""
+    if profile != "local":
+        return KIND_RECIPE
+    return SHAPE_RECIPE.get(shape)
+
+
+def setup_recipe(scenario: Scenario, profile: str, shape: str) -> str | None:
+    """The recipe that sets the stack up for ``scenario`` on ``profile`` (DESIGN.md 2.2).
+
+    ``None`` when the scenario is not for this profile or starts nothing (Clean up).
+    """
+    if profile not in scenario.profiles or scenario.queue == "none":
+        return None
+    if profile != "local":
+        return KIND_RECIPE
+    if scenario.queue == "versioned":
+        invokes = any(step.action == "invoke-local" for step in scenario.steps)
+        return "local-invoke" if invokes else "local-wci"
+    if scenario.queue == "dev":
+        return "local-plain"
+    return shape_recipe(profile, shape) or "local-plain"
+
+
 def scenario_cost(scenario: Scenario, profile: str, model_mode: str) -> str:
     cost = scenario.cost.get(profile, "free")
     if cost == "free" and model_mode == "live":
@@ -460,8 +517,29 @@ def scenario_cost(scenario: Scenario, profile: str, model_mode: str) -> str:
     return cost
 
 
+def next_json(
+    scenario: Scenario, catalog: dict[str, Scenario] | None, facts: StackFacts
+) -> dict[str, Any] | None:
+    """Where the story goes after ``scenario`` on this profile (scenarios for another profile are
+    skipped); ``setup_recipe`` is set only when the stack has to change shape for it."""
+    catalog = catalog or {}
+    nxt = catalog.get(scenario.next or "")
+    for _ in range(len(catalog)):
+        if nxt is None or facts.profile in nxt.profiles:
+            break
+        nxt = catalog.get(nxt.next or "")
+    if nxt is None or facts.profile not in nxt.profiles or nxt.id == scenario.id:
+        return None
+    recipe = setup_recipe(nxt, facts.profile, facts.shape)
+    change = recipe is not None and recipe != shape_recipe(facts.profile, facts.shape)
+    return {"id": nxt.id, "short": nxt.short, "setup_recipe": recipe if change else None}
+
+
 def scenario_json(
-    scenario: Scenario, facts: StackFacts, model_mode: str = "scripted"
+    scenario: Scenario,
+    facts: StackFacts,
+    model_mode: str = "scripted",
+    catalog: dict[str, Scenario] | None = None,
 ) -> dict[str, Any]:
     """``Scenario`` (DESIGN.md 5.2) with preconditions evaluated now."""
     queue = default_queue(scenario, facts.shape)
@@ -469,9 +547,13 @@ def scenario_json(
     if queue == "versioned" and scenario.preconditions_serverless:
         ids = scenario.preconditions_serverless
     pres = [p for p in (precondition(pid, facts) for pid in ids) if p is not None]
+    recipe = setup_recipe(scenario, facts.profile, facts.shape)
+    fixes = RECIPE_FIXES.get(recipe or "", frozenset())
     for p in pres:
         if p["ok"]:
             p.pop("fix", None)
+        elif p["id"] in fixes:
+            p["by_setup"] = True
     if facts.profile not in scenario.profiles:
         fit = "wrong_profile"
     elif all(p["ok"] for p in pres):
@@ -550,4 +632,6 @@ def scenario_json(
         "preconditions": pres,
         "steps": [step.to_json(wf, facts.build_id) for step in scenario.steps],
         "notes": scenario.notes,
+        "setup_recipe": recipe,
+        "next": next_json(scenario, catalog, facts),
     }

@@ -94,3 +94,14 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-copy]");
   if (b) { e.preventDefault(); copyText(b.dataset.copy); }
 });
+
+// Disclosures that survive re-renders: a <details data-keep="key"> keeps what the presenter
+// chose. Only clicks on the summary are remembered, so a default (open when something failed)
+// still follows the state until someone overrides it.
+const keptOpen = new Map();
+document.addEventListener("click", (e) => {
+  const s = e.target.closest("details[data-keep] > summary");
+  if (s) keptOpen.set(s.parentElement.dataset.keep, !s.parentElement.open);
+});
+/** `open` for a kept disclosure: what the presenter chose, else `dflt`. */
+export const openAttr = (key, dflt = false) => ((keptOpen.has(key) ? keptOpen.get(key) : dflt) ? "open" : "");

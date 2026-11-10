@@ -1,5 +1,8 @@
 # Demo console scenario catalog (docs/console/DESIGN.md 2.2, 5.2).
 #
+# Scenarios are listed in story order; next names the one the console suggests once a run of
+# this one has finished (DESIGN.md 2.2).
+#
 # Names: title heads the scenario card; short and sub are the left-column list entry;
 # run_label names a run of this scenario in the runs list and the run view.
 #
@@ -24,6 +27,7 @@ order_id = "1042"
 amount_usd = 40.0
 id_prefix = "support-1042"
 queue = "auto"
+next = "case-b"
 cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model; Bedrock tokens when the model is live"
 preconditions = ["temporal", "endpoint", "finance", "payments", "support-plain"]
@@ -82,6 +86,7 @@ order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077"
 queue = "auto"
+next = "crash"
 cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model; Bedrock tokens when the model is live"
 preconditions = ["temporal", "endpoint", "finance", "payments", "support-plain"]
@@ -165,6 +170,7 @@ order_id = "1042"
 amount_usd = 40.0
 id_prefix = "support-1042-crash"
 queue = "dev"
+next = "failure"
 cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model"
 preconditions = ["temporal", "endpoint", "finance", "payments", "support-plain-managed"]
@@ -205,6 +211,75 @@ notes = "Every model call and tool call is an Activity. I kill the process mid-t
   talk = "Two workers, one conversation, nothing repeated that had finished."
 
 [[scenario]]
+id = "failure"
+title = "Finance outage: Finance disappears mid-call"
+short = "Finance outage"
+sub = "Finance goes away; Nexus retries"
+run_label = "Case A, Finance outage"
+summary = "The Finance worker goes away; Support's Nexus call retries until it comes back."
+story = { tag = "v0.5-a2a-over-nexus", doc = "docs/story/v0.5-a2a-over-nexus.md" }
+profiles = ["local"]
+case = "A"
+order_id = "1042"
+amount_usd = 40.0
+id_prefix = "support-1042-failure"
+queue = "dev"
+next = "serverless-b"
+cost = { local = "free" }
+cost_note = "stops and restarts the console-managed Finance worker"
+preconditions = ["temporal", "endpoint", "finance-managed", "payments", "support-plain"]
+notes = "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives."
+
+  [[scenario.step]]
+  id = "start"
+  title = "Start Case A"
+  kind = "action"
+  action = "start-run"
+  done_when = "run.started"
+  talk = "Case A again."
+  make = "make case-a WF={wf}"
+
+  [[scenario.step]]
+  id = "card"
+  title = "Discovery completes"
+  kind = "watch"
+  done_when = "card.discovered"
+  talk = "Discovery is synchronous: Finance must be up for it."
+
+  [[scenario.step]]
+  id = "stop-finance"
+  title = "Stop Finance"
+  kind = "action"
+  action = "process.stop"
+  params = { name = "worker-finance", signal = "TERM" }
+  done_when = "process.worker-finance==stopped"
+  talk = "Finance goes away. Nobody polls agent-services-tq."
+
+  [[scenario.step]]
+  id = "retrying"
+  title = "The Nexus call retries"
+  kind = "watch"
+  done_when = "nexus.attempt>=2"
+  talk = "Attempt 2, 3... with the last failure. Nothing fails on Support's side."
+  make = "make pending WF={wf}"
+
+  [[scenario.step]]
+  id = "start-finance"
+  title = "Start Finance again"
+  kind = "action"
+  action = "process.start"
+  params = { name = "worker-finance" }
+  done_when = "nexus.completed"
+  talk = "Finance is back and the operation completes."
+
+  [[scenario.step]]
+  id = "reply"
+  title = "Support replies"
+  kind = "watch"
+  done_when = "run.closed"
+  talk = "The customer never knew."
+
+[[scenario]]
 id = "serverless-b"
 title = "AgentCore, you invoke: Case B with a worker built to die"
 short = "AgentCore: you invoke"
@@ -218,6 +293,7 @@ order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077-sl"
 queue = "versioned"
+next = "wci-b"
 cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model"
 preconditions = ["temporal", "endpoint", "finance", "payments", "build-id", "agentcore", "version-current"]
@@ -306,6 +382,7 @@ order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077-wci"
 queue = "versioned"
+next = "load"
 cost = { local = "free" }
 cost_note = "scripted model"
 preconditions = ["temporal", "wci", "emulator", "agentcore", "build-id", "version-wci", "finance", "payments", "endpoint"]
@@ -373,72 +450,33 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   make = "make wci-history BUILD={build}"
 
 [[scenario]]
-id = "failure"
-title = "Finance outage: Finance disappears mid-call"
-short = "Finance outage"
-sub = "Finance goes away; Nexus retries"
-run_label = "Case A, Finance outage"
-summary = "The Finance worker goes away; Support's Nexus call retries until it comes back."
-story = { tag = "v0.5-a2a-over-nexus", doc = "docs/story/v0.5-a2a-over-nexus.md" }
-profiles = ["local"]
-case = "A"
-order_id = "1042"
-amount_usd = 40.0
-id_prefix = "support-1042-failure"
-queue = "dev"
-cost = { local = "free" }
-cost_note = "stops and restarts the console-managed Finance worker"
-preconditions = ["temporal", "endpoint", "finance-managed", "payments", "support-plain"]
-notes = "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives."
+id = "load"
+title = "Load: N conversations at once"
+short = "Load"
+sub = "Up to 20 conversations at once"
+run_label = "Load"
+summary = "N Workflows on support-tq with nothing polling; the WCI scales Support up and back to zero."
+story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
+profiles = ["local", "kind", "kind-plaintext"]
+case = ""
+order_id = ""
+amount_usd = 0.0
+id_prefix = "load"
+queue = "versioned"
+next = "smoke"
+cost = { local = "free", kind = "free", kind-plaintext = "free" }
+cost_note = "ping: no model; case-a: model turns"
+preconditions = ["temporal", "build-id", "version", "serverless-compute"]
+notes = "Ten conversations arrive at once. Nothing polls Support's queue until the server's Worker Controller starts capacity, and it all drains back to zero."
 
   [[scenario.step]]
-  id = "start"
-  title = "Start Case A"
+  id = "load"
+  title = "Start the load"
   kind = "action"
-  action = "start-run"
-  done_when = "run.started"
-  talk = "Case A again."
-  make = "make case-a WF={wf}"
-
-  [[scenario.step]]
-  id = "card"
-  title = "Discovery completes"
-  kind = "watch"
-  done_when = "card.discovered"
-  talk = "Discovery is synchronous: Finance must be up for it."
-
-  [[scenario.step]]
-  id = "stop-finance"
-  title = "Stop Finance"
-  kind = "action"
-  action = "process.stop"
-  params = { name = "worker-finance", signal = "TERM" }
-  done_when = "process.worker-finance==stopped"
-  talk = "Finance goes away. Nobody polls agent-services-tq."
-
-  [[scenario.step]]
-  id = "retrying"
-  title = "The Nexus call retries"
-  kind = "watch"
-  done_when = "nexus.attempt>=2"
-  talk = "Attempt 2, 3... with the last failure. Nothing fails on Support's side."
-  make = "make pending WF={wf}"
-
-  [[scenario.step]]
-  id = "start-finance"
-  title = "Start Finance again"
-  kind = "action"
-  action = "process.start"
-  params = { name = "worker-finance" }
-  done_when = "nexus.completed"
-  talk = "Finance is back and the operation completes."
-
-  [[scenario.step]]
-  id = "reply"
-  title = "Support replies"
-  kind = "watch"
-  done_when = "run.closed"
-  talk = "The customer never knew."
+  action = "load"
+  done_when = "job.load==succeeded"
+  talk = "N at once on support-tq."
+  make = "make load N=10 LOAD_KIND=ping"
 
 [[scenario]]
 id = "smoke"
@@ -454,6 +492,7 @@ order_id = "1042"
 amount_usd = 40.0
 id_prefix = "smoke-1042"
 queue = "smoke"
+next = "cleanup"
 cost = { local = "free" }
 cost_note = "no model on the caller"
 preconditions = ["temporal", "endpoint", "finance", "payments", "smoke-worker"]
@@ -476,34 +515,6 @@ notes = "The Finance team publishes exactly one thing, an A2A-shaped contract. N
   done_when = "job.card==succeeded"
   talk = "A Nexus operation with no Workflow at all, from the CLI."
   make = "make card"
-
-[[scenario]]
-id = "load"
-title = "Load: N conversations at once"
-short = "Load"
-sub = "Up to 20 conversations at once"
-run_label = "Load"
-summary = "N Workflows on support-tq with nothing polling; the WCI scales Support up and back to zero."
-story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
-profiles = ["local", "kind", "kind-plaintext"]
-case = ""
-order_id = ""
-amount_usd = 0.0
-id_prefix = "load"
-queue = "versioned"
-cost = { local = "free", kind = "free", kind-plaintext = "free" }
-cost_note = "ping: no model; case-a: model turns"
-preconditions = ["temporal", "build-id", "version", "serverless-compute"]
-notes = "Ten conversations arrive at once. Nothing polls Support's queue until the server's Worker Controller starts capacity, and it all drains back to zero."
-
-  [[scenario.step]]
-  id = "load"
-  title = "Start the load"
-  kind = "action"
-  action = "load"
-  done_when = "job.load==succeeded"
-  talk = "N at once on support-tq."
-  make = "make load N=10 LOAD_KIND=ping"
 
 [[scenario]]
 id = "cleanup"

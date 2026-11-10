@@ -52,14 +52,18 @@ one visible thing: a lifetime that ends abruptly, an attempt counter on the seam
 small runs.
 
 **Presenter flow** (for every scenario):
-1. Pick the scenario in the launcher. Its preconditions are checked against the live stack,
-   and each missing piece has a fix button (on kind: the first missing layer's action).
+1. Pick the scenario in the launcher. Its preconditions are checked against the live stack.
+   When something is missing, one **Set up for <short>** button runs the scenario's stack
+   recipe (2.2) and the checklist ticks as the stack comes up; each missing piece also keeps
+   its own compact fix button (on kind: the first missing layer's action).
 2. Press **Start**. The console starts the workflow with a fresh ID and opens the run view.
 3. Follow the guided step list. Each step ticks itself when Temporal shows it happened
    (derived from history, task state and the compute signals; never from button clicks). The
    current step carries the talk-track line in presenter notes.
 4. Act where a human is needed: approve or reject, invoke-local, kill or restart a worker.
-5. Open the Temporal Web UI from any row (deep links), and finish on the report strip.
+5. Open the Temporal Web UI from any row (deep links), and finish on the report strip, which
+   ends with **Next: <short>** (or **Set up and go to <short>** when the next scenario needs
+   the stack in another shape), so moving on never needs the scenario column.
 
 ---
 
@@ -102,13 +106,35 @@ labelled cell.)
   Support). A pip is a small shape and a word, never colour alone. Support's shape (plain
   worker / serverless invoke-local / serverless WCI emulator), the model mode, the Build ID
   and one pip per component live in the header of the **Manage stack** sheet, which also
-  holds processes with start/stop/log, stack recipes, one-shot actions and kind jobs. `N` toggles presenter notes, `P` toggles
+  holds the stack recipes first (the one for the scenario on screen has the primary button,
+  each recipe's steps folded behind "N steps"), then **Advanced** disclosures for Cluster (kind
+  only, first), Processes, One-shot actions and Jobs, each one line with a count until opened.
+  A disclosure opens by itself when something in it failed. A running job is pinned at the top
+  with its current step and last lines; otherwise the newest job, when it failed. `N` toggles presenter notes, `P` toggles
   projector mode and `◐` switches between the dark theme (default) and light.
-- **Scenario launcher** (left column). Each scenario shows its title, the amount, and a fit
-  marker for the current profile: ready, needs N things, or not on this profile. Selecting one
-  opens its card in the main column if no run is focused. The card shows preconditions with
-  fix buttons, options (A2A mode tool|handoff, Nexus budget, workflow ID, approver default),
-  cost labels and **Start**.
+- **Scenario launcher** (left column), in story order. Each scenario shows its short name and
+  sub, and a muted fit marker for the current profile: "ready", "N missing", or "local only".
+  While Temporal is down every scenario misses things for that one reason, so the markers are
+  dropped and one line at the top says "Stack not ready: Temporal is down". Selecting one
+  opens its card in the main column if no run is focused. The card, top to bottom, fits a
+  1440x900 screen:
+  1. title, one-line lede, and the facts that matter to the room (cost, model, refund amount
+     and order);
+  2. **Start** with a setup chip beside it: "Ready" with a check, or "3 missing". When the
+     scenario's recipe fixes something that is missing, **Set up for <short>** comes first as
+     the primary button and Start turns secondary (you can still start; the run waits);
+  3. **Options** as a one-line disclosure showing the current values ("tool · 25h ·
+     support-2077-k3f9"); the form (A2A mode tool|handoff, Nexus budget, queue, workflow ID,
+     approver) opens under it. The defaults are right for a live demo;
+  4. **Before you start**, only while something is missing: one line per precondition (a
+     hollow ring when missing, a muted check when there), each missing one with its own
+     compact fix at the end of the line (a fix shared by several lines, such as Start Docker
+     VM, shows once). While the setup recipe runs, a line above says which step it is on; if
+     it stopped, where and why, with a link to its log;
+  5. **What happens**: the numbered step titles, with who acts ("you press a button",
+     "Temporal shows it"); each step's talk line opens on demand. The notes show talk lines
+     only once a run is on, so this is the pre-run preview of what to say.
+  Profiles and the story tag are not on the card (the story doc is in the notes).
 - **Runs** (left column, below). This is a visibility list of recent `SupportSupervisorWorkflow`
   runs (plus load batches grouped by `load-<epoch>`). Each entry shows status and the A2A task
   state glyph. Selecting one focuses the run view (URL `#/runs/<wf>`), so a console restart or
@@ -123,7 +149,7 @@ labelled cell.)
      Under it, one quiet line: the task's message, hidden while the approval card shows
      (the card carries amount, limit and risk) and once the run closed with Finance's
      answer; after close the same line holds the report (approved by, refund ID, approval
-     wait, approval to reply, Build ID), each fact once. At its right end, **Run details**
+     wait, approval to reply, Build ID), each fact once, then the Next button. At its right end, **Run details**
      (a disclosure) holds the workflow ID, scenario name, queue, `pinned to
      support-supervisor:<build>`, A2A mode and budget: setup facts the audience does not need.
      Header and quiet line together leave the lanes about 85% of a 1440x900 screen. With notes
@@ -176,7 +202,8 @@ labelled cell.)
      on serverless runs sit on one line under the lanes.
 - **Presenter notes** (right column, toggle `N`; or a separate window at `/#/notes` for the
   presenter's own screen). This holds the stepper, the talk line of the current step, what
-  to point at, the step's button, the equivalent make command (useful when the audience asks
+  to point at, the step's button (once the run has closed, the same Next button as the
+  report line), the equivalent make command (useful when the audience asks
   "what did that button do") and the scenario talk track; the story doc path is folded under
   "Story doc". When a `#/notes` window is open (announced over a `BroadcastChannel`), every
   other console window turns its own notes off, and back on when that window closes or
@@ -192,6 +219,31 @@ Each scenario has four names in the catalog: `title` heads the scenario card, `s
 `sub` are its entry in the left column, and `run_label` names its runs in the runs list and the
 run view. The UI keeps no names of its own.
 
+The catalog lists scenarios in **story order**, grouped so the stack changes shape as rarely as
+possible: Case A → Case B → Worker crash → Finance outage (all plain Support) → AgentCore: you
+invoke → AgentCore: WCI invokes → Load → Nexus hop, no AI → Clean up. Each scenario's `next`
+names the one after it (an unknown id is a startup error); on a profile the next one does not
+run on, the link skips ahead to the first that does.
+
+**Setup recipe** (`setup_recipe`, derived in `scenarios.py`, not kept by hand). The one-click
+setup for a scenario is a stack recipe (2.3), chosen from its queue and steps:
+
+| Scenario | local | kind, kind-plaintext |
+|---|---|---|
+| queue `dev` (Worker crash, Finance outage) | Local, plain Support | Bring up kind |
+| queue `versioned` with an `invoke-local` step (you invoke) | Local, serverless (invoke-local) | Bring up kind |
+| queue `versioned` without one (WCI invokes, Load) | Local, serverless (WCI emulator) | Bring up kind |
+| queue `auto` (Case A, Case B) and the smoke caller | the recipe of the stack's current shape; Local, plain Support when it is unknown | Bring up kind |
+| Clean up (starts nothing) | none | none |
+
+Each precondition the recipe fixes is marked `by_setup`; the others (the Build ID, the smoke
+worker, the laptop Support worker on kind) keep only their own fix. The button runs the same
+`start-recipe` job as Manage stack, in the stack's current model (scripted or live; live asks
+first because it costs tokens). Bring up kind is long, so it asks first, and it never starts
+the Docker VM by itself (2.3). The next link carries a `setup_recipe` only when the next
+scenario's recipe differs from the one that produces the stack's current shape; its button
+then reads "Set up and go to <short>", opens that scenario's card and starts the recipe.
+
 Steps are a sequence and are numbered. "Done when" is a predicate the backend evaluates on the
 run view (section 5.4), so steps survive reloads and console restarts. *Cost*: `free` (no
 tokens) or `tokens` (Bedrock).
@@ -201,11 +253,11 @@ tokens) or `tokens` (Bedrock).
 | `case-a` | Case A: $40 headphones, auto-approved | all | plain (support-dev-tq) or serverless (support-tq) | start → sub-agents answer → agent card discovered → Nexus send_message → Finance completed `approved_by auto` → reply | free (scripted) / tokens (live) |
 | `case-b` | Case B: $450 laptop, a human approves | all | plain or serverless | start → input-required → (optional) stop Support worker → approve/reject → restart worker → reply | as above |
 | `crash` | Worker crash: kill Support mid-thought | all | plain | start Case A → wait for an `invoke_model` in flight → **Kill Support worker** (SIGKILL to its process group) → start it again → same run finishes; the rail shows two lifetimes, one ending abruptly | free / tokens |
+| `failure` | Finance outage: Finance disappears mid-call | local (stop the Finance worker) | plain | start Case A → agent card done → **Stop Finance** → seam shows `send_message` attempt 2, 3… with lastAttemptFailure → **Start Finance** → completes | free |
 | `serverless-b` | AgentCore, you invoke: Case B with a worker built to die | all | serverless invoke-local | AgentCore app up, Invoke and register version `--poller` (the recipe) → start on support-tq → **Invoke** (lifetime 1 picks the run up; the recipe's lifetime has usually drained by then) → input-required → drained (`/ping` Healthy) → approve → **Invoke** (lifetime 2) → reply → report | free / tokens |
 | `wci-b` | AgentCore, WCI invokes: Temporal starts the worker | local | serverless WCI emulator | dev server `WCI=1` (restart only when `/ping` is Healthy) → emulator → register version `--local-wci` → start → input-required → drained → approve → WCI InvokeWorker → lifetime 2 → reply → report | free / tokens |
-| `failure` | Finance outage: Finance disappears mid-call | local (stop the Finance worker) | plain | start Case A → agent card done → **Stop Finance** → seam shows `send_message` attempt 2, 3… with lastAttemptFailure → **Start Finance** → completes | free |
-| `smoke` | Nexus hop with no AI | local | smoke worker | `A2ASmokeWorkflow` on nexus-smoke-tq, then a standalone `get_agent_card` | free |
 | `load` | Load: N conversations at once | all | serverless (support-tq) | `load.sh N LOAD_KIND=ping|case-a` as a job; the runs list groups the batch; the report shows completed/failed and InvokeWorker count | free (ping or scripted) / tokens |
+| `smoke` | Nexus hop with no AI | local | smoke worker | `A2ASmokeWorkflow` on nexus-smoke-tq, then a standalone `get_agent_card` | free |
 | `cleanup` | Clean up: runs still waiting for a human | all | — | lists runs still in `input-required` with Reject and Terminate | free |
 
 Default workflow IDs follow the make defaults with a short base-36 suffix so that repeated runs
@@ -246,6 +298,12 @@ The single cluster layers (`colima-up`, `kind-up`, `kind-temporal`, `kind-worker
 `certs-pull`, `pf`, `pf-stop`, `kind-down`) stay available as confirm-first jobs under
 **Cluster**; `kind-down` is destructive. Each is disabled with the reason when the layer under
 it is missing (Docker VM stopped, no cluster).
+
+**In the sheet** the recipes come first, as cards: the one for the scenario on screen (its
+`setup_recipe`; otherwise the recipe of the stack's current shape, or Bring up kind on kind)
+is listed first with the primary button and "for <short>" beside its title; Tear down is last.
+Each card's checklist is folded behind "N steps" and opens by itself while that recipe runs or
+after it failed.
 
 **Failures** say where and why. A failed job's `result` names the step (`step`, `step_label`),
 the cause in one line (`error`: the last output line that names an error, never make's own
@@ -669,6 +727,11 @@ Every non-2xx response:
 ```
 
 - `fit` ∈ `ready | needs_setup | wrong_profile`.
+- `setup_recipe`: the recipe id of the one-click setup on this profile, or `null` (2.2).
+  `preconditions[].by_setup: true` marks a missing precondition that recipe fixes.
+- `next`: `{"id", "short", "setup_recipe"}` for the scenario after this one in story order on
+  this profile (or `null` after the last); `setup_recipe` is set only when going there changes
+  the stack's shape.
 - `steps[].kind` ∈ `action | watch | human | manual`. `manual` steps carry `make` text only
   and can be ticked by hand (the tick is kept client-side only,
   in localStorage).

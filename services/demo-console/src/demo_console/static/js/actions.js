@@ -124,6 +124,25 @@ export async function runAction(id, params = {}, { title = null, cost: forced = 
   return res;
 }
 
+/**
+ * A scenario's one-click setup (DESIGN 2.2): its stack recipe, the same job as the recipe card
+ * in Manage stack. The button and the toast both say "Set up for <short>". The model follows
+ * the stack's (a recipe for the other model would restart the workers on it); long recipes and
+ * live ones ask first.
+ */
+export async function setUp(recipe, short) {
+  const variant = S().stack?.model?.mode === "live" ? "live" : "scripted";
+  return runAction("start-recipe", { recipe, variant }, { title: `Set up for ${short}` });
+}
+
+/** The latest job of a recipe, while it runs or when it failed in the last few minutes. */
+export function recipeJob(recipe, withinMs = 10 * 60 * 1000) {
+  const j = (S().jobs || []).find((x) => x.action === "start-recipe" && x.params?.recipe === recipe);
+  if (!j) return null;
+  if (j.status === "running") return j;
+  return j.status === "failed" && Date.now() - Date.parse(j.ended_at || j.started_at) < withinMs ? j : null;
+}
+
 /** A precondition's fix: an action, a process start, or a command to copy (shown, not run). */
 export async function runFix(fix) {
   if (!fix) return null;

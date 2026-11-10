@@ -182,11 +182,11 @@ function renderMain(state) {
 function wire() {
   store.subscribe("stackbar", ["config", "stack", "fixture"], renderStackBar);
   store.subscribe("banners", ["connection", "stack", "alerts", "config", "fixture"], renderBanners);
-  store.subscribe("scenarios", ["scenarios", "route", "config"], renderScenarioList);
+  store.subscribe("scenarios", ["scenarios", "route", "config", "stack"], renderScenarioList);
   store.subscribe("runs", ["runs", "route", "stack"], renderRuns);
-  store.subscribe("main", ["route", "run", "rows", "scenarios", "stack", "ui", "config", "runs", "runMissing"], renderMain);
+  store.subscribe("main", ["route", "run", "rows", "scenarios", "stack", "ui", "config", "runs", "runMissing", "jobs", "actions"], renderMain);
   store.subscribe("notes", ["route", "run", "scenarios", "processes", "actions", "ui", "config"], renderNotes);
-  store.subscribe("sheet", ["processes", "jobs", "actions", "config", "ui", "stack"], renderSheet);
+  store.subscribe("sheet", ["processes", "jobs", "actions", "config", "ui", "stack", "route", "scenarios"], renderSheet);
   wireStackBar(openSheet);
   wireLauncher();
   wireNotes();

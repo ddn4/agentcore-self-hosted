@@ -207,7 +207,8 @@
        "action": "colima-up",
        "params": {},
        "label": "Start Docker VM"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "endpoint",
@@ -218,7 +219,8 @@
        "action": "nexus-endpoint",
        "params": {},
        "label": "Create endpoint"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "finance",
@@ -229,7 +231,8 @@
        "action": "colima-up",
        "params": {},
        "label": "Start Docker VM"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "support-plain",
@@ -287,7 +290,13 @@
       "make": "make result WF=support-1042-l2ho"
      }
     ],
-    "notes": "Support can't move money, so it asks Finance: a different team's agent, through a published contract and a named endpoint. It isn't a child workflow, and only the contract is shared."
+    "notes": "Support can't move money, so it asks Finance: a different team's agent, through a published contract and a named endpoint. It isn't a child workflow, and only the contract is shared.",
+    "setup_recipe": "kind-up",
+    "next": {
+     "id": "case-b",
+     "short": "Case B",
+     "setup_recipe": null
+    }
    },
    {
     "id": "case-b",
@@ -361,7 +370,8 @@
        "action": "colima-up",
        "params": {},
        "label": "Start Docker VM"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "endpoint",
@@ -372,7 +382,8 @@
        "action": "nexus-endpoint",
        "params": {},
        "label": "Create endpoint"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "finance",
@@ -383,7 +394,8 @@
        "action": "colima-up",
        "params": {},
        "label": "Start Docker VM"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "support-plain",
@@ -473,7 +485,13 @@
       "make": "make approval-report WF=support-2077-kz68"
      }
     ],
-    "notes": "Over $100, Finance's agent says 'I need a human', and the task goes to input-required. I switch Support off completely. Nothing is lost, and when the approver signals, the conversation picks up again."
+    "notes": "Over $100, Finance's agent says 'I need a human', and the task goes to input-required. I switch Support off completely. Nothing is lost, and when the approver signals, the conversation picks up again.",
+    "setup_recipe": "kind-up",
+    "next": {
+     "id": "crash",
+     "short": "Worker crash",
+     "setup_recipe": null
+    }
    },
    {
     "id": "crash",
@@ -541,7 +559,8 @@
        "action": "colima-up",
        "params": {},
        "label": "Start Docker VM"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "endpoint",
@@ -552,7 +571,8 @@
        "action": "nexus-endpoint",
        "params": {},
        "label": "Create endpoint"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "finance",
@@ -563,7 +583,8 @@
        "action": "colima-up",
        "params": {},
        "label": "Start Docker VM"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "support-plain-managed",
@@ -621,7 +642,182 @@
       "talk": "Two workers, one conversation, nothing repeated that had finished."
      }
     ],
-    "notes": "Every model call and tool call is an Activity. I kill the process mid-thought, and it carries on from exactly where it stopped."
+    "notes": "Every model call and tool call is an Activity. I kill the process mid-thought, and it carries on from exactly where it stopped.",
+    "setup_recipe": "kind-up",
+    "next": {
+     "id": "serverless-b",
+     "short": "AgentCore: you invoke",
+     "setup_recipe": null
+    }
+   },
+   {
+    "id": "failure",
+    "title": "Finance outage: Finance disappears mid-call",
+    "short": "Finance outage",
+    "sub": "Finance goes away; Nexus retries",
+    "run_label": "Case A, Finance outage",
+    "summary": "The Finance worker goes away; Support's Nexus call retries until it comes back.",
+    "story": {
+     "tag": "v0.5-a2a-over-nexus",
+     "doc": "docs/story/v0.5-a2a-over-nexus.md"
+    },
+    "profiles": [
+     "local"
+    ],
+    "fit": "wrong_profile",
+    "cost": "free",
+    "cost_note": "stops and restarts the console-managed Finance worker",
+    "case": "A",
+    "order_id": "1042",
+    "amount_usd": 40.0,
+    "options": [
+     {
+      "id": "a2a_mode",
+      "label": "How Support asks Finance",
+      "type": "choice",
+      "choices": [
+       "tool",
+       "handoff"
+      ],
+      "default": "tool"
+     },
+     {
+      "id": "nexus_send_timeout",
+      "label": "Support's budget for Finance's answer",
+      "type": "duration",
+      "default": "25h"
+     },
+     {
+      "id": "queue",
+      "label": "Support's task queue",
+      "type": "choice",
+      "choices": [
+       "dev",
+       "versioned"
+      ],
+      "default": "dev"
+     },
+     {
+      "id": "workflow_id",
+      "label": "Workflow ID",
+      "type": "text",
+      "default": "support-1042-failure-y9w9"
+     }
+    ],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      }
+     },
+     {
+      "id": "endpoint",
+      "label": "Nexus endpoint finance-agent",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "nexus-endpoint",
+       "params": {},
+       "label": "Create endpoint"
+      }
+     },
+     {
+      "id": "finance-managed",
+      "label": "A Finance worker polls agent-services-tq",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      }
+     },
+     {
+      "id": "support-plain",
+      "label": "A Support worker polls support-dev-tq",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "worker-support",
+       "label": "Start Support worker"
+      }
+     }
+    ],
+    "steps": [
+     {
+      "id": "start",
+      "n": 1,
+      "title": "Start Case A",
+      "kind": "action",
+      "done_when": "run.started",
+      "talk": "Case A again.",
+      "action": "start-run",
+      "make": "make case-a WF=support-1042-failure-y9w9"
+     },
+     {
+      "id": "card",
+      "n": 2,
+      "title": "Discovery completes",
+      "kind": "watch",
+      "done_when": "card.discovered",
+      "talk": "Discovery is synchronous: Finance must be up for it."
+     },
+     {
+      "id": "stop-finance",
+      "n": 3,
+      "title": "Stop Finance",
+      "kind": "action",
+      "done_when": "process.worker-finance==stopped",
+      "talk": "Finance goes away. Nobody polls agent-services-tq.",
+      "action": "process.stop",
+      "params": {
+       "name": "worker-finance",
+       "signal": "TERM"
+      }
+     },
+     {
+      "id": "retrying",
+      "n": 4,
+      "title": "The Nexus call retries",
+      "kind": "watch",
+      "done_when": "nexus.attempt>=2",
+      "talk": "Attempt 2, 3... with the last failure. Nothing fails on Support's side.",
+      "make": "make pending WF=support-1042-failure-y9w9"
+     },
+     {
+      "id": "start-finance",
+      "n": 5,
+      "title": "Start Finance again",
+      "kind": "action",
+      "done_when": "nexus.completed",
+      "talk": "Finance is back and the operation completes.",
+      "action": "process.start",
+      "params": {
+       "name": "worker-finance"
+      }
+     },
+     {
+      "id": "reply",
+      "n": 6,
+      "title": "Support replies",
+      "kind": "watch",
+      "done_when": "run.closed",
+      "talk": "The customer never knew."
+     }
+    ],
+    "notes": "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives.",
+    "setup_recipe": null,
+    "next": {
+     "id": "serverless-b",
+     "short": "AgentCore: you invoke",
+     "setup_recipe": null
+    }
    },
    {
     "id": "serverless-b",
@@ -695,7 +891,8 @@
        "action": "colima-up",
        "params": {},
        "label": "Start Docker VM"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "endpoint",
@@ -706,7 +903,8 @@
        "action": "nexus-endpoint",
        "params": {},
        "label": "Create endpoint"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "finance",
@@ -717,7 +915,8 @@
        "action": "colima-up",
        "params": {},
        "label": "Start Docker VM"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "build-id",
@@ -732,7 +931,8 @@
        "kind": "process",
        "process": "agentcore-local",
        "label": "Start AgentCore app"
-      }
+      },
+      "by_setup": true
      },
      {
       "id": "version-current",
@@ -745,7 +945,8 @@
         "mode": "--poller"
        },
        "label": "Register version"
-      }
+      },
+      "by_setup": true
      }
     ],
     "steps": [
@@ -824,7 +1025,13 @@
       "make": "uv run --frozen python scripts/serverless_report.py support-2077-sl-btw8"
      }
     ],
-    "notes": "Support's Worker is now built to die. It starts when invoked, drains when idle, and when Finance answers, a new invocation picks the conversation up, pinned to the exact build."
+    "notes": "Support's Worker is now built to die. It starts when invoked, drains when idle, and when Finance answers, a new invocation picks the conversation up, pinned to the exact build.",
+    "setup_recipe": "kind-up",
+    "next": {
+     "id": "load",
+     "short": "Load",
+     "setup_recipe": null
+    }
    },
    {
     "id": "wci-b",
@@ -1043,28 +1250,36 @@
       "make": "make wci-history BUILD=4ee7f87"
      }
     ],
-    "notes": "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh worker to finish the reply."
+    "notes": "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh worker to finish the reply.",
+    "setup_recipe": null,
+    "next": {
+     "id": "load",
+     "short": "Load",
+     "setup_recipe": null
+    }
    },
    {
-    "id": "failure",
-    "title": "Finance outage: Finance disappears mid-call",
-    "short": "Finance outage",
-    "sub": "Finance goes away; Nexus retries",
-    "run_label": "Case A, Finance outage",
-    "summary": "The Finance worker goes away; Support's Nexus call retries until it comes back.",
+    "id": "load",
+    "title": "Load: N conversations at once",
+    "short": "Load",
+    "sub": "Up to 20 conversations at once",
+    "run_label": "Load",
+    "summary": "N Workflows on support-tq with nothing polling; the WCI scales Support up and back to zero.",
     "story": {
-     "tag": "v0.5-a2a-over-nexus",
-     "doc": "docs/story/v0.5-a2a-over-nexus.md"
+     "tag": "v0.7-serverless-shape",
+     "doc": "docs/story/v0.7-serverless-shape.md"
     },
     "profiles": [
-     "local"
+     "local",
+     "kind",
+     "kind-plaintext"
     ],
-    "fit": "wrong_profile",
+    "fit": "needs_setup",
     "cost": "free",
-    "cost_note": "stops and restarts the console-managed Finance worker",
-    "case": "A",
-    "order_id": "1042",
-    "amount_usd": 40.0,
+    "cost_note": "ping: no model; case-a: model turns",
+    "case": null,
+    "order_id": null,
+    "amount_usd": null,
     "options": [
      {
       "id": "a2a_mode",
@@ -1090,13 +1305,13 @@
        "dev",
        "versioned"
       ],
-      "default": "dev"
+      "default": "versioned"
      },
      {
       "id": "workflow_id",
       "label": "Workflow ID",
       "type": "text",
-      "default": "support-1042-failure-y9w9"
+      "default": "load-krcx"
      }
     ],
     "preconditions": [
@@ -1109,104 +1324,59 @@
        "action": "colima-up",
        "params": {},
        "label": "Start Docker VM"
-      }
+      },
+      "by_setup": true
      },
      {
-      "id": "endpoint",
-      "label": "Nexus endpoint finance-agent",
+      "id": "build-id",
+      "label": "Support's Build ID is known",
+      "ok": true
+     },
+     {
+      "id": "version",
+      "label": "support-supervisor:4ee7f87 is current",
       "ok": false,
       "fix": {
        "kind": "action",
-       "action": "nexus-endpoint",
-       "params": {},
-       "label": "Create endpoint"
-      }
+       "action": "register-version",
+       "params": {
+        "mode": "--poller"
+       },
+       "label": "Register version"
+      },
+      "by_setup": true
      },
      {
-      "id": "finance-managed",
-      "label": "A Finance worker polls agent-services-tq",
-      "ok": false,
-      "fix": {
-       "kind": "action",
-       "action": "colima-up",
-       "params": {},
-       "label": "Start Docker VM"
-      }
-     },
-     {
-      "id": "support-plain",
-      "label": "A Support worker polls support-dev-tq",
+      "id": "serverless-compute",
+      "label": "AgentCore app on :8080",
       "ok": false,
       "fix": {
        "kind": "process",
-       "process": "worker-support",
-       "label": "Start Support worker"
-      }
+       "process": "agentcore-local",
+       "label": "Start AgentCore app"
+      },
+      "by_setup": true
      }
     ],
     "steps": [
      {
-      "id": "start",
+      "id": "load",
       "n": 1,
-      "title": "Start Case A",
+      "title": "Start the load",
       "kind": "action",
-      "done_when": "run.started",
-      "talk": "Case A again.",
-      "action": "start-run",
-      "make": "make case-a WF=support-1042-failure-y9w9"
-     },
-     {
-      "id": "card",
-      "n": 2,
-      "title": "Discovery completes",
-      "kind": "watch",
-      "done_when": "card.discovered",
-      "talk": "Discovery is synchronous: Finance must be up for it."
-     },
-     {
-      "id": "stop-finance",
-      "n": 3,
-      "title": "Stop Finance",
-      "kind": "action",
-      "done_when": "process.worker-finance==stopped",
-      "talk": "Finance goes away. Nobody polls agent-services-tq.",
-      "action": "process.stop",
-      "params": {
-       "name": "worker-finance",
-       "signal": "TERM"
-      }
-     },
-     {
-      "id": "retrying",
-      "n": 4,
-      "title": "The Nexus call retries",
-      "kind": "watch",
-      "done_when": "nexus.attempt>=2",
-      "talk": "Attempt 2, 3... with the last failure. Nothing fails on Support's side.",
-      "make": "make pending WF=support-1042-failure-y9w9"
-     },
-     {
-      "id": "start-finance",
-      "n": 5,
-      "title": "Start Finance again",
-      "kind": "action",
-      "done_when": "nexus.completed",
-      "talk": "Finance is back and the operation completes.",
-      "action": "process.start",
-      "params": {
-       "name": "worker-finance"
-      }
-     },
-     {
-      "id": "reply",
-      "n": 6,
-      "title": "Support replies",
-      "kind": "watch",
-      "done_when": "run.closed",
-      "talk": "The customer never knew."
+      "done_when": "job.load==succeeded",
+      "talk": "N at once on support-tq.",
+      "action": "load",
+      "make": "make load N=10 LOAD_KIND=ping"
      }
     ],
-    "notes": "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives."
+    "notes": "Ten conversations arrive at once. Nothing polls Support's queue until the server's Worker Controller starts capacity, and it all drains back to zero.",
+    "setup_recipe": "kind-up",
+    "next": {
+     "id": "cleanup",
+     "short": "Clean up",
+     "setup_recipe": null
+    }
    },
    {
     "id": "smoke",
@@ -1296,118 +1466,13 @@
       "make": "make card"
      }
     ],
-    "notes": "The Finance team publishes exactly one thing, an A2A-shaped contract. No AI on the caller yet, just the hop."
-   },
-   {
-    "id": "load",
-    "title": "Load: N conversations at once",
-    "short": "Load",
-    "sub": "Up to 20 conversations at once",
-    "run_label": "Load",
-    "summary": "N Workflows on support-tq with nothing polling; the WCI scales Support up and back to zero.",
-    "story": {
-     "tag": "v0.7-serverless-shape",
-     "doc": "docs/story/v0.7-serverless-shape.md"
-    },
-    "profiles": [
-     "local",
-     "kind",
-     "kind-plaintext"
-    ],
-    "fit": "needs_setup",
-    "cost": "free",
-    "cost_note": "ping: no model; case-a: model turns",
-    "case": null,
-    "order_id": null,
-    "amount_usd": null,
-    "options": [
-     {
-      "id": "a2a_mode",
-      "label": "How Support asks Finance",
-      "type": "choice",
-      "choices": [
-       "tool",
-       "handoff"
-      ],
-      "default": "tool"
-     },
-     {
-      "id": "nexus_send_timeout",
-      "label": "Support's budget for Finance's answer",
-      "type": "duration",
-      "default": "25h"
-     },
-     {
-      "id": "queue",
-      "label": "Support's task queue",
-      "type": "choice",
-      "choices": [
-       "dev",
-       "versioned"
-      ],
-      "default": "versioned"
-     },
-     {
-      "id": "workflow_id",
-      "label": "Workflow ID",
-      "type": "text",
-      "default": "load-krcx"
-     }
-    ],
-    "preconditions": [
-     {
-      "id": "temporal",
-      "label": "Temporal is up",
-      "ok": false,
-      "fix": {
-       "kind": "action",
-       "action": "colima-up",
-       "params": {},
-       "label": "Start Docker VM"
-      }
-     },
-     {
-      "id": "build-id",
-      "label": "Support's Build ID is known",
-      "ok": true
-     },
-     {
-      "id": "version",
-      "label": "support-supervisor:4ee7f87 is current",
-      "ok": false,
-      "fix": {
-       "kind": "action",
-       "action": "register-version",
-       "params": {
-        "mode": "--poller"
-       },
-       "label": "Register version"
-      }
-     },
-     {
-      "id": "serverless-compute",
-      "label": "AgentCore app on :8080",
-      "ok": false,
-      "fix": {
-       "kind": "process",
-       "process": "agentcore-local",
-       "label": "Start AgentCore app"
-      }
-     }
-    ],
-    "steps": [
-     {
-      "id": "load",
-      "n": 1,
-      "title": "Start the load",
-      "kind": "action",
-      "done_when": "job.load==succeeded",
-      "talk": "N at once on support-tq.",
-      "action": "load",
-      "make": "make load N=10 LOAD_KIND=ping"
-     }
-    ],
-    "notes": "Ten conversations arrive at once. Nothing polls Support's queue until the server's Worker Controller starts capacity, and it all drains back to zero."
+    "notes": "The Finance team publishes exactly one thing, an A2A-shaped contract. No AI on the caller yet, just the hop.",
+    "setup_recipe": null,
+    "next": {
+     "id": "cleanup",
+     "short": "Clean up",
+     "setup_recipe": null
+    }
    },
    {
     "id": "cleanup",
@@ -1446,7 +1511,9 @@
      }
     ],
     "steps": [],
-    "notes": "Housekeeping before the next demo."
+    "notes": "Housekeeping before the next demo.",
+    "setup_recipe": null,
+    "next": null
    }
   ]
  },

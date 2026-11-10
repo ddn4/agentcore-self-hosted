@@ -232,7 +232,8 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .scen .t { font-weight: 500; }
 .scen .s { grid-column: 1 / -1; font-size: .82rem; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .fit { font-size: .78rem; color: var(--muted); align-self: center; white-space: nowrap; }
-.fit[data-f="needs_setup"] { color: var(--ink); }
+.scen .side-state { font-size: .86rem; color: var(--muted); padding: 0 .6rem .45rem; }
+.scen .side-state p { margin: 0; }
 .runs a, .runs .grp { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 .5rem; padding: .4rem .6rem; border-radius: 8px; text-decoration: none; }
 .runs a[aria-current="page"] { background: var(--raised); box-shadow: inset 2px 0 0 var(--support-fill); }
 .runs .id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -301,11 +302,11 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .subline { display: flex; align-items: baseline; gap: 1rem; margin-top: .2rem; min-height: 1.35rem; position: relative; }
 .statesub { flex: 1; min-width: 0; margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rundetails { flex: none; margin-left: auto; font-size: .82rem; }
-.rundetails summary { cursor: pointer; color: var(--muted); list-style: none; border-radius: 4px; }
-.rundetails summary::-webkit-details-marker { display: none; }
-.rundetails summary::after { content: ""; display: inline-block; width: .38em; height: .38em; margin-left: .45em; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-.2em) rotate(45deg); }
-.rundetails[open] summary::after { transform: translateY(.05em) rotate(-135deg); }
-.rundetails summary:hover { color: var(--ink); }
+.rundetails summary, .disc > summary, .adv > summary { cursor: pointer; color: var(--muted); list-style: none; border-radius: 4px; }
+.rundetails summary::-webkit-details-marker, .disc > summary::-webkit-details-marker, .adv > summary::-webkit-details-marker { display: none; }
+.rundetails summary::after, .disc > summary::after, .adv > summary::after { content: ""; display: inline-block; width: .38em; height: .38em; margin-left: .45em; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-.2em) rotate(45deg); }
+.rundetails[open] summary::after, .disc[open] > summary::after, .adv[open] > summary::after { transform: translateY(.05em) rotate(-135deg); }
+.rundetails summary:hover, .disc > summary:hover, .adv > summary:hover { color: var(--ink); }
 .meta { position: absolute; right: 0; top: calc(100% + .3rem); z-index: 8; display: flex; flex-wrap: wrap; gap: .25rem 1.1rem; max-width: min(46rem, 100%); padding: .55rem .8rem; background: var(--raised); border-radius: 10px; box-shadow: var(--lift); font-size: .86rem; color: var(--muted); }
 .meta b { color: var(--ink); font-weight: 500; }
 
@@ -495,6 +496,8 @@ input:focus-visible, select:focus-visible { border-color: var(--nexus-fill); out
 .report > div { display: flex; gap: .4rem; align-items: baseline; }
 .report dt { font-size: .82rem; color: var(--muted); }
 .report dd { margin: 0; font-size: .92rem; font-weight: 500; }
+#rv-report:not(:empty) { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem 1.2rem; }
+#rv-report .next { align-self: center; }
 #rv-q15:empty { display: none; }
 .q15 { margin: .5rem 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .5rem; font-size: .88rem; color: var(--muted); list-style: none; padding: 0; }
 .q15 li { display: inline-flex; gap: .35rem; align-items: baseline; }
@@ -507,28 +510,42 @@ input:focus-visible, select:focus-visible { border-color: var(--nexus-fill); out
 .card-view { padding: 1.6rem 1.6rem 3rem; max-width: 62rem; }
 .card-view h1 { margin: 0; font-size: 2.6rem; font-weight: 300; line-height: 1.08; letter-spacing: -.035em; text-wrap: balance; }
 .card-view .lede { font-size: 1.15rem; max-width: 60ch; margin: .6rem 0 0; color: var(--muted); }
-.card-view .facts-row { display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; margin-top: .8rem; color: var(--muted); font-size: .9rem; align-items: center; }
+.card-view .facts-row { display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; margin-top: .6rem; color: var(--muted); font-size: .9rem; align-items: center; }
 .card-view .facts-row b { color: var(--ink); font-weight: 500; }
-.card-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.2rem 1.6rem; margin-top: 1.5rem; }
-.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 1.05rem 1.15rem; }
-.panel h2 { font-size: 1.2rem; font-weight: 400; letter-spacing: -.015em; margin: 0 0 .7rem; }
-.pre { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
-.pre li { display: grid; grid-template-columns: 1.2rem minmax(0, 1fr); gap: .1rem .5rem; align-items: start; }
-.pre li > svg.i { margin-top: .2em; }
-.pre li.ok > svg.i { color: var(--muted); }
-.pre li.bad > svg.i { color: var(--bad); }
-.pre .fixer { grid-column: 2; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
-.opts { display: grid; gap: .8rem; }
+.card-view .why { color: var(--muted); font-size: .9rem; margin: .6rem 0 0; }
+.card-view .block { margin-top: 1.5rem; }
+.card-view .block h2 { font-size: .9rem; font-weight: 500; color: var(--muted); margin: 0 0 .5rem; letter-spacing: .005em; }
+/* Start and the setup state on one line; the chip is a fact, not a colour. */
+.startbar { display: flex; flex-wrap: wrap; gap: .7rem; align-items: center; margin-top: 1.2rem; }
+.btn.start { font-size: 1.05rem; padding: .7rem 1.35rem; }
+.chip { display: inline-flex; align-items: center; gap: .3rem; font-size: .86rem; color: var(--muted); padding: .2rem .65rem; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--rule); }
+.chip .i { width: .95em; height: .95em; }
+/* The checklist: one line each, the fix at the end of its line. Missing is not a fault: a
+   hollow ring in ink; a check in muted when it is there. */
+.pre { list-style: none; margin: 0; padding: 0; display: grid; gap: .15rem; max-width: 46rem; }
+.pre li { display: flex; flex-wrap: wrap; gap: .25rem .6rem; align-items: center; min-height: 1.9rem; }
+.pre li > svg.i { flex: none; }
+.pre li .btn.small { padding: .14rem .55rem; font-size: .82rem; font-weight: 500; }
+.pre li.ok { color: var(--muted); }
+.pre li.ok > svg.i { color: var(--faint); }
+.pre li .copy { max-width: 24rem; }
+.setup-state { margin: 0 0 .5rem; font-size: .9rem; color: var(--muted); }
+.setup-state[data-s="failed"] { color: var(--bad); }
+.setup-state b { font-weight: 500; }
+.linkbtn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; text-underline-offset: 2px; font: inherit; cursor: pointer; }
+/* Options: one line of current values; the form behind it. */
+.opts-d { margin-top: .9rem; font-size: .9rem; }
+.opts-d > summary .muted { margin-left: .5rem; color: var(--faint); font-family: var(--mono); font-size: .82rem; }
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .8rem 1.2rem; margin-top: .7rem; max-width: 52rem; font-size: 1rem; }
 .opts .seg { width: max-content; max-width: 100%; }
 .opts .seg button { padding: .25rem .9rem; }
-.startbar { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; margin-top: 1.3rem; }
-.startbar .why { color: var(--muted); font-size: .9rem; }
-.btn.start { font-size: 1.05rem; padding: .7rem 1.35rem; }
-.plan { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; counter-reset: p; }
-.plan li { counter-increment: p; display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); gap: 0 .5rem; }
-.plan li::before { content: counter(p); display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%; font-weight: 600; font-size: .78rem; box-shadow: inset 0 0 0 1px var(--rule); color: var(--muted); }
+/* The plan: numbered titles; each talk line on demand. */
+.plan { list-style: none; margin: 0; padding: 0; display: grid; gap: .1rem; counter-reset: p; max-width: 46rem; }
+.plan li { counter-increment: p; display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); gap: 0 .5rem; align-items: start; min-height: 1.9rem; }
+.plan li::before { content: counter(p); display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%; font-weight: 600; font-size: .78rem; box-shadow: inset 0 0 0 1px var(--rule); color: var(--muted); margin-top: .1rem; }
+.plan .disc > summary { color: var(--ink); }
 .plan .k { font-size: .76rem; color: var(--faint); margin-left: .4rem; }
-.plan .talk { grid-column: 2; color: var(--muted); font-size: .88rem; }
+.plan .talk { color: var(--muted); font-size: .9rem; margin: .15rem 0 .4rem; max-width: 60ch; }
 .leftovers { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 .leftovers li { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center; justify-content: space-between; padding: .55rem .75rem; border: 1px solid var(--rule); border-radius: 10px; background: var(--raised); }
 .welcome { padding: 3.2rem 1.6rem; max-width: 46rem; }
@@ -597,7 +614,21 @@ dialog::backdrop { background: rgb(0 0 0 / .6); }
 .sheet .failed h3 { margin: 0; display: flex; gap: .6rem; align-items: center; }
 .sheet .failed p { margin: 0; }
 .sheet .failed .sub { margin: 0; }
-.sheet .failed > .muted { font-size: .8rem; overflow-wrap: anywhere; }
+.sheet .failed > .muted, .sheet .pinned > .muted { font-size: .8rem; overflow-wrap: anywhere; }
+.sheet .pinned { display: grid; gap: .4rem; padding: .8rem .9rem; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; }
+.sheet .pinned h3 { margin: 0; display: flex; gap: .6rem; align-items: center; }
+.sheet .pinned p { margin: 0; }
+.sheet .pinned .log { margin: 0; max-height: 9rem; overflow: auto; font-family: var(--mono); font-size: .76rem; background: var(--well); border: 1px solid var(--rule); border-radius: 8px; padding: .5rem .6rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Advanced: one line each until opened (they open by themselves when something failed). */
+.sheet .advanced { display: grid; gap: .2rem; border-top: 1px solid var(--rule); padding-top: .9rem; }
+.adv > summary { display: flex; align-items: baseline; gap: .7rem; padding: .35rem 0; }
+.adv > summary h3 { margin: 0; color: inherit; }
+.adv > summary .muted { font-size: .82rem; }
+.adv > summary::after { margin-left: 0; }
+.adv[open] > summary { margin-bottom: .4rem; }
+.adv[open] { padding-bottom: .8rem; }
+.recipe .disc > summary { font-size: .82rem; }
+.recipe .disc ol { margin-top: .35rem; }
 #confirm .copy code { white-space: pre-line; }
 
 /* confirm dialog */
@@ -627,7 +658,6 @@ dialog::backdrop { background: rgb(0 0 0 / .6); }
   .side { overflow: visible; }
   .run > .lanes { flex: none; max-height: 78vh; }
   .notes { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rule); overflow: visible; }
-  .card-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 860px) {
   .shell, :root[data-notes="off"] .shell, :root[data-projector="on"] .shell { grid-template-columns: minmax(0, 1fr); }

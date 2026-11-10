@@ -1,13 +1,14 @@
-// "Manage stack": a failed job first, then stack recipes, laptop processes, one-shot actions,
-// cluster commands and jobs (DESIGN 2.3, 4.5, 5.5). Each line shows the make target the console
-// runs. Recipes and their checklists come from the backend (the start-recipe action's
+// "Manage stack": a running or failed job pinned on top, then the stack recipes (the one for
+// the scenario in view first), then Cluster, Processes, One-shot actions and Jobs as
+// "Advanced" disclosures that open by themselves when something in them failed (DESIGN 2.3,
+// 4.5, 5.5). Recipes and their checklists come from the backend (the start-recipe action's
 // `recipes`), so the card lists exactly the steps the recipe walks.
 import { enc, get } from "./api.js";
 import { recipeById, runAction, startProcess, stopProcess } from "./actions.js";
 import { PROFILE_LABEL, SHAPE_LABEL, ago, costMark, h, icon, ms } from "./format.js";
 import { buildBadge, pip, upSummary } from "./stackbar.js";
 import { store } from "./store.js";
-import { toastError } from "./ui.js";
+import { openAttr, toastError } from "./ui.js";
 
 const dlg = () => document.getElementById("sheet");
 const openLogs = new Map(); // "proc:<name>" | "job:<id>" -> lines[]
@@ -88,17 +89,46 @@ function latestRun(jobs, id) {
   return j.status === "running" || Date.now() - ms(j.ended_at || j.started_at) < RECENT_MS ? j : null;
 }
 
-function recipeCard(r, jobs, busy) {
+function recipeCard(r, jobs, busy, rec) {
   const variant = r.variants.length ? choice.get(`recipe:${r.id}:variant`) || "scripted" : "scripted";
   const live = variant === "live";
   const run = latestRun(jobs, r.id);
   const steps = run && (run.status === "running" || run.params?.variant === variant) ? run.steps : r.steps[variant] || r.steps.scripted;
   const running = run?.status === "running";
-  return h`<div class="recipe" data-recipe-card="${r.id}"><b>${r.title}</b>
+  const failed = run?.status === "failed";
+  const verb = r.danger ? "Tear down" : r.long ? r.title : "Bring up";
+  return h`<div class="recipe ${rec ? "rec" : ""}" data-recipe-card="${r.id}"><b>${r.title}${rec ? h` <span class="muted">${rec}</span>` : ""}</b>
     ${r.variants.length > 1 ? h`<div class="seg vseg" role="group" aria-label="Model for ${r.title}">${r.variants.map((v) => h`<button type="button" data-recipe-variant="${r.id}:${v}" aria-pressed="${String(v === variant)}">${v === "live" ? "live (Opus 5.5)" : "scripted"}</button>`)}</div>` : ""}
-    ${checklist(steps)}
+    <details class="disc" data-keep="recipe:${r.id}" ${openAttr(`recipe:${r.id}`, running || failed)}><summary>${steps.length} steps</summary>${checklist(steps)}</details>
     ${r.why_not ? h`<span class="why">${r.why_not}</span>` : ""}
-    <span class="rgo"><button class="btn small ${r.danger ? "no" : "ghost"} ${busy["action:start-recipe"] || running ? "busy" : ""}" type="button" data-recipe="${r.id}" ${r.available === false || running ? "disabled" : ""}>${icon(r.danger ? "stop" : "play")}${r.danger ? "Tear down" : r.long ? r.title : "Bring up"}</button>${live ? costMark("tokens", true) : ""}${r.long && !running ? h`<span class="muted">several minutes</span>` : ""}${running ? h`<span class="muted">running, started ${ago(run.started_at)}</span>` : ""}</span></div>`;
+    <span class="rgo"><button class="btn small ${r.danger ? "no" : rec ? "primary" : "ghost"} ${busy["action:start-recipe"] || running ? "busy" : ""}" type="button" data-recipe="${r.id}" ${r.available === false || running ? "disabled" : ""}>${icon(r.danger ? "stop" : "play")}${verb}</button>${live ? costMark("tokens", true) : ""}${r.long && !running ? h`<span class="muted">several minutes</span>` : ""}${running ? h`<span class="muted">running, started ${ago(run.started_at)}</span>` : ""}</span></div>`;
+}
+
+/** The recipe for what is on screen: the scenario's own, else the stack's current shape. */
+const SHAPE_RECIPE = { plain: "local-plain", "serverless-invoke": "local-invoke", "serverless-wci": "local-wci" };
+function recommended(state, profile) {
+  const r = state.route;
+  const id = r.name === "scenario" ? r.scenario : state.run && state.run.workflow_id === r.wf ? state.run.scenario : null;
+  const scen = (state.scenarios || []).find((x) => x.id === id);
+  if (scen?.setup_recipe) return { id: scen.setup_recipe, why: `for ${scen.short || scen.title}` };
+  if (profile !== "local") return { id: "kind-up", why: "" };
+  return { id: SHAPE_RECIPE[state.stack?.shape] || "local-plain", why: "" };
+}
+
+/** The running job, pinned on top: where it is and its last lines. */
+function runningJob(j) {
+  const steps = j.steps || [];
+  const i = steps.findIndex((x) => x.status === "running");
+  const lines = (j.log_tail || []).slice(-6);
+  return h`<section class="pinned" aria-labelledby="pinned-title"><h3 id="pinned-title"><span class="pstate" data-s="running">running</span> ${j.title || j.action}</h3>
+    ${steps.length ? h`<p>Step ${i >= 0 ? i + 1 : steps.length} of ${steps.length}${i >= 0 ? h`: <b class="id">${steps[i].label}</b>` : ""}</p>` : ""}
+    ${lines.length ? h`<pre class="log">${lines.join("\n")}</pre>` : ""}
+    <span class="muted">started ${ago(j.started_at)} · ${j.command}</span></section>`;
+}
+
+/** An Advanced disclosure: closed unless something in it failed (or the presenter opened it). */
+function advanced(key, title, note, failed, body) {
+  return h`<details class="adv" data-keep="adv:${key}" ${openAttr(`adv:${key}`, failed)}><summary><h3>${title}</h3>${note ? h`<span class="muted">${note}</span>` : ""}</summary>${body}</details>`;
 }
 
 /** The newest job, when it failed: where, why, the next move and its last lines. */
@@ -138,31 +168,42 @@ export function renderSheet(state) {
   const procs = state.processes || [];
   const actions = state.actions || [];
   const jobs = state.jobs || [];
-  const recipes = (actions.find((a) => a.id === "start-recipe")?.recipes || []).filter((r) => r.profiles.includes(profile));
+  const rec = recommended(state, profile);
+  const recipes = (actions.find((a) => a.id === "start-recipe")?.recipes || [])
+    .filter((r) => r.profiles.includes(profile))
+    .sort((a, b) => (b.id === rec.id) - (a.id === rec.id) || (a.danger ? 1 : 0) - (b.danger ? 1 : 0));
   const oneShots = actions.filter((a) => (a.group || "oneshot") === "oneshot");
   const cluster = actions.filter((a) => a.group === "cluster");
-  const failed = jobs[0]?.status === "failed" ? jobs[0] : null;
+  const running = jobs.find((j) => j.status === "running");
+  const failed = !running && jobs[0]?.status === "failed" ? jobs[0] : null;
   const kind = profile !== "local";
+  // What failed, by section, so its disclosure opens by itself.
+  const failedFor = (ids) => jobs.some((j) => ids.has(j.action) && j.status === "failed" && j === jobs.find((x) => x.action === j.action));
+  const procBad = procs.filter((p) => p.status === "exited" && p.exit_code);
+  const procUp = procs.filter((p) => p.status === "running" || p.status === "external").length;
+  const jobsBad = jobs.filter((j) => j.status === "failed").length;
   const scroll = d.querySelector(".body")?.scrollTop || 0;
+  const clusterBox = kind ? advanced("cluster", "Cluster", "one layer at a time", failedFor(new Set(cluster.map((a) => a.id))),
+    h`<p class="sub">Each layer takes a few minutes. Bring up kind runs them in order. Delete removes the cluster.</p><ul class="plist">${cluster.map((a) => actionItem(a, profile, busy))}</ul>`) : "";
   d.innerHTML = String(h`<header><h2 id="sheet-title">Manage stack</h2><span class="muted">profile <b class="id">${profile}</b></span>
       <button class="tbtn" type="button" data-close-sheet aria-label="Close">${icon("close")}</button>
       ${stackState(state.stack)}</header>
     <div class="body">
-      ${failed ? failedJob(failed) : ""}
+      ${running ? runningJob(running) : failed ? failedJob(failed) : ""}
       ${recipes.length ? h`<section><h3>Stack recipes</h3><p class="sub">${kind
-        ? "Bring up kind starts each missing layer in order and skips the ones that are up. The laptop side alone needs a running cluster."
+        ? "Bring up kind starts each missing layer in order and skips the ones that are up. It never starts the Docker VM: if it is stopped, the job stops at the first step."
         : "One button brings the stack to a known shape. The job's log lists each make target as it runs."}</p>
-        <div class="recipes">${recipes.map((r) => recipeCard(r, jobs, busy))}</div></section>` : ""}
-      <section><h3>Processes on this laptop</h3>
-        <p class="sub">Each runs as a make target in its own process group and survives a console restart. Live variants call Bedrock.</p>
-        ${procs.length ? h`<ul class="plist">${procs.map((p) => procItem(p, profile, busy))}</ul>` : h`<p class="muted">The backend lists no processes.</p>`}</section>
-      <section><h3>One-shot actions</h3>
-        <ul class="plist">${oneShots.map((a) => actionItem(a, profile, busy))}</ul></section>
-      <section><h3>Cluster</h3>
-        ${kind ? h`<p class="sub">One layer at a time, each a few minutes. Bring up kind runs them in order. Delete removes the cluster.</p><ul class="plist">${cluster.map((a) => actionItem(a, profile, busy))}</ul>`
-          : h`<p class="sub">On kind, the cluster commands live here. Switch the profile in the stack bar.</p>`}</section>
-      <section><h3>Jobs</h3>
-        ${jobs.length ? h`<ul class="plist">${jobs.slice(0, 20).map(jobItem)}</ul>` : h`<p class="muted">No jobs yet. Recipes and one-shot actions show up here with their logs.</p>`}</section>
+        <div class="recipes">${recipes.map((r) => recipeCard(r, jobs, busy, r.id === rec.id ? rec.why || "recommended" : ""))}</div></section>` : ""}
+      <section class="advanced" aria-labelledby="adv-h"><h3 id="adv-h">Advanced</h3>
+        ${clusterBox}
+        ${advanced("procs", "Processes on this laptop", procs.length ? `${procUp} of ${procs.length} running${procBad.length ? `, ${procBad.length} exited with an error` : ""}` : "", procBad.length > 0,
+          h`<p class="sub">Each runs as a make target in its own process group and survives a console restart. Live variants call Bedrock.</p>
+          ${procs.length ? h`<ul class="plist">${procs.map((p) => procItem(p, profile, busy))}</ul>` : h`<p class="muted">The backend lists no processes.</p>`}`)}
+        ${advanced("oneshot", "One-shot actions", "", failedFor(new Set(oneShots.map((a) => a.id))),
+          h`<ul class="plist">${oneShots.map((a) => actionItem(a, profile, busy))}</ul>`)}
+        ${advanced("jobs", "Jobs", jobs.length ? `${jobs.length}${jobsBad ? `, ${jobsBad} failed` : ""}` : "none yet", !!failed,
+          jobs.length ? h`<ul class="plist">${jobs.slice(0, 20).map(jobItem)}</ul>` : h`<p class="muted">Recipes and one-shot actions show up here with their logs.</p>`)}
+      </section>
     </div>`);
   const body = d.querySelector(".body");
   if (body) body.scrollTop = scroll;
