@@ -1,6 +1,8 @@
 // The lanes: time | compute rail | Support | Nexus seam | Finance (DESIGN 2.1 item 4, 5.3 rows).
-// Rows pair into wires across the seam; gaps over 4 s become bands; the last row is a live
-// "now" row that carries the approval card while the task is input-required.
+// Rows pair into wires across the seam. A thought carries its own think time; runs of agent and
+// tool rows in one lane fold into one expandable row; only gaps that tell the story (no
+// compute, the debounce, retries, Finance working or waiting on a human) become bands. The last
+// row is a live "now" row that carries the approval card while the task is input-required.
 import { dur, h, icon, ms, offset, raw, sinceText } from "./format.js";
 import { approvalNode } from "./approval.js";
 
@@ -128,7 +130,9 @@ function ev(r, cls, ctx, extra = {}) {
     ident = h`<span class="dd ident id">${r.identity}</span>`;
     ctx.lastIdent[side] = r.identity;
   }
-  return h`<div class="${k.join(" ")}" ${r.state ? h`data-state="${r.state}"` : ""}><span class="g">${icon(glyph)}</span><span class="tt"><span class="lane">${extra.lane || LANE_WORD[cls]}</span>${title(r)}${deep(link)}</span>${r.detail ? h`<span class="dd">${r.detail}</span>` : ""}${ident}${extra.after || ""}</div>`;
+  const d = r.kind === "model.turn" ? ctx.nextT.get(r.seq) : undefined;
+  const took = d !== undefined && d - r.t >= 0.1 ? h`<span class="took"> · ${dur(d - r.t)}</span>` : "";
+  return h`<div class="${k.join(" ")}" ${r.state ? h`data-state="${r.state}"` : ""}><span class="g">${icon(glyph)}</span><span class="tt"><span class="lane">${extra.lane || LANE_WORD[cls]}</span>${title(r)}${took}${deep(link)}</span>${r.detail ? h`<span class="dd">${r.detail}</span>` : ""}${ident}${extra.after || ""}</div>`;
 }
 
 function railCell(t, lts, it, ctx) {
@@ -143,11 +147,11 @@ function railCell(t, lts, it, ctx) {
   return h`<div class="c-rail ${cls}" aria-hidden="true"></div>`;
 }
 
-function itemHTML(it, ctx) {
+function itemHTML(it, ctx, more = "") {
   const { lts, held } = ctx;
   const t = it.t;
   const isNew = ctx.fresh.size && [it.r, it.a, it.b, it.nx, it.fin].some((r) => r && ctx.fresh.has(r.seq));
-  const cls = `row${isNew ? " new" : ""}`;
+  const cls = `row${isNew ? " new" : ""}${more}`;
   const time = h`<div class="c-time">${offset(t)}</div>`;
   const seam = seamCls(it, t, held);
   if (it.type === "out" || it.type === "back") {
@@ -185,26 +189,75 @@ function itemHTML(it, ctx) {
   if (r.kind === "run.completed" && ctx.run?.reply?.text) {
     after = h`<div class="reply"><div class="who">Reply to the customer</div><p>${ctx.run.reply.text}</p></div>`;
   }
-  const body = ev(r, lc, ctx, { after });
+  // The ticket itself is in the run header: here the row only marks when it arrived.
+  const body = ev(r.kind === "run.started" ? { ...r, detail: null } : r, lc, ctx, { after });
   const onFin = lc === "fin" || lc === "hum";
   const end = /^run\.(completed|failed|terminated)$/.test(r.kind) ? " end" : "";
   return h`<div class="${cls}${end}" role="listitem">${time}${railCell(t, lts, it, ctx)}<div class="c-sup">${onFin ? "" : body}</div><div class="c-seam ${seam}"></div><div class="c-fin">${onFin ? body : ""}</div></div>`;
 }
 
+// Agent turns and tool calls: the chatter between the story's moments. Never a wire, a
+// lifetime change, a retry, a state change, the approval or the reply.
+const FOLDS = new Set(["model.turn", "activity"]);
+const foldable = (it) => it.type === "single" && FOLDS.has(it.r.kind) && !it.r.state
+  && (it.r.lane === "support" || it.r.lane === "finance");
+
+/** Display units: the items, with each run of two or more foldable rows in one lane as a group. */
+export function groupItems(items) {
+  const units = [];
+  let i = 0;
+  while (i < items.length) {
+    const it = items[i];
+    let j = i + 1;
+    if (foldable(it)) while (j < items.length && foldable(items[j]) && items[j].r.lane === it.r.lane) j += 1;
+    if (j - i >= 2) units.push({ type: "group", t: it.t, lane: it.r.lane, items: items.slice(i, j) });
+    else { units.push(it); j = i + 1; }
+    i = j;
+  }
+  return units;
+}
+
+const firstOf = (u) => (u.type === "group" ? u.items[0] : u);
+const lastOf = (u) => (u.type === "group" ? u.items[u.items.length - 1] : u);
+const openGroups = new Set(); // "<wf>:<first seq>" of groups the presenter expanded
+
+function groupHTML(g, ctx) {
+  const rs = g.items.map((it) => it.r);
+  const key = `${ctx.run.workflow_id}:${rs[0].seq}`;
+  const id = `grp-${rs[0].seq}`;
+  const open = openGroups.has(key);
+  const agents = [...new Set(rs.filter((r) => r.kind === "model.turn").map((r) => r.agent).filter(Boolean))];
+  const tools = rs.filter((r) => r.kind === "activity").map((r) => r.title);
+  const end = ctx.nextT.get(rs[rs.length - 1].seq);
+  const took = end !== undefined ? h`<span class="took"> · ${dur(end - g.t)}</span>` : "";
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const who = agents.length === 1 ? agents[0] : plural(agents.length, "agent");
+  const what = [agents.length ? who : null, tools.length ? plural(tools.length, "tool") : null].filter(Boolean).join(", ");
+  const lc = LANE_CLS[g.lane];
+  const isNew = rs.some((r) => ctx.fresh.has(r.seq));
+  const names = agents.length > 1 ? agents.map((a) => a.replace(/ agent$/, "")).join(", ") : "";
+  const btn = h`<button type="button" class="ev ${lc}-ev fold" data-fold="${key}" aria-expanded="${String(open)}" aria-controls="${id}">
+    <span class="g">${icon("think")}</span><span class="tt"><span class="lane">${LANE_WORD[lc]}</span>${what}${took}<span class="chev" aria-hidden="true"></span><span class="sr"> (${open ? "hide" : "show"} ${rs.length} rows)</span></span>
+    <span class="dd">${names}${names && tools.length ? " · " : ""}${tools.map((t, i) => h`${i ? ", " : ""}<span class="id">${t}</span>`)}</span></button>`;
+  const onFin = lc === "fin";
+  const head = h`<div class="row grp${isNew ? " new" : ""}" role="listitem"><div class="c-time">${offset(g.t)}</div>${railCell(g.t, ctx.lts, null, ctx)}<div class="c-sup">${onFin ? "" : btn}</div><div class="c-seam ${seamCls(null, g.t, ctx.held)}"></div><div class="c-fin">${onFin ? btn : ""}</div></div>`;
+  const members = g.items.map((it) => itemHTML(it, ctx, " member")).map(String).join("");
+  return h`${head}<div class="members" id="${id}" ${open ? "" : "hidden"}>${raw(members)}</div>`;
+}
+
+/** A band for a gap that tells the story; "" for the rest (think time sits on its row). */
 function gapHTML(prev, next, ctx) {
   const a = prev.t, b = next.t, d = b - a, mid = a + d / 2;
   const rail = railAt(mid, ctx.lts);
   const seam = seamCls(null, mid, ctx.held);
   const pr = prev.r || prev.fin || prev.nx || prev.a;
   const nx = next.r || next.nx || next.a;
-  let note, glyph = "clock", onFin = false;
+  let note, glyph = "clock";
   if (rail === "off") {
     note = h`<b>${dur(d)}</b> with no Support compute. The conversation is in history; nothing is billed.`;
     glyph = "power";
   } else if (pr && pr.kind === "model.turn") {
-    note = h`<b>${dur(d)}</b> while ${pr.agent || "the agent"} thinks`;
-    glyph = "think";
-    onFin = pr.lane === "finance";
+    return "";
   } else if (nx && (nx.kind === "lifetime.idle" || nx.kind === "lifetime.drained")) {
     note = h`<b>${dur(d)}</b>: ${ctx.lts.find((l) => mid >= l.s && mid <= l.e)?.label || "the worker"} stays up for the debounce, then drains`;
     glyph = "hold";
@@ -212,15 +265,17 @@ function gapHTML(prev, next, ctx) {
     // Failure demo: Finance has no task yet, so nothing "works"; the server retries the call.
     note = h`<b>${dur(d)}</b> while the server tries to deliver Support's call; no Finance worker answers`;
     glyph = "warn";
+  } else if (seam && pr && (pr.state === "input-required" || pr.kind === "timer.started")) {
+    note = h`<b>${dur(d)}</b> while Finance waits for a human; the server holds Support's call open`;
+    glyph = "hold";
   } else if (seam) {
     note = h`<b>${dur(d)}</b> while Finance works; the server holds Support's call open`;
-    onFin = false;
   } else {
-    note = h`<b>${dur(d)}</b> with no new events`;
+    return "";
   }
   const cell = h`<div class="gapnote">${icon(glyph)}<span>${note}</span></div>`;
   return h`<div class="row gap" role="listitem"><div class="c-time"></div><div class="c-rail ${rail}" aria-hidden="true"></div>
-    <div class="c-sup">${onFin ? "" : cell}</div><div class="c-seam ${seam}"></div><div class="c-fin">${onFin ? cell : ""}</div></div>`;
+    <div class="c-sup">${cell}</div><div class="c-seam ${seam}"></div><div class="c-fin"></div></div>`;
 }
 
 function nowHTML(last, ctx) {
@@ -273,7 +328,24 @@ export function lanesKey(state) {
 
 const seen = new Map(); // wf -> Set(seq) for the new-row flash
 
+function wireFolds(rowsEl) {
+  if (rowsEl.dataset.wired) return;
+  rowsEl.dataset.wired = "1";
+  rowsEl.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-fold]");
+    if (!b || e.target.closest("a")) return;
+    const open = !openGroups.has(b.dataset.fold);
+    if (open) openGroups.add(b.dataset.fold); else openGroups.delete(b.dataset.fold);
+    b.setAttribute("aria-expanded", String(open));
+    const sr = b.querySelector(".sr");
+    if (sr) sr.textContent = sr.textContent.replace(/\((show|hide) /, `(${open ? "hide" : "show"} `);
+    const m = document.getElementById(b.getAttribute("aria-controls"));
+    if (m) m.hidden = !open;
+  });
+}
+
 export function renderLanes(state, rowsEl) {
+  wireFolds(rowsEl);
   const run = state.run;
   const rowsBody = state.rows || {};
   const rows = (rowsBody.workflow_id === run?.workflow_id ? rowsBody.rows : []) || [];
@@ -288,14 +360,21 @@ export function renderLanes(state, rowsEl) {
   const items = pairRows(sorted);
   const lts = lifetimesOf(run, t0);
   const held = heldIntervals(items, run);
-  const ctx = { run, t0, lts, held, fresh, lastIdent: {}, links: run.links || {} };
+  // Each row's successor time: a thought's think time, a group's span.
+  const nextT = new Map();
+  items.forEach((it, i) => { if (it.type === "single" && i + 1 < items.length) nextT.set(it.r.seq, items[i + 1].t); });
+  const ctx = { run, t0, lts, held, fresh, nextT, lastIdent: {}, links: run.links || {} };
   const parts = [];
   if (!items.length) {
     parts.push(h`<div class="lempty">Waiting for the first event in history…</div>`);
   }
-  items.forEach((it, i) => {
-    if (i > 0 && it.t - items[i - 1].t > GAP_S) parts.push(gapHTML(items[i - 1], it, ctx));
-    parts.push(itemHTML(it, ctx));
+  const units = groupItems(items);
+  units.forEach((u, i) => {
+    if (i > 0) {
+      const prev = lastOf(units[i - 1]), next = firstOf(u);
+      if (next.t - prev.t > GAP_S) parts.push(gapHTML(prev, next, ctx));
+    }
+    parts.push(u.type === "group" ? groupHTML(u, ctx) : itemHTML(u, ctx));
   });
   if (run.status === "RUNNING") parts.push(nowHTML(items[items.length - 1], ctx));
 

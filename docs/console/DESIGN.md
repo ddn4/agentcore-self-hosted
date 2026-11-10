@@ -42,9 +42,9 @@ console that has to work when projected from the back of the room:
 | The audience must see | What the console shows | Where |
 |---|---|---|
 | **Two teams, one contract.** Support (namespace `agents`) asks Finance (namespace `agent-services`) for a refund. They share an A2A contract and a named Nexus endpoint, not code, workers or a child workflow. | Two swimlanes with a vertical **boundary seam** between them, labelled with the endpoint `finance-agent`. Every Nexus call is drawn as a connector that crosses the seam. Nothing else crosses it. | Run view, lanes |
-| **The A2A task has a state, and a human owns one of them.** `submitted -> working -> input-required -> completed / rejected / failed`. | The **state track**, with the current protocol token set very large (`input-required`). The approval card sits *inside Finance's lane*, at the moment the task went to input-required. | Run view, header and Finance lane |
-| **Support's compute is gone, and nothing is lost.** While Finance waits, Support has no worker at all (scale to zero). The server holds the Nexus call open and the conversation stays in history. | The **compute rail** at the left of the Support lane is lit while a worker or AgentCore lifetime runs and **goes dark** when it drains. Beside the dark stretch, the seam shows a violet "held open" bar, with a running clock, for the pending `send_message`. A large counter reads "Support workers running: 0". | Run view, compute rail and seam |
-| **A new lifetime picks up, pinned to the same build.** After approval, the Nexus completion makes the WCI (or the presenter, with invoke-local) start lifetime 2. It finishes the reply on the same Build ID. | The rail lights again as "lifetime 2". A `wci InvokeWorker` row appears on the rail edge. The run header always shows `pinned to support-supervisor:4ee7f87`. The report strip shows the Q15 deltas (approval to InvokeWorker to first Workflow Task to reply). | Run view, rail and report strip |
+| **The A2A task has a state, and a human owns one of them.** `submitted -> working -> input-required -> completed / rejected / failed`. | The **state track** in the run header, with the current protocol token as the word (`input-required`). The approval card sits *inside Finance's lane*, at the moment the task went to input-required. | Run view, header and Finance lane |
+| **Support's compute is gone, and nothing is lost.** While Finance waits, Support has no worker at all (scale to zero). The server holds the Nexus call open and the conversation stays in history. | The **compute rail** at the left of the Support lane is lit while a worker or AgentCore lifetime runs and **goes dark** when it drains. Beside the dark stretch, the seam shows a violet "held open" bar, with a running clock, for the pending `send_message`. The "now" row says how long Support has had no compute. | Run view, compute rail and seam |
+| **A new lifetime picks up, pinned to the same build.** After approval, the Nexus completion makes the WCI (or the presenter, with invoke-local) start lifetime 2. It finishes the reply on the same Build ID. | The rail lights again as "lifetime 2". A `wci InvokeWorker` row appears on the rail edge. "Run details" in the run header shows `pinned to support-supervisor:4ee7f87`, and the report names the one Build ID. The report strip shows the Q15 deltas (approval to InvokeWorker to first Workflow Task to reply). | Run view, rail and report strip |
 
 The secondary stories (crash demo: kill the worker mid-thought; failure demo: Finance
 disappears and the Nexus call retries; handoff mode; load) reuse the same view. Each adds
@@ -68,44 +68,41 @@ small runs.
 ### 2.1 Regions
 
 ```
-┌ Stack bar ─────────────────────────────────────────────────────────────────────────────┐
-│ AgentCore demo console   [local | kind]            Support: serverless via WCI emulator │
-│ Model: scripted   ● Temporal ● Web UI ● Endpoint ● Finance 1 ○ Support 0 ● AgentCore    │
-│ ● Emulator ● Payments   Build 4ee7f87 (current, pinned)     [Manage stack] [N] [P] [◐]  │
+┌ Stack bar (one row) ───────────────────────────────────────────────────────────────────┐
+│ AgentCore demo console [Recorded] [local|kind · mTLS|kind · plaintext] ● 8 of 8 up      │
+│                                          (+ key pips only when down) [Manage stack][N][P][◐]│
 ├──────────────────────┬─────────────────────────────────────────────────┬───────────────┤
-│ Scenarios            │ Run header: support-2077-wci-k3f9               │ Presenter     │
-│  Case A  ($40)       │ "Order #2077: my laptop arrived with a cracked…"│ notes         │
-│  Case B  ($450) ●    │ Case B on the WCI emulator; pinned 4ee7f87      │ (toggle N)    │
-│  Crash demo          │ [Support in Temporal UI] [Finance task in UI]   │               │
-│  Serverless B        ├─────────────────────────────────────────────────┤ talk line for │
-│  B on WCI emulator   │ submitted  working  INPUT-REQUIRED  completed…  │ the current   │
-│  B on AgentCore      │ Support workers 0 · held open 46 s · lifetimes 1│ step; what to │
-│  Failure demo        ├─────────────────────────────────────────────────┤ point at; the │
-│  Smoke + card        │ 1 ✓ 2 ✓ 3 ✓ 4 ✓ 5 ✓ [6 Approve] 7 8  (stepper)  │ make command  │
-│  Load                ├────┬──────────────┬────────┬────────────────────┤               │
-│                      │rail│ Support      │ seam   │ Finance            │               │
-│ Runs                 │ ██ │ started      │        │                    │               │
-│  support-2077-wci… ◐ │ ██ │ model turn   │        │                    │               │
-│  support-1042-k2x  ✓ │ ██ │ send_message ├──────▶ │ task started       │               │
-│  load-…  10/10     ✓ │ ██ │              │ ┃      │ fraud_score        │               │
-│                      │ ░░ │   46 s: Support has no compute ┃ input-req.  │               │
+│ Scenarios            │ "Order #2077: my laptop…"  ••input-required∘    │ Presenter     │
+│  Case A  ($40)       │   held open 1:39  lifetimes 1  [Support↗][Finance↗]│ notes      │
+│  Case B  ($450) ●    │ task message (hidden while the card shows)      │ (toggle N)    │
+│  Worker crash        │                               Run details ▾     │ 1✓ 2✓ [5 Approve] 6 7 8 │
+│  …                   ├────┬──────────────┬────────┬────────────────────┤ talk line for │
+│                      │rail│ Support      │ seam   │ Finance            │ the current   │
+│ Runs                 │ ██ │ Ticket received│      │                    │ step; what to │
+│  support-2077-wci… ◐ │ ██ │ 3 agents, 2 tools · 3.1 s ▸ │ │             │ point at; the │
+│  support-1042-k2x  ✓ │ ██ │ Asks Finance ├──────▶ │ A2A task started   │ make command  │
+│  load-…  10/10     ✓ │ ██ │              │ ┃      │ Refund agent, 2 tools ▸│           │
+│                      │ ░░ │ 1:16 with no Support compute ┃ asks a human │               │
 │                      │ ░░ │              │ ┃held  │ ┌ approval card ┐  │               │
 │                      │ ░░ │              │ ┃open  │ │approve/reject │  │               │
 │                      │    │              │        │ └───────────────┘  │               │
 ├──────────────────────┴────┴──────────────┴────────┴────────────────────┴───────────────┤
-│ Report strip (after close): lifetimes 2 · Build IDs 1 · approval → reply 9.1 s · R-10015│
+│ (after close the quiet line holds the report: approved by · refund · approval wait …) │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 (The `·` separators in this sketch are only for the ASCII drawing. In the UI each fact is its own
 labelled cell.)
 
-- **Stack bar** (always visible, one or two lines, sticky). It shows the profile (a segmented
-  control; switching asks first if managed processes are running), Support's shape (plain
-  worker / serverless invoke-local / serverless WCI emulator), the model
-  mode, and one status pip per component. A pip is a small shape and a word, never colour
-  alone. **Manage stack** opens the stack sheet: processes with start/stop/log, stack recipes,
-  one-shot actions and kind jobs. `N` toggles presenter notes, `P` toggles
+- **Stack bar** (always visible, one row on desktop, sticky). It shows the brand, a
+  "Recorded data" pill in fixture mode only, the three profile pills (a segmented control,
+  always visible; switching asks first if managed processes are running), one summary pip
+  ("8 of 8 up", neutral when healthy, red with the count when something is down; it opens
+  the sheet) and, only when one of them is not up, the key pips (Temporal, Finance,
+  Support). A pip is a small shape and a word, never colour alone. Support's shape (plain
+  worker / serverless invoke-local / serverless WCI emulator), the model mode, the Build ID
+  and one pip per component live in the header of the **Manage stack** sheet, which also
+  holds processes with start/stop/log, stack recipes, one-shot actions and kind jobs. `N` toggles presenter notes, `P` toggles
   projector mode and `◐` switches between the dark theme (default) and light.
 - **Scenario launcher** (left column). Each scenario shows its title, the amount, and a fit
   marker for the current profile: ready, needs N things, or not on this profile. Selecting one
@@ -117,48 +114,65 @@ labelled cell.)
   state glyph. Selecting one focuses the run view (URL `#/runs/<wf>`), so a console restart or
   reload returns to the same run.
 - **Run view** (main column), top to bottom:
-  1. *Run header*: the ticket as a quote on one line with the Temporal UI deep links
-     ("Support", "Finance task") beside it, then one meta line: the workflow ID (mono), the
-     scenario name, queue, `pinned to support-supervisor:<build>` (from describe
-     `versioning_info`), A2A mode and budget. Header, hero and stepper together are one compact
-     strip so the lanes get most of the height (about 60% of a 900 px screen).
-  2. *State track* (the hero): the five A2A states as a track, with the current state token set
-     large. Beside it are three facts: **Support workers running** (0 is shown in the
-     "dark" colour), **Nexus call held open** (a live clock while pending) and
-     **Lifetimes** (count), with the task's message under or between them. Once the run has
-     closed, the report (held open, lifetimes, Build IDs, approval wait and to reply, approver,
-     refund) takes the facts' place, and the all-done stepper is hidden.
-  3. *Guided steps*: a horizontal stepper (numbered, because it is a sequence) kept to one
-     line. Done steps collapse to a check (full title in the tooltip), the current step shows
-     its short label in a pill, and the steps still to come show short labels. Its action
+  1. *Run header*, one line: the ticket as a quote (up to two lines, clipped), the **state
+     track** (a small dot for each other A2A state, filled when passed, open when to come,
+     struck when passed over, with the current state as the word itself, weight 300 at
+     2–2.4 rem with a plain 2 px underline in its state colour), the **Nexus call held open**
+     clock (live while pending) and, on serverless runs or once a worker has had more than
+     one lifetime, **Lifetimes**; then the Temporal UI deep links ("Support", "Finance").
+     Under it, one quiet line: the task's message, hidden while the approval card shows
+     (the card carries amount, limit and risk) and once the run closed with Finance's
+     answer; after close the same line holds the report (approved by, refund ID, approval
+     wait, approval to reply, Build ID), each fact once. At its right end, **Run details**
+     (a disclosure) holds the workflow ID, scenario name, queue, `pinned to
+     support-supervisor:<build>`, A2A mode and budget: setup facts the audience does not need.
+     Header and quiet line together leave the lanes about 85% of a 1440x900 screen; a Case A
+     run fits whole without scrolling.
+  2. *Compute*: whether Support has a worker is told by the compute rail and the "now" row
+     only (no separate counter).
+  3. *Guided steps*: a horizontal stepper (numbered, because it is a sequence). It is
+     presenter navigation, so it sits at the top of the presenter notes; the run view shows
+     it above the lanes only while the notes are off. Done steps collapse to a check (full
+     title in the tooltip), the current step shows its label in a neutral pill. Its action
      button and talk line live in presenter notes and in the lanes, not in the stepper.
   4. *Lanes*: `time | compute rail | Support | seam (Nexus) | Finance`. Time flows down, in event
-     order, with **compressed gaps**: a gap longer than 4 s between consecutive rows is shown as
-     a band carrying its duration ("2:00 with no Support compute"). This keeps a 24 h approval
-     wait readable. Rows carry their agent attribution ("Order Lookup agent") and, on hover or
+     order. A thought carries its own think time on its row ("Support Supervisor thinks ·
+     4.0 s"). Consecutive agent turns and tool calls in one lane, between story events, fold
+     into one row ("3 agents, 2 tools · 16 s", the agent and tool names under it), a button
+     that expands the member rows (keyboard accessible, `aria-expanded`); a row with a wire,
+     a lifetime change, a retry, a state change, the approval or the reply never folds.
+     **Compressed gaps**: a gap longer than 4 s becomes a band carrying its duration only
+     when it tells the story ("2:00 with no Support compute", the debounce before a drain,
+     the server retrying a call, Finance working or waiting on a human while the call is
+     held); other gaps are only the jump in the time column. This keeps a 24 h approval wait
+     readable. Rows carry their agent attribution ("Order Lookup agent") and, on hover or
      focus, the worker identity and a deep link. Nexus rows pair up into connectors across the
      seam (when the two ends are within 0.2 s, they render as one row with a wire across).
-     On wide screens the page itself does not scroll: header, hero and stepper stay fixed, and
+     On wide screens the page itself does not scroll: the header and quiet line stay fixed, and
      the lanes are the only scroller. They **follow the run**: the newest Nexus hop row
      (send_message out, the answer back, a failed attempt) stays at the top with as much after
      it as fits, while the newest row (the reply, once finished) keeps at least its title in
      view; the approval card always shows in full. Scrolling away pauses following and shows
-     a "Follow the run" button. Projector mode hides the side column, the stepper and (unless
-     turned on there) the notes, so the lanes keep about 60% of a 1280x720 screen. The last row is always a live
+     a "Follow the run" button. Projector mode hides the side column, the stepper, Run details and (unless
+     turned on there) the notes, so the lanes keep most of a 1280x720 screen. The last row is always a live
      **"now" row**. While the task is `input-required`, the **approval card sits in Finance's
      cell of the "now" row**, so the card, the dark rail and the held-open bar are on screen
      together. The earlier `input-required` row stays in the history as "Finance asks a
      human". (The first mockup put the card at that earlier row; with tail-follow it scrolled
      out of view on a 900 px laptop.)
-  5. *Reply and report strip*: once the run closes, Support's final reply (from the
-     `WorkflowExecutionCompleted` payload) plus the report: lifetimes, distinct Build IDs,
-     approval wait, approval-to-reply, refund ID, and the Q15 deltas on serverless runs.
+  5. *Reply and report*: once the run closes, Support's final reply (from the
+     `WorkflowExecutionCompleted` payload) sits on the reply row; the report is on the quiet
+     line under the header (held open and lifetimes stay in the header), and the Q15 deltas
+     on serverless runs sit on one line under the lanes.
 - **Presenter notes** (right column, toggle `N`; or a separate window at `/#/notes` for the
-  presenter's own screen). This holds the scenario talk track from the README story index,
-  the talk line of the current step, what to point at, and the equivalent make command
-  (useful when the audience asks "what did that button do").
-- **Projector mode** (`P`): type scale ×1.25, hides the scenario column, process logs and
-  identities, and keeps the stack bar to one line. Use it on the projected window.
+  presenter's own screen). This holds the stepper, the talk line of the current step, what
+  to point at, the step's button, the equivalent make command (useful when the audience asks
+  "what did that button do") and the scenario talk track; the story doc path is folded under
+  "Story doc". When a `#/notes` window is open (announced over a `BroadcastChannel`), every
+  other console window turns its own notes off, and back on when that window closes.
+- **Projector mode** (`P`): type scale ×1.25, hides the scenario column, process logs,
+  identities, the profile pills, the "Recorded data" pill, the "Manage stack" label and Run
+  details. Use it on the projected window.
 
 ### 2.2 Scenario catalog
 
@@ -230,12 +244,13 @@ the newest job on top, expanded, when it failed.
 
 ### 2.4 Phone width (≤ 640 px)
 
-The stack bar collapses to profile + a single "n of m up" pip (tap to open the sheet). The
+The stack bar keeps the profile pills and the "n of m up" pip (tap to open the sheet); the
+key pips that are down move into the sheet. The run header wraps: the ticket on its own
+lines, then the state and the clock, then the deep links; the task's message wraps in full. The
 launcher and runs become a drawer. The lanes become **one interleaved column**: each row keeps
 a 4 px lane edge in its lane colour and a lane word ("Support", "Finance"). Seam crossings
 become full-width violet rows ("Nexus send_message to Finance"). The compute rail turns into a
-6 px strip on the left edge of every row, lit or dark. The state track shows only the current
-state and the next one. The approval card is a sticky bottom sheet. The side gutter is 16 px,
+6 px strip on the left edge of every row, lit or dark. The state track keeps its dots beside the state word. The approval card is a sticky bottom sheet. The side gutter is 16 px,
 and nothing scrolls horizontally.
 
 ---
@@ -279,16 +294,22 @@ behind the theme toggle (`:root[data-theme="light"]`, Off White `#F8FAFC` ground
 | `--band`, `--g-nexus` | purple→UV `#B664FF → #444CE7` | same, lighter | the Nexus seam band and its held-open core line |
 | `--support-fill`, `--support` | blue `#0066FF`, text `#4A93FF` | `#0066FF`, `#0057D9` | Support lane accent, reply bubble |
 | `--finance` | pink `#FF6BFF` | `#B4189E` | Finance lane accent (pink keeps it apart from the UV seam) |
-| `--ok`, `--alive` | mint `#1FF1A5` | `#06714C`, `#12C98A` | completed, healthy pips, compute alive (glow) |
-| `--hold` | lime `#C3FF62` | `#4A7000` | input-required: lime stripes on black under the state word and down the approval card |
+| `--ok`, `--alive` | mint `#1FF1A5` | `#06714C`, `#12C98A` | completed (state colour), compute alive (glow, on the rail only) |
+| `--hold` | lime `#C3FF62` | `#4A7000` | input-required: the state word's underline, and lime hazard stripes down the approval card (the only stripes) |
 | `--bad` | red `#FF5555` | `#C42929` | rejected, failed, Reject |
 | `--dead` | 40 % Off White, dashed | 32 % black | compute scaled to zero: dashed outline, no fill |
 | `--wire` | `#8E7BFF` | `#5F55E8` | Nexus connectors across the seam |
 | `--focus` | `#8C92FF` | `#444CE7` | 2 px focus ring, offset 2 px |
 
 Gradients (brand stops, used sparingly): purple→UV for the seam and the held line;
-lime→mint for **Approve refund** and the `completed` underline; red→purple for the
-`rejected`/`failed` underline. Approve is the only gradient button; other actions are solid UV.
+lime→mint for **Approve refund**. Approve is the only gradient button; other actions are
+solid UV. The state word's underline is a plain 2 px line in its state colour.
+
+**One accent per meaning.** Green means compute alive and lives on the rail; lime hazard
+means waiting on a human and lives on the approval card; red means a fault. Healthy status
+dots (stack pips, process states, met preconditions, ready scenarios) are neutral grey; the
+stepper's current and done chips are neutral. That leaves the glowing Nexus band (3.1) as the
+one memorable element.
 
 States map to colour plus shape plus word: `submitted` and `working` use Finance pink with an
 open and a filled dot; `input-required` a lime lozenge; `completed` a mint check; `rejected` a
@@ -302,8 +323,8 @@ lime or mint is above 12:1. The light theme's text tokens are AA on all three li
 
 - **Hanken Grotesk** (variable `wght` 100–900, OFL) stands in for Aeonik, which is commercial
   and is neither copied nor linked. All UI text. Headings are light (300–400) at large sizes
-  with tight tracking: the hero A2A state word (`input-required`, in the protocol's own
-  spelling) is weight 300, `min(5.1rem, 11.4cqi)`, tracking −0.045em; lane headers, the
+  with tight tracking: the A2A state word (`input-required`, in the protocol's own
+  spelling) is weight 300, `min(2.3rem, 7cqi)`, tracking −0.035em; lane headers, the
   approval title and dialog titles are 400; body 400; labels 500; buttons 600.
 - **IBM Plex Mono** (400/500, OFL), for identifiers only: workflow IDs, Build IDs, task queues,
   worker identities, make commands.
@@ -346,7 +367,7 @@ except the three toggles in the stack bar, which carry `aria-label` and a toolti
 
 ### 3.6 Copy rules
 
-Name things by what the audience sees ("Support workers running", "Nexus call held open",
+Name things by what the audience sees ("Nexus call held open", "with no Support compute",
 "Finance asks a human"). Show the Temporal term once beside the plain one (`input-required`,
 `send_message`). Buttons say exactly what happens: **Start Case B**, **Approve refund**,
 **Reject refund**, **Invoke AgentCore app**, **Stop Support worker**. Results reuse the

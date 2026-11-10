@@ -10,7 +10,7 @@ import { renderNotes, wireNotes } from "./js/notes.js";
 import { renderRuns } from "./js/runs.js";
 import { renderRunView, unmountRunView } from "./js/runview.js";
 import { openSheet, renderSheet, wireSheet } from "./js/sheet.js";
-import { renderBanners, renderStackBar, toggleNotes, toggleProjector, wireStackBar } from "./js/stackbar.js";
+import { pairNotes, renderBanners, renderStackBar, toggleNotes, toggleProjector, wireStackBar } from "./js/stackbar.js";
 import { toggleTick } from "./js/steps.js";
 import { store } from "./js/store.js";
 import { toast } from "./js/ui.js";
@@ -176,7 +176,7 @@ function wire() {
   store.subscribe("runs", ["runs", "route", "stack"], renderRuns);
   store.subscribe("main", ["route", "run", "rows", "scenarios", "stack", "ui", "config", "runs", "runMissing"], renderMain);
   store.subscribe("notes", ["route", "run", "scenarios", "processes", "actions", "ui", "config"], renderNotes);
-  store.subscribe("sheet", ["processes", "jobs", "actions", "config", "ui"], renderSheet);
+  store.subscribe("sheet", ["processes", "jobs", "actions", "config", "ui", "stack"], renderSheet);
   wireStackBar(openSheet);
   wireLauncher();
   wireNotes();
@@ -197,12 +197,26 @@ function wire() {
   });
   window.addEventListener("hashchange", route);
   if (channel) {
+    // A #/notes window says so; every other window then turns its own notes off (they would
+    // only repeat it, and on a mirrored screen they would show the script), and back on when
+    // that window goes.
+    const isNotes = () => store.state.route.name === "notes";
     channel.onmessage = (m) => {
-      if (store.state.route.name === "notes" && m.data && m.data.wf) {
-        store.set({ route: { name: "notes", wf: m.data.wf, scenario: null } });
-        focus(m.data.wf);
+      const d = m.data || {};
+      if (isNotes()) {
+        if (d.wf) {
+          store.set({ route: { name: "notes", wf: d.wf, scenario: null } });
+          focus(d.wf);
+        }
+        if (d.ping) channel.postMessage({ notes: "here" });
+        return;
       }
+      if (d.notes === "here") {
+        pairNotes(true);
+        if (store.state.route.name === "run") channel.postMessage({ wf: store.state.route.wf });
+      } else if (d.notes === "gone") pairNotes(false);
     };
+    window.addEventListener("pagehide", () => { if (isNotes()) channel.postMessage({ notes: "gone" }); });
   }
   // Live clocks: anything with data-since counts up from that instant.
   setInterval(() => {
@@ -234,6 +248,7 @@ async function boot() {
     store.set({ connection: "down" });
   }
   route();
+  if (channel) channel.postMessage(store.state.route.name === "notes" ? { notes: "here" } : { ping: 1 });
   await refreshLists();
   lastListRefresh = Date.now();
   if (isFixture()) store.set({ connection: "up" });

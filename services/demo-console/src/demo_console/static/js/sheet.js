@@ -4,7 +4,8 @@
 // `recipes`), so the card lists exactly the steps the recipe walks.
 import { enc, get } from "./api.js";
 import { recipeById, runAction, startProcess, stopProcess } from "./actions.js";
-import { PROFILE_LABEL, ago, costMark, h, icon, ms } from "./format.js";
+import { PROFILE_LABEL, SHAPE_LABEL, ago, costMark, h, icon, ms } from "./format.js";
+import { buildBadge, pip, upSummary } from "./stackbar.js";
 import { store } from "./store.js";
 import { toastError } from "./ui.js";
 
@@ -37,7 +38,7 @@ function procItem(p, profile, busy) {
     <span class="mk id">${p.make}${p.started_at && running ? h` <span class="muted">started ${ago(p.started_at)}</span>` : ""}</span>
     <span class="ctl">
       ${!running && (p.variants || []).length > 1 ? h`<select aria-label="Variant for ${p.label}" data-choice="${vkey}">${p.variants.map((v) => h`<option value="${v}" ${v === variant ? "selected" : ""}>${v}${v === "live" ? " (tokens)" : ""}</option>`)}</select>` : ""}
-      ${isDev && !running ? h`<select aria-label="Worker Controller for the dev server" data-choice="${p.name}:wci"><option value="0" ${wci === "0" ? "selected" : ""}>WCI off</option><option value="1" ${wci === "1" ? "selected" : ""}>WCI=1 (emulator)</option></select>` : ""}
+      ${isDev && !running ? h`<select aria-label="Worker Controller for the dev server" data-choice="${p.name}:wci"><option value="0" ${wci === "0" ? "selected" : ""}>without WCI</option><option value="1" ${wci === "1" ? "selected" : ""}>with WCI emulator</option></select>` : ""}
       ${running && p.managed !== false
         ? h`<button class="btn small ghost ${b ? "busy" : ""}" type="button" data-proc-stop="${p.name}">${icon("stop")}Stop</button>`
         : p.status === "external" ? "" : h`<button class="btn small primary ${b ? "busy" : ""}" type="button" data-proc-start="${p.name}" ${off || p.status === "unavailable" ? "disabled" : ""}>${icon("play")}Start</button>`}
@@ -120,6 +121,15 @@ function jobItem(j) {
   </li>`;
 }
 
+/** What the stack bar leaves out: Support's shape, the model, the Build ID and every pip. */
+function stackState(stack) {
+  if (!stack) return "";
+  const sum = upSummary(stack);
+  return h`<div class="stackstate">
+    <p class="shape"><span>Support <b>${SHAPE_LABEL[stack.shape || "unknown"] || stack.shape}</b></span><span>Model <b>${stack.model?.mode || "unknown"}</b></span>${buildBadge(stack)}<span class="muted">${sum.up} of ${sum.total} up</span></p>
+    <ul class="pips" aria-label="Components">${(stack.components || []).map((c) => pip(c, stack.shape, { button: false }))}</ul></div>`;
+}
+
 export function renderSheet(state) {
   const d = dlg();
   if (!d.open) return;
@@ -135,7 +145,8 @@ export function renderSheet(state) {
   const kind = profile !== "local";
   const scroll = d.querySelector(".body")?.scrollTop || 0;
   d.innerHTML = String(h`<header><h2 id="sheet-title">Manage stack</h2><span class="muted">profile <b class="id">${profile}</b></span>
-      <button class="tbtn" type="button" data-close-sheet aria-label="Close">${icon("close")}</button></header>
+      <button class="tbtn" type="button" data-close-sheet aria-label="Close">${icon("close")}</button>
+      ${stackState(state.stack)}</header>
     <div class="body">
       ${failed ? failedJob(failed) : ""}
       ${recipes.length ? h`<section><h3>Stack recipes</h3><p class="sub">${kind

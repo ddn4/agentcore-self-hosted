@@ -1,5 +1,6 @@
-// The stack bar (profile, Support shape, model, component pips, Build ID, toggles) and the
-// banners under it (Temporal unreachable, profile mismatch, backend lost, stream alerts).
+// The stack bar (profile pills, an "n of m up" summary, the key pips that are down, toggles)
+// and the banners under it (Temporal unreachable, profile mismatch, backend lost, stream
+// alerts). Shape, model, Build ID and every pip live in the Manage stack sheet's header.
 import { post } from "./api.js";
 import { runFix, startProcess } from "./actions.js";
 import { PROFILE_LABEL, SHAPE_LABEL, h, icon } from "./format.js";
@@ -18,17 +19,31 @@ function notNeeded(c, shape) {
   return false;
 }
 
-function pip(c, shape) {
+const PIP_WORD = { up: "up", down: "down", zero: "running zero by design", degraded: "degraded", unknown: "not checked", external: "running outside the console", off: "off, not needed now" };
+
+/** One component: a shape, a word and a count. In the stack bar it opens the sheet; in the
+ *  sheet's header it is plain text. */
+export function pip(c, shape, { button = true } = {}) {
   if (notNeeded(c, shape)) {
     c = { ...c, status: "off", detail: `${c.detail || "not running"}; not used by this Support shape` };
   }
   const n = c.count !== undefined && c.count !== null ? h` <span class="n">${c.count}</span>` : "";
-  const word = { up: "up", down: "down", zero: "running zero by design", degraded: "degraded", unknown: "not checked", external: "running outside the console", off: "off, not needed now" }[c.status] || c.status;
+  const word = PIP_WORD[c.status] || c.status;
+  const inner = h`<span class="dot"></span>${c.label.replace(/ workers$/, "")}${n}<span class="sr"> ${word}</span>`;
   return h`<li class="pip" data-s="${c.status}" ${KEY_PIPS.has(c.id) ? h`data-key` : ""}>
-    <button type="button" data-open-sheet title="${c.label}: ${c.detail || word}"><span class="dot"></span>${c.label.replace(/ workers$/, "")}${n}<span class="sr"> ${word}</span></button></li>`;
+    ${button ? h`<button type="button" data-open-sheet title="${c.label}: ${c.detail || word}">${inner}</button>` : h`<span title="${c.label}: ${c.detail || word}">${inner}</span>`}</li>`;
 }
 
-function buildBadge(stack) {
+const UP = new Set(["up", "zero", "external"]);
+
+/** The components that count for this shape, and how many of them are up. */
+export function upSummary(stack) {
+  const counted = (stack?.components || []).filter((c) => !notNeeded(c, stack?.shape));
+  const up = counted.filter((c) => UP.has(c.status)).length;
+  return { up, total: counted.length, down: counted.length - up };
+}
+
+export function buildBadge(stack) {
   const b = stack?.build_id;
   if ((!b || !b.value) && stack?.shape === "plain") {
     // Plain workers on support-dev-tq are unversioned: nothing is missing.
@@ -50,8 +65,9 @@ export function renderStackBar(state) {
   const stack = state.stack;
   const profiles = cfg.profiles || ["local", "kind", "kind-plaintext"];
   const comps = stack?.components || [];
-  const counted = comps.filter((c) => !notNeeded(c, stack?.shape));
-  const upCount = counted.filter((c) => c.status === "up" || c.status === "zero" || c.status === "external").length;
+  const sum = upSummary(stack);
+  // Only the key pips that are not up earn a place in the bar; the rest is one count.
+  const keyDown = comps.filter((c) => KEY_PIPS.has(c.id) && !notNeeded(c, stack?.shape) && !UP.has(c.status));
   const fx = state.fixture;
   el.innerHTML = String(h`
     <button class="tbtn navbtn" type="button" id="t-drawer" aria-label="Scenarios and runs">${icon("menu")}</button>
@@ -60,12 +76,10 @@ export function renderStackBar(state) {
     <div class="seg" role="group" aria-label="Temporal profile">
       ${profiles.map((p) => h`<button type="button" data-profile="${p}" aria-pressed="${String(p === cfg.profile)}">${PROFILE_LABEL[p] || p}</button>`)}
     </div>
-    <div class="shape"><span>Support <b>${SHAPE_LABEL[stack?.shape || "unknown"] || stack?.shape}</b></span><span>Model <b>${stack?.model?.mode || "unknown"}</b></span></div>
     <ul class="pips" aria-label="Components">
-      ${comps.map((c) => pip(c, stack?.shape))}
-      <li class="pip summary" data-s="${upCount === counted.length && counted.length ? "up" : "degraded"}"><button type="button" data-open-sheet><span class="dot"></span>${upCount} of ${counted.length} up</button></li>
+      ${stack ? h`<li class="pip summary" data-s="${sum.down ? "down" : "up"}"><button type="button" data-open-sheet title="Support ${SHAPE_LABEL[stack.shape || "unknown"] || stack.shape}, model ${stack.model?.mode || "unknown"}. Open Manage stack for every component."><span class="dot"></span>${sum.up} of ${sum.total} up</button></li>` : ""}
+      ${keyDown.map((c) => pip(c, stack?.shape))}
     </ul>
-    ${buildBadge(stack)}
     <div class="tools">
       <button class="tbtn" type="button" data-open-sheet>${icon("wrench")}<span class="wide">Manage stack</span><span class="sr">Manage stack</span></button>
       <button class="tbtn" type="button" id="t-notes" aria-pressed="${String(root.dataset.notes !== "off")}" aria-label="Presenter notes" title="Presenter notes (N)">${icon("notes")}<kbd class="wide">N</kbd></button>
@@ -139,6 +153,16 @@ export function toggleNotes() {
   root.dataset.notes = root.dataset.notes === "off" ? "on" : "off";
   // Remembered per mode: on the projector the notes are off unless turned on there.
   prefs.write(root.dataset.projector === "on" ? { projectorNotes: root.dataset.notes } : { notes: root.dataset.notes });
+  store.touch("config", "run");
+}
+/** A #/notes window opened (true) or closed (false) elsewhere: notes off here while it lives.
+ *  Not remembered: the presenter's own N choice stays in prefs. */
+export function pairNotes(paired) {
+  const p = prefs.read();
+  const mine = root.dataset.projector === "on" ? (p.projectorNotes || "off") : (p.notes || "on");
+  const next = paired ? "off" : mine;
+  if (root.dataset.notes === next) return;
+  root.dataset.notes = next;
   store.touch("config", "run");
 }
 export function toggleProjector() {

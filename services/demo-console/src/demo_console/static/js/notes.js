@@ -3,7 +3,7 @@
 import { actionById, procByName, runStep } from "./actions.js";
 import { formWorkflowId } from "./launcher.js";
 import { costMark, h, icon } from "./format.js";
-import { currentStep, mergedSteps } from "./steps.js";
+import { currentStep, mergedSteps, renderSteps } from "./steps.js";
 import { store } from "./store.js";
 import { copyBox } from "./ui.js";
 
@@ -14,7 +14,7 @@ const POINT_AT = {
   ask: "The wire crossing the seam into Finance's lane: one Nexus call between two namespaces.",
   auto: "Finance's lane: approved_by auto. No human was needed under $100.",
   "input-required": "The big state, input-required, and the approval card waiting in Finance's lane.",
-  "stop-support": "Support workers running drops to 0. Finance keeps waiting; nothing is lost.",
+  "stop-support": "The compute rail goes dark: no Support worker runs. Finance keeps waiting; nothing is lost.",
   drained: "The rail on the left is an empty dashed lane: no Support worker exists. The glowing line in the Nexus seam: the server is holding Support's call to Finance open.",
   approve: "The empty Support rail and the glowing held-open line in the seam, side by side. Then the approval card in Finance's lane.",
   restart: "A new worker identity in Support's lane, on the same run.",
@@ -70,19 +70,21 @@ export function renderNotes(state) {
   const el = document.getElementById("notes");
   const { run, scen } = ctx(state);
   let body;
+  let steps = null;
   if (run) {
-    const steps = mergedSteps(scen, run);
+    steps = mergedSteps(scen, run);
     const cur = currentStep(steps) || (run.status !== "RUNNING" ? steps[steps.length - 1] : null);
     const say = cur?.talk || scen?.notes || "Talk through the lanes from top to bottom.";
-    body = h`<h2>Say</h2>
+    // The stepper is the presenter's map, so it sits here (the run view shows it only when
+    // the notes are off).
+    body = h`${steps.length ? h`<ol class="steps" id="notes-steps" aria-label="Guided steps"></ol>` : ""}
+      <h2>Say</h2>
       ${cur ? h`<p class="stepname">Step ${cur.n || steps.indexOf(cur) + 1} of ${steps.length}: ${cur.title}</p>` : ""}
       <p class="say">${say}</p>
       ${cur && POINT_AT[cur.id] ? h`<h2>Point at</h2><p class="point">${pointAt(cur.id, run)}</p>` : ""}
       ${cur && run.status === "RUNNING" && stepButton(cur) ? h`<div class="do">${stepButton(cur)}</div>` : ""}
       ${cur?.make ? h`<h2>Same thing from a terminal</h2>${copyBox(cur.make)}` : ""}
-      <div class="story">${scen?.notes ? h`<p>${scen.notes}</p>` : ""}
-        ${scen?.story ? h`<p>Story: <span class="id">${scen.story.doc}</span></p>` : ""}
-        <p>The console never queries Support (ledger 72); it reads history and describe.</p></div>`;
+      ${scen?.notes ? h`<div class="story"><p>${scen.notes}</p>${storyDoc(scen)}</div>` : ""}`;
   } else if (scen) {
     // The catalog's make text carries the default ID; quote the one the form will start.
     const def = (scen.options || []).find((o) => o.id === "workflow_id")?.default;
@@ -90,11 +92,20 @@ export function renderNotes(state) {
     const make = scen.steps?.[0]?.make && def && wf ? scen.steps[0].make.split(def).join(wf) : scen.steps?.[0]?.make;
     body = h`<h2>Say</h2><p class="say">${scen.notes || scen.summary}</p>
       ${make ? h`<h2>Same thing from a terminal</h2>${copyBox(make)}` : ""}
-      ${scen.story ? h`<div class="story"><p>Story: <span class="id">${scen.story.doc}</span></p></div>` : ""}`;
+      ${scen.story ? h`<div class="story">${storyDoc(scen)}</div>` : ""}`;
   } else {
     body = h`<h2>Say</h2><p class="say">Support asks Finance for a refund. Two teams, two namespaces, one published contract over Nexus. Pick a scenario to start.</p>`;
   }
+  const wasOpen = !!el.querySelector("details.maint[open]");
   el.innerHTML = String(body);
+  if (wasOpen) el.querySelector("details.maint")?.setAttribute("open", "");
+  const stepsEl = el.querySelector("#notes-steps");
+  if (stepsEl && steps) renderSteps(stepsEl, steps);
+}
+
+/** Where the story is written down: for whoever maintains the demo, folded away. */
+function storyDoc(scen) {
+  return scen?.story ? h`<details class="maint"><summary>Story doc</summary><p class="id">${scen.story.doc}</p></details>` : "";
 }
 
 export function wireNotes() {
