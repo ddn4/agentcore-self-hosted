@@ -51,7 +51,7 @@ PYTEST := $(UV) pytest
         worker-support-versioned register-version wci-history case-b-serverless \
         case-a-serverless tools kind-up kind-temporal kind-images kind-workers kind-aws-creds \
         certs-pull pf pf-stop kind-status kind-down cert-renew kind-env env colima-up \
-        failure load ui-shot console console-fixtures console-shots
+        failure crash load ui-shot console console-fixtures console-shots
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -260,6 +260,9 @@ case-b-serverless: ## Case B on the versioned queue support-tq (WF=support-2077-
 
 case-a-serverless: ## Case A on the versioned queue support-tq (WF=support-1042-sl)
 	SUPPORT_TASK_QUEUE=support-tq scripts/demo/case-a.sh $(or $(WF),support-1042-sl)
+
+crash: ## Crash demo: SIGKILL the local Support Worker mid sub-agent model turn; you restart it (WF=support-1042 CRASH_AT=sub-agent|supervisor|any)
+	scripts/demo/crash.sh $(or $(WF),support-1042)
 
 failure: ## Failure demo on kind: Finance to 0 mid-Case A -> pending Nexus op retries -> back to 2 -> completes (WF=)
 	scripts/demo/failure.sh $(WF)
