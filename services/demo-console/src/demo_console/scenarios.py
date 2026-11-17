@@ -475,6 +475,24 @@ def _precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
             "ok": f.agentcore_up,
             "fix": _proc_fix("agentcore-local", "Start AgentCore app"),
         }
+    if pid == "agentcore-managed":
+        label = "The console runs the AgentCore app (so it can kill it)"
+        if not f.managed.get("agentcore-local", False) and f.agentcore_up:
+            # Started in a terminal: the console cannot kill it, and a second app cannot bind
+            # :8080, so there is no fix button.
+            return {
+                "id": pid,
+                "label": label,
+                "ok": False,
+                "note": "An AgentCore app started outside the console answers on :8080. Stop "
+                "it in its terminal; the console then starts its own.",
+            }
+        return {
+            "id": pid,
+            "label": label,
+            "ok": f.managed.get("agentcore-local", False),
+            "fix": _proc_fix("agentcore-local", "Start AgentCore app"),
+        }
     if pid == "emulator":
         return {
             "id": pid,
@@ -562,7 +580,7 @@ _SERVERLESS = frozenset(("agentcore", "serverless-compute", "version", "version-
 RECIPE_FIXES: dict[str, frozenset[str]] = {
     "local-plain": _BASE | {"support-plain", "support-plain-managed"},
     "local-invoke": _BASE | _SERVERLESS,
-    "local-wci": _BASE | _SERVERLESS | {"wci", "emulator", "version-wci"},
+    "local-wci": _BASE | _SERVERLESS | {"wci", "emulator", "version-wci", "agentcore-managed"},
     # kind-up deploys Finance on the cluster; payments and plain Support stay on the laptop.
     KIND_RECIPE: (_BASE - {"finance-managed", "payments"}) | _SERVERLESS,
 }

@@ -1318,12 +1318,227 @@
     "setup_recipe": "local-wci",
     "setup_blocked": null,
     "next": {
+     "id": "wci-crash",
+     "short": "AgentCore crash",
+     "setup_recipe": "local-wci"
+    },
+    "start_action": null,
+    "start_label": "Start Case B",
+    "view": null,
+    "extra_action": null
+   },
+   {
+    "id": "wci-crash",
+    "title": "AgentCore crash: kill the app mid-thought, the WCI invokes it again",
+    "short": "AgentCore crash",
+    "sub": "Kill the app mid-turn; Temporal invokes it again",
+    "run_label": "Case A, AgentCore crash",
+    "summary": "SIGKILL the AgentCore app while a model turn runs; restart it without invoking it, and the server's WCI invokes it to finish the turn.",
+    "story": {
+     "tag": "v0.7-serverless-shape",
+     "doc": "docs/story/v0.7-serverless-shape.md"
+    },
+    "profiles": [
+     "local"
+    ],
+    "fit": "needs_setup",
+    "cost": "free",
+    "cost_note": "scripted model (2 s per turn); Bedrock tokens when the model is live",
+    "case": "A",
+    "order_id": "1042",
+    "amount_usd": 40.0,
+    "options": [
+     {
+      "id": "a2a_mode",
+      "label": "How Support asks Finance",
+      "type": "choice",
+      "choices": [
+       "tool",
+       "handoff"
+      ],
+      "default": "tool"
+     },
+     {
+      "id": "nexus_send_timeout",
+      "label": "Support's budget for Finance's answer",
+      "type": "duration",
+      "default": "25h"
+     },
+     {
+      "id": "queue",
+      "label": "Support's task queue",
+      "type": "choice",
+      "choices": [
+       "dev",
+       "versioned"
+      ],
+      "default": "versioned"
+     },
+     {
+      "id": "workflow_id",
+      "label": "Workflow ID",
+      "type": "text",
+      "default": "support-1042-wci-crash-demo"
+     }
+    ],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": true
+     },
+     {
+      "id": "wci",
+      "label": "Dev server runs with the WCI (WCI=1)",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "start-recipe",
+       "params": {
+        "recipe": "local-wci"
+       },
+       "label": "Restart with WCI"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "emulator",
+      "label": "WCI emulator on :4599",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "agentcore-emulator",
+       "label": "Start emulator"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "agentcore-managed",
+      "label": "The console runs the AgentCore app (so it can kill it)",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "agentcore-local",
+       "label": "Start AgentCore app"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "build-id",
+      "label": "Support's Build ID is known",
+      "ok": true
+     },
+     {
+      "id": "version-wci",
+      "label": "support-supervisor:4ee7f87 is current with local WCI compute",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "register-version",
+       "params": {
+        "mode": "--local-wci"
+       },
+       "label": "Register version"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "finance",
+      "label": "A Finance worker polls agent-services-tq",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "worker-finance",
+       "label": "Start Finance worker"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "payments",
+      "label": "Payments mock on :8081",
+      "ok": true
+     },
+     {
+      "id": "endpoint",
+      "label": "Nexus endpoint finance-agent",
+      "ok": true
+     }
+    ],
+    "steps": [
+     {
+      "id": "start",
+      "n": 1,
+      "title": "Start Case A on support-tq",
+      "kind": "action",
+      "done_when": "run.started",
+      "talk": "Case A on the versioned queue. Nothing polls it until the server invokes the app.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
+      "action": "start-run",
+      "make": "make case-a-serverless WF=support-1042-wci-crash-demo"
+     },
+     {
+      "id": "invoke1",
+      "n": 2,
+      "title": "The WCI starts lifetime 1",
+      "kind": "watch",
+      "done_when": "compute.lifetimes>=1",
+      "talk": "The server's Worker Controller invoked AgentCore. Watch the model turns in Support's lane.",
+      "short": "Lifetime 1",
+      "point": "The compute rail lighting up: lifetime 1, started by the server's WCI."
+     },
+     {
+      "id": "kill",
+      "n": 3,
+      "title": "Kill the AgentCore app mid-thought",
+      "kind": "action",
+      "done_when": "process.agentcore-local==stopped",
+      "talk": "kill -9 while an agent is thinking. On AgentCore this is the microVM going away.",
+      "short": "Kill app",
+      "point": "The rail: lifetime 1 ends abruptly with a red cut, while a model turn is in flight.",
+      "action": "process.stop",
+      "params": {
+       "name": "agentcore-local",
+       "signal": "KILL"
+      }
+     },
+     {
+      "id": "restart",
+      "n": 4,
+      "title": "Start the app again; the WCI invokes it",
+      "kind": "action",
+      "done_when": "compute.lifetimes>=2",
+      "talk": "The process is back, empty, and I don't invoke it. The unfinished turn times out, the server puts it back on the queue, and its WCI invokes AgentCore.",
+      "short": "Restart app",
+      "point": "The app is back on :8080 but the rail stays dark: nobody invoked it. About 10 s after the kill (the model turn's heartbeat timeout) the rail lights up as lifetime 2, with its InvokeWorker row on the rail's edge.",
+      "action": "process.start",
+      "params": {
+       "name": "agentcore-local"
+      },
+      "make": "make wci-history BUILD=4ee7f87"
+     },
+     {
+      "id": "reply",
+      "n": 5,
+      "title": "The same run finishes",
+      "kind": "watch",
+      "done_when": "run.status==COMPLETED",
+      "talk": "Two lifetimes, one conversation. Only the turn that was cut off ran again.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish.",
+      "point_versioned": "The reply quoting the refund ID, and the pinned Build ID in the header."
+     }
+    ],
+    "notes": "Same crash, serverless shape. I kill the AgentCore app mid-thought and start it again, but I don't invoke it. Temporal sees the turn is unfinished and invokes the app itself, and the run carries on.",
+    "setup_recipe": "local-wci",
+    "setup_blocked": null,
+    "next": {
      "id": "load",
      "short": "Load",
      "setup_recipe": "local-wci"
     },
     "start_action": null,
-    "start_label": "Start Case B",
+    "start_label": "Start Case A",
     "view": null,
     "extra_action": null
    },

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tomllib
 from importlib.resources import files
+from typing import Any
 
 import pytest
 
@@ -35,6 +36,7 @@ def test_every_catalog_predicate_parses() -> None:
         "crash",
         "serverless-b",
         "wci-b",
+        "wci-crash",
         "failure",
         "smoke",
         "load",
@@ -253,7 +255,7 @@ def test_setup_recipe_follows_queue_and_shape() -> None:
     assert cold["crash"] == cold["failure"] == "local-plain"
     # The presenter invokes the app -> invoke-local; the server must invoke it -> the WCI.
     assert cold["serverless-b"] == "local-invoke"
-    assert cold["wci-b"] == cold["load"] == "local-wci"
+    assert cold["wci-b"] == cold["wci-crash"] == cold["load"] == "local-wci"
     # Case A, Case B and the smoke caller run on any shape: keep the stack's, or plain.
     assert cold["case-a"] == cold["case-b"] == cold["smoke"] == "local-plain"
     assert local("serverless-wci")["case-b"] == "local-wci"
@@ -265,6 +267,7 @@ def test_setup_recipe_follows_queue_and_shape() -> None:
     for profile in ("kind", "kind-plaintext"):
         assert setup_recipe(c["case-b"], profile, "unknown") == "kind-up"
         assert setup_recipe(c["wci-b"], profile, "plain") is None
+        assert setup_recipe(c["wci-crash"], profile, "plain") is None
 
 
 def test_setup_recipes_exist_and_cover_what_they_claim() -> None:
@@ -311,6 +314,27 @@ def test_worker_started_outside_the_console_is_not_left_to_setup() -> None:
         f = StackFacts(profile="local", temporal_up=True, managed={})
         p = next(x for x in scenario_json(c[sid], f, catalog=c)["preconditions"] if x["id"] == pid)
         assert p["by_setup"] and "note" not in p
+
+
+def test_agentcore_app_started_outside_the_console_is_not_left_to_setup() -> None:
+    # The AgentCore crash kills the app: only one the console started can be killed, and a
+    # second app cannot bind :8080, so one answering from a terminal has no fix button.
+    c = load_catalog()
+
+    def line(f: StackFacts) -> dict[str, Any]:
+        body = scenario_json(c["wci-crash"], f, catalog=c)
+        assert body["setup_recipe"] == "local-wci"
+        return next(x for x in body["preconditions"] if x["id"] == "agentcore-managed")
+
+    p = line(StackFacts(profile="local", agentcore_up=True))
+    assert not p["ok"] and "fix" not in p and not p.get("by_setup")
+    assert "outside the console" in p["note"]
+    p = line(StackFacts(profile="local", temporal_up=True))
+    assert p["by_setup"] and p["fix"]["process"] == "agentcore-local" and "note" not in p
+    p = line(StackFacts(profile="local", agentcore_up=True, managed={"agentcore-local": True}))
+    assert p["ok"] and "fix" not in p
+    # Local only: the WCI emulator runs on the laptop's dev server.
+    assert scenario_json(c["wci-crash"], StackFacts(profile="kind"))["fit"] == "wrong_profile"
 
 
 def test_kind_setup_waits_for_the_docker_vm() -> None:
@@ -364,3 +388,29 @@ def test_unknown_next_is_a_startup_error() -> None:
     text = (files("demo_console") / "data" / "scenarios.toml").read_text()
     with pytest.raises(PredicateError, match="unknown scenario"):
         load_catalog(text.replace('next = "case-b"', 'next = "case-z"'))
+
+
+def test_agentcore_crash_steps_wait_for_the_kill() -> None:
+    # The app runs before the kill and again after the restart, so "running" cannot mark the
+    # restart done: it would make Kill look done before anyone clicked it.
+    steps = load_catalog()["wci-crash"].steps
+    seen: set[str] = set()
+
+    def status(lifetimes: int, app: str) -> dict[str, str]:
+        ctx = StepContext(run_started=True, lifetimes=lifetimes, processes={"agentcore-local": app})
+        out = step_statuses(steps, ctx, sticky=seen)
+        seen.update(s["id"] for s in out if s["status"] == "done")
+        return {s["id"]: s["status"] for s in out}
+
+    assert status(1, "running")["kill"] == "current"
+    assert status(1, "stopped") == {
+        "start": "done",
+        "invoke1": "done",
+        "kill": "done",
+        "restart": "current",
+        "reply": "todo",
+    }
+    # Restarted but not invoked yet: still waiting on the WCI.
+    assert status(1, "running")["restart"] == "current"
+    after = status(2, "running")
+    assert after["restart"] == "done" and after["reply"] == "current"

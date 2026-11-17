@@ -231,7 +231,7 @@ for a versioned run). The home page's buttons are the first two scenarios on the
 
 The catalog lists scenarios in **story order**, grouped so the stack changes shape as rarely as
 possible: Case A → Case B → Worker crash → Finance outage (all plain Support) → AgentCore: you
-invoke → AgentCore: WCI invokes → Load → Nexus hop, no AI → Clean up. Each scenario's `next`
+invoke → AgentCore: WCI invokes → AgentCore crash → Load → Nexus hop, no AI → Clean up. Each scenario's `next`
 names the one after it (an unknown id is a startup error); on a profile the next one does not
 run on, the link skips ahead to the first that does.
 
@@ -242,7 +242,7 @@ setup for a scenario is a stack recipe (2.3), chosen from its queue and steps:
 |---|---|---|
 | queue `dev` (Worker crash, Finance outage) | Local, plain Support | Bring up kind |
 | queue `versioned` with an `invoke-local` step (you invoke) | Local, serverless (invoke-local) | Bring up kind |
-| queue `versioned` without one (WCI invokes, Load) | Local, serverless (WCI emulator) | Bring up kind |
+| queue `versioned` without one (WCI invokes, AgentCore crash, Load) | Local, serverless (WCI emulator) | Bring up kind |
 | queue `auto` (Case A, Case B) and the smoke caller | the recipe of the stack's current shape; Local, plain Support when it is unknown | Bring up kind |
 | Clean up (starts nothing) | none | none |
 
@@ -256,7 +256,9 @@ and the checklist does not repeat the button. When a recipe is unavailable its r
 under the start bar, not only in a tooltip. A worker the console must own (Worker crash,
 Finance outage) that is already polling from a terminal is not marked `by_setup`: the recipe
 would skip it as already running. Its line has no fix button and says to stop it in its
-terminal. The next link carries a `setup_recipe` only when the next
+terminal. The same goes for the AgentCore app in AgentCore crash (`agentcore-managed`): one
+answering on :8080 from a terminal cannot be killed by the console, and a second cannot bind
+the port. The next link carries a `setup_recipe` only when the next
 scenario's recipe differs from the one that produces the stack's current shape; its button
 then reads "Set up and go to <short>", opens that scenario's card and starts the recipe.
 
@@ -272,6 +274,7 @@ tokens) or `tokens` (Bedrock).
 | `failure` | Finance outage: Finance disappears mid-call | local (stop the Finance worker) | plain | start Case A → agent card done → **Stop Finance** → seam shows `send_message` attempt 2, 3… with lastAttemptFailure → **Start Finance** → completes | free |
 | `serverless-b` | AgentCore, you invoke: Case B with a worker built to die | all | serverless invoke-local | AgentCore app up, Invoke and register version `--poller` (the recipe) → start on support-tq → **Invoke** (lifetime 1 picks the run up; the recipe's lifetime has usually drained by then) → input-required → drained (`/ping` Healthy) → approve → **Invoke** (lifetime 2) → reply → report | free / tokens |
 | `wci-b` | AgentCore, WCI invokes: Temporal starts the worker | local | serverless WCI emulator | dev server `WCI=1` (restart only when `/ping` is Healthy) → emulator → register version `--local-wci` → start → input-required → drained → approve → WCI InvokeWorker → lifetime 2 → reply → report | free / tokens |
+| `wci-crash` | AgentCore crash: kill the app mid-thought, the WCI invokes it again | local | serverless WCI emulator | the `local-wci` stack with the app owned by the console → start Case A on support-tq → WCI invokes lifetime 1 → **Kill AgentCore app** (SIGKILL to its process group) during a model turn → **Start it again**, without invoking it (`/ping` Healthy, the rail stays dark; the step is done at `compute.lifetimes>=2`, not when the process runs, which it also did before the kill) → after the turn's 10 s heartbeat timeout the WCI invokes it: lifetime 2 → same run finishes; only the killed turn has attempt 2 | free / tokens |
 | `load` | Load: N conversations at once | all | serverless (support-tq) | `load.sh N LOAD_KIND=ping|case-a` as a job; the runs list groups the batch; the report shows completed/failed and InvokeWorker count | free (ping or scripted) / tokens |
 | `smoke` | Nexus hop with no AI | local | smoke worker | `A2ASmokeWorkflow` on nexus-smoke-tq, then a standalone `get_agent_card` | free |
 | `cleanup` | Clean up: runs still waiting for a human | all | — | lists runs still in `input-required` with Reject and Terminate | free |
