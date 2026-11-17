@@ -125,7 +125,7 @@ class Guard:
 def unreachable_hint(profile: str) -> str:
     if profile == "local":
         return "Start the dev server (Manage stack), or run make dev-server-up."
-    return f"Run make pf TEMPORAL_PROFILE={profile}."
+    return "Run Bring up kind (Manage stack): it starts whichever kind layer is missing."
 
 
 def handled(fn: Any) -> Any:
@@ -192,7 +192,7 @@ async def get_scenarios(request: Request) -> Response:
     c = console(request)
     await c.hub.stack_cache.get()
     model = ((c.stack.last or {}).get("model") or {}).get("mode", "unknown")
-    out = [scenario_json(s, c.stack.facts, model) for s in c.catalog.values()]
+    out = [scenario_json(s, c.stack.facts, model, c.catalog) for s in c.catalog.values()]
     return JSONResponse({"scenarios": out})
 
 

@@ -168,7 +168,7 @@ def support_rows(
                 Row(
                     at,
                     "support",
-                    "activity",
+                    "activity.timed_out",
                     f"{what} timed out: its worker is gone",
                     {**base, "detail": "retried on the next worker"},
                 )

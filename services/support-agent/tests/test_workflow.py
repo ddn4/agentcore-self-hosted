@@ -384,12 +384,19 @@ async def test_caller_budget_shorter_than_finance_wait_is_a_nexus_timeout(
     assert "could not process the refund" in run.result and "follow up" in run.result
     (send,) = [o for o in nexus_operations(run.history) if o.operation == "send_message"]
     assert send.outcome == "timed out"
-    # The handler Workflow is not canceled by the caller's timeout: it still waits
-    # (its Worker is gone after the test, so describe rather than query).
-    orphan = await time_skipping_env.client.get_workflow_handle(
-        f"a2a-task-{run.workflow_id}"
-    ).describe()
-    assert orphan.status == WorkflowExecutionStatus.RUNNING
+    # The handler Workflow is not canceled by the caller's timeout: it keeps waiting
+    # for an approver (its Worker is gone after the test, so read history, not query).
+    # While run_ticket awaits Support's result the test server may skip time past the
+    # 1 h approval wait, so the task may also have ended by its own approval timer:
+    # either way, never canceled.
+    orphan = time_skipping_env.client.get_workflow_handle(f"a2a-task-{run.workflow_id}")
+    status = (await orphan.describe()).status
+    events = {e.event_type async for e in orphan.fetch_history_events()}
+    assert EventType.EVENT_TYPE_WORKFLOW_EXECUTION_CANCEL_REQUESTED not in events
+    if status == WorkflowExecutionStatus.COMPLETED:
+        assert EventType.EVENT_TYPE_TIMER_FIRED in events  # its own approval timeout
+    else:
+        assert status == WorkflowExecutionStatus.RUNNING
 
 
 @pytest.mark.parametrize("mode", ["tool", "handoff"])

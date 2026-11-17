@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import re
 import socket
 import time
@@ -21,6 +22,7 @@ import httpx
 
 from demo_console.clients import Gateway, TemporalUnreachable
 from demo_console.detect import Detection, detect, mismatch, plaintext_probe
+from demo_console.kind import KindFacts, KindProbe, gap
 from demo_console.lifetimes import app_state, parse_app_log, read_emulator
 from demo_console.payloads import iso, now, parse_iso
 from demo_console.procs import ProcessManager, tail_file
@@ -37,6 +39,8 @@ from demo_console.settings import (
     VERSIONED_TQ,
     Settings,
 )
+
+log = logging.getLogger(__name__)
 
 POLLER_FRESH_S = 70.0
 QUEUES = (
@@ -212,10 +216,14 @@ class StackProbe:
         self.http = http or RealHttp()
         self._detector = detector
         self._detection: tuple[float, Detection] | None = None
+        #: Docker VM, cluster, port-forward and certs on the kind profiles (cached 15 s).
+        self.kind = KindProbe(settings, runner)
         self._script_build: tuple[float, str | None] | None = None
         self.last: dict[str, Any] | None = None
         self.facts = StackFacts(profile=settings.profile)
         self.pollers: dict[str, list[dict[str, Any]]] = {}
+        #: The last error logged per read, so a failing read is logged once, not every tick.
+        self._logged: dict[str, str] = {}
         #: Worker identity -> the newest poller ``last_access`` the server reported (before
         #: ``fresh`` drops a stopped Worker): when a plain Worker last polled.
         self.poller_seen: dict[str, datetime] = {}
@@ -302,16 +310,21 @@ class StackProbe:
         out["up"] = True
         out["server_version"] = info.get("server_version")
 
-        async def safe(coro: Awaitable[Any]) -> Any:
+        # A read that fails is not a missing thing: record why, so the page says "could not
+        # read" instead of sending the presenter to create something that exists.
+        errors: dict[str, str] = {}
+
+        async def safe(name: str, coro: Awaitable[Any]) -> Any:
             try:
                 return await coro
             except Exception as err:  # one failed read must not hide the others
-                return err
+                errors[name] = f"{type(err).__name__}: {err}"
+                return None
 
         endpoint, deployment, *pollers = await asyncio.gather(
-            safe(self.gateway.nexus_endpoint(ENDPOINT)),
-            safe(self.gateway.deployment(DEPLOYMENT_NAME)),
-            *(safe(self.gateway.pollers(ns, tq)) for ns, tq in QUEUES),
+            safe("endpoint", self.gateway.nexus_endpoint(ENDPOINT)),
+            safe("deployment", self.gateway.deployment(DEPLOYMENT_NAME)),
+            *(safe(f"{ns}/{tq}", self.gateway.pollers(ns, tq)) for ns, tq in QUEUES),
         )
         out["endpoint"] = endpoint if isinstance(endpoint, dict) else None
         out["deployment"] = deployment if isinstance(deployment, dict) else None
@@ -332,9 +345,19 @@ class StackProbe:
         version = None
         current = (out["deployment"] or {}).get("current_build")
         if current:
-            version = await safe(self.gateway.deployment_version(DEPLOYMENT_NAME, current))
+            version = await safe(
+                "version", self.gateway.deployment_version(DEPLOYMENT_NAME, current)
+            )
         out["version"] = version if isinstance(version, dict) else None
+        out["read_errors"] = errors
+        self._log_read_errors(errors)
         return out
+
+    def _log_read_errors(self, errors: dict[str, str]) -> None:
+        for name, text in errors.items():
+            if self._logged.get(name) != text:
+                log.warning("stack read %s failed: %s", name, text)
+        self._logged = dict(errors)
 
     async def _laptop(self) -> dict[str, Any]:
         s = self.settings
@@ -359,9 +382,11 @@ class StackProbe:
 
     async def snapshot(self) -> dict[str, Any]:
         s = self.settings
-        temporal, laptop, detection = await asyncio.gather(
-            self._temporal(), self._laptop(), self.detection()
+        temporal, laptop, detection, kind = await asyncio.gather(
+            self._temporal(), self._laptop(), self.detection(), self.kind.facts()
         )
+        kind_gap = gap(kind, temporal["up"])
+        self.procs.certs_state = kind.certs if kind else None
         ports: set[int] = laptop["ports"]
         pollers: dict[str, list[dict[str, Any]]] = temporal.get("pollers") or {
             f"{ns}/{tq}": [] for ns, tq in QUEUES
@@ -441,7 +466,7 @@ class StackProbe:
             model = {"mode": "mixed", "source": "managed"}
 
         components = self._components(
-            temporal, laptop, n_fin, n_dev, n_ver, shape, agentcore_up, emulator_up, app
+            temporal, laptop, n_fin, n_dev, n_ver, shape, agentcore_up, emulator_up, app, kind
         )
         configured = s.profile
         snap: dict[str, Any] = {
@@ -474,9 +499,23 @@ class StackProbe:
             "components": components,
             "pollers": pollers,
             "port_forward": detection.port_forward if configured != "local" else None,
+            "kind": (
+                {
+                    "docker": kind.docker,
+                    "cluster": kind.cluster,
+                    "port_forward": kind.port_forward,
+                    "certs": kind.certs,
+                    "gap": kind_gap,
+                }
+                if kind
+                else None
+            ),
         }
         if temporal.get("error") and not temporal["up"]:
             snap["temporal_error"] = temporal["error"]
+        read_errors: dict[str, str] = temporal.get("read_errors") or {}
+        if read_errors:
+            snap["read_errors"] = read_errors
         self.facts = StackFacts(
             profile=configured,
             temporal_up=temporal["up"],
@@ -493,6 +532,8 @@ class StackProbe:
             compute=compute,
             managed=dict.fromkeys(self.procs.records, True),
             shape=shape,
+            kind_gap=kind_gap,
+            read_errors=read_errors,
         )
         self.last = snap
         return snap
@@ -508,6 +549,7 @@ class StackProbe:
         agentcore_up: bool,
         emulator_up: bool,
         app: dict[str, Any],
+        kind: KindFacts | None = None,
     ) -> list[dict[str, Any]]:
         s = self.settings
         local = s.profile == "local"
@@ -518,12 +560,15 @@ class StackProbe:
                 return "down"
             return "up" if name in self.procs.records else "external"
 
+        errors: dict[str, str] = temporal.get("read_errors") or {}
         out: list[dict[str, Any]] = []
+        if kind is not None:
+            out.append(self._cluster_component(kind, temporal["up"]))
         if temporal["up"]:
             detail = f"127.0.0.1:7233, server {temporal.get('server_version') or '?'}"
             status = proc_status(True, "dev-server") if local else "up"
         else:
-            # The page adds the fix (a Start button locally, the pf command elsewhere).
+            # The page adds the fix: Start dev server locally, the kind gap's action on kind.
             detail = "Temporal is not reachable at 127.0.0.1:7233"
             status = "down"
         comp: dict[str, Any] = {
@@ -546,24 +591,34 @@ class StackProbe:
             }
         )
         ep = temporal.get("endpoint")
+        if ep:
+            ep_status, ep_detail = "up", f"finance-agent → {ep['namespace']}/{ep['task_queue']}"
+        elif "endpoint" in errors:
+            ep_status, ep_detail = "unknown", f"could not read finance-agent: {errors['endpoint']}"
+        elif temporal["up"]:
+            ep_status, ep_detail = "down", "finance-agent is missing (make nexus-endpoint)"
+        else:
+            ep_status, ep_detail = "unknown", "finance-agent is missing (make nexus-endpoint)"
         out.append(
             {
                 "id": "endpoint",
                 "label": "Nexus endpoint",
-                "status": "up" if ep else ("down" if temporal["up"] else "unknown"),
-                "detail": (
-                    f"finance-agent → {ep['namespace']}/{ep['task_queue']}"
-                    if ep
-                    else "finance-agent is missing (make nexus-endpoint)"
-                ),
+                "status": ep_status,
+                "detail": ep_detail,
                 "group": "temporal",
             }
         )
+        fin_error = errors.get(f"{SERVICES_NS}/{FINANCE_TQ}")
+        fin_down = temporal["up"] and not fin_error
         fin: dict[str, Any] = {
             "id": "finance",
             "label": "Finance workers",
-            "status": "up" if n_fin else ("down" if temporal["up"] else "unknown"),
-            "detail": f"{n_fin} poller{'s' if n_fin != 1 else ''}",
+            "status": "up" if n_fin else ("down" if fin_down else "unknown"),
+            "detail": (
+                f"could not read pollers: {fin_error}"
+                if fin_error and not n_fin
+                else f"{n_fin} poller{'s' if n_fin != 1 else ''}"
+            ),
             "count": n_fin,
             "group": "finance",
         }
@@ -575,8 +630,11 @@ class StackProbe:
         serverless = shape in ("serverless-invoke", "serverless-wci")
         n_support = n_ver if serverless else n_dev
         queue = VERSIONED_TQ if serverless else DEV_TQ
+        sup_error = errors.get(f"{AGENTS_NS}/{queue}")
         if n_support:
             sup_status = "up"
+        elif sup_error:
+            sup_status = "unknown"
         elif serverless:
             sup_status = "zero"
         else:
@@ -585,7 +643,11 @@ class StackProbe:
             "id": "support",
             "label": "Support workers",
             "status": sup_status,
-            "detail": f"{n_support} on {queue}",
+            "detail": (
+                f"could not read pollers on {queue}: {sup_error}"
+                if sup_status == "unknown" and sup_error
+                else f"{n_support} on {queue}"
+            ),
             "count": n_support,
             "group": "support",
         }
@@ -637,3 +699,17 @@ class StackProbe:
                 }
             )
         return out
+
+    def _cluster_component(self, kind: KindFacts, temporal_up: bool) -> dict[str, Any]:
+        """One pip for the kind layers under Temporal; ``fix`` is the first missing one's action."""
+        first = gap(kind, temporal_up)
+        comp: dict[str, Any] = {"id": "cluster", "label": "Cluster", "group": "temporal"}
+        if first is None:
+            certs = {"ok": ", client certs match", "unknown": ", client certs not compared"}
+            comp["status"] = "up"
+            comp["detail"] = "agentcore-demo, port-forward on" + certs.get(kind.certs or "", "")
+        else:
+            comp["status"] = "degraded" if first["layer"] == "certs" else "down"
+            comp["detail"] = first["cause"]
+            comp["fix"] = first["fix"]
+        return comp

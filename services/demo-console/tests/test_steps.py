@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import tomllib
+from importlib.resources import files
+
 import pytest
 
+from demo_console.actions import RECIPES
 from demo_console.scenarios import (
+    RECIPE_FIXES,
+    SHAPE_RECIPE,
     PredicateError,
     StackFacts,
     StepContext,
@@ -12,9 +18,11 @@ from demo_console.scenarios import (
     load_catalog,
     parse_predicate,
     scenario_json,
+    setup_recipe,
     step_statuses,
     suffix,
 )
+from demo_console.settings import PROFILES
 
 pytestmark = pytest.mark.unit
 
@@ -35,6 +43,20 @@ def test_every_catalog_predicate_parses() -> None:
     for scenario in catalog.values():
         for step in scenario.steps:
             parse_predicate(step.done_when)  # load_catalog already did; explicit here
+
+
+def test_catalog_profiles_are_known_and_costs_match_them() -> None:
+    for scenario in load_catalog().values():
+        assert scenario.profiles, scenario.id
+        assert set(scenario.profiles) <= set(PROFILES), scenario.id
+        assert set(scenario.cost) <= set(scenario.profiles), scenario.id
+
+
+def test_catalog_names_every_scenario_explicitly() -> None:
+    text = (files("demo_console") / "data" / "scenarios.toml").read_text()
+    for raw in tomllib.loads(text)["scenario"]:
+        for key in ("title", "short", "sub", "run_label"):
+            assert raw.get(key), f"{raw['id']} has no {key}"
 
 
 @pytest.mark.parametrize(
@@ -172,16 +194,28 @@ def test_scenario_json_preconditions_and_fit() -> None:
     assert scenario_json(catalog["case-a"], ready)["fit"] == "ready"
     assert scenario_json(catalog["case-a"], ready, "live")["cost"] == "tokens"
     assert scenario_json(catalog["wci-b"], StackFacts(profile="kind"))["fit"] == "wrong_profile"
-    # kind: no payments precondition (a pod), fixes are commands.
+    # kind: no payments precondition (a pod); fixes are the console's own actions.
     kind = StackFacts(profile="kind", temporal_up=False)
     body = scenario_json(catalog["case-a"], kind)
     assert "payments" not in {p["id"] for p in body["preconditions"]}
-    temporal = body["preconditions"][0]
-    assert temporal["fix"] == {
-        "kind": "command",
-        "command": "make pf TEMPORAL_PROFILE=kind",
-        "label": "Copy command",
+    pre = {p["id"]: p for p in body["preconditions"]}
+    assert pre["temporal"]["fix"] == {
+        "kind": "action",
+        "action": "pf",
+        "params": {},
+        "label": "Start port-forward",
     }
+    assert pre["finance"]["fix"]["action"] == "kind-workers"
+    # With the Docker VM stopped, both point at the first missing layer instead.
+    stopped = {
+        "layer": "docker",
+        "cause": "Docker VM agentcore is stopped",
+        "fix": {"kind": "action", "action": "colima-up", "params": {}, "label": "Start Docker VM"},
+    }
+    cold = StackFacts(profile="kind", kind_gap=stopped)
+    pre = {p["id"]: p for p in scenario_json(catalog["case-a"], cold)["preconditions"]}
+    assert pre["temporal"]["fix"]["action"] == "colima-up"
+    assert pre["finance"]["fix"]["action"] == "colima-up"
 
 
 def test_serverless_shape_switches_queue_and_preconditions() -> None:
@@ -203,3 +237,130 @@ def test_suffix_is_never_twelve_digits() -> None:
     for _ in range(200):
         sfx = suffix()
         assert len(sfx) == 4 and sfx[0].isalpha()
+
+
+# --- one-click setup and the next scenario (DESIGN.md 2.2) ---------------------------------
+
+
+def test_setup_recipe_follows_queue_and_shape() -> None:
+    c = load_catalog()
+
+    def local(shape: str) -> dict[str, str | None]:
+        return {sid: setup_recipe(s, "local", shape) for sid, s in c.items()}
+
+    cold = local("unknown")
+    # Plain Support (support-dev-tq) is local-plain whatever the stack is now.
+    assert cold["crash"] == cold["failure"] == "local-plain"
+    # The presenter invokes the app -> invoke-local; the server must invoke it -> the WCI.
+    assert cold["serverless-b"] == "local-invoke"
+    assert cold["wci-b"] == cold["load"] == "local-wci"
+    # Case A, Case B and the smoke caller run on any shape: keep the stack's, or plain.
+    assert cold["case-a"] == cold["case-b"] == cold["smoke"] == "local-plain"
+    assert local("serverless-wci")["case-b"] == "local-wci"
+    assert local("serverless-invoke")["case-a"] == "local-invoke"
+    assert local("serverless-invoke")["crash"] == "local-plain"
+    # Clean up starts nothing.
+    assert cold["cleanup"] is None
+    # Every kind profile brings up kind; local-only scenarios have no recipe there.
+    for profile in ("kind", "kind-plaintext"):
+        assert setup_recipe(c["case-b"], profile, "unknown") == "kind-up"
+        assert setup_recipe(c["wci-b"], profile, "plain") is None
+
+
+def test_setup_recipes_exist_and_cover_what_they_claim() -> None:
+    named = {*SHAPE_RECIPE.values(), *RECIPE_FIXES}
+    assert named <= set(RECIPES)
+    for sid, s in load_catalog().items():
+        for profile in PROFILES:
+            for shape in ("unknown", *SHAPE_RECIPE):
+                recipe = setup_recipe(s, profile, shape)
+                assert recipe is None or recipe in RECIPE_FIXES, (sid, profile, shape)
+
+
+def test_scenario_json_marks_what_the_setup_recipe_fixes() -> None:
+    c = load_catalog()
+    cold = StackFacts(profile="local")
+    body = scenario_json(c["smoke"], cold, catalog=c)
+    assert body["setup_recipe"] == "local-plain"
+    by_setup = {p["id"] for p in body["preconditions"] if p.get("by_setup")}
+    # The smoke worker is not part of any recipe: it keeps its own fix button only.
+    assert by_setup == {"temporal", "endpoint", "finance", "payments"}
+    body = scenario_json(c["wci-b"], cold, catalog=c)
+    assert body["setup_recipe"] == "local-wci"
+    missing = {p["id"] for p in body["preconditions"] if not p["ok"]}
+    assert {p["id"] for p in body["preconditions"] if p.get("by_setup")} == missing - {"build-id"}
+    ready = StackFacts(profile="local", temporal_up=True)
+    body = scenario_json(c["cleanup"], ready, catalog=c)
+    assert body["setup_recipe"] is None and not any(
+        p.get("by_setup") for p in body["preconditions"]
+    )
+
+
+def test_worker_started_outside_the_console_is_not_left_to_setup() -> None:
+    # local-plain's _ensure skips a worker that is already polling, so it cannot fix these.
+    c = load_catalog()
+    for sid, pid, outside in (
+        ("crash", "support-plain-managed", StackFacts(profile="local", support_dev_pollers=1)),
+        ("failure", "finance-managed", StackFacts(profile="local", finance_pollers=1)),
+    ):
+        f = outside
+        p = next(x for x in scenario_json(c[sid], f, catalog=c)["preconditions"] if x["id"] == pid)
+        assert not p["ok"] and "fix" not in p and not p.get("by_setup")
+        assert "outside the console" in p["note"]
+        # Nothing polling: the setup recipe starts it under the console.
+        f = StackFacts(profile="local", temporal_up=True, managed={})
+        p = next(x for x in scenario_json(c[sid], f, catalog=c)["preconditions"] if x["id"] == pid)
+        assert p["by_setup"] and "note" not in p
+
+
+def test_kind_setup_waits_for_the_docker_vm() -> None:
+    c = load_catalog()
+    fix = {"kind": "action", "action": "colima-up", "params": {}, "label": "Start Docker VM"}
+    gap = {"layer": "docker", "cause": "Docker VM agentcore is stopped", "fix": fix}
+    body = scenario_json(c["case-b"], StackFacts(profile="kind", kind_gap=gap), catalog=c)
+    assert body["setup_recipe"] == "kind-up"
+    assert body["setup_blocked"] == {"why": "Start the Docker VM first.", "fix": fix}
+    body = scenario_json(c["case-b"], StackFacts(profile="kind"), catalog=c)
+    assert body["setup_blocked"] is None
+
+
+def test_next_links_follow_story_order() -> None:
+    c = load_catalog()
+    chain, sid = [], "case-a"
+    while sid:
+        chain.append(sid)
+        sid = c[sid].next
+    # Every scenario once, in the catalog's (story) order, ending at Clean up.
+    assert chain == list(c) and chain[-1] == "cleanup"
+
+
+def test_next_json_skips_other_profiles_and_names_a_shape_change() -> None:
+    c = load_catalog()
+    plain = StackFacts(profile="local", shape="plain")
+    assert scenario_json(c["case-a"], plain, catalog=c)["next"] == {
+        "id": "case-b",
+        "short": "Case B",
+        "setup_recipe": None,
+    }
+    # Plain -> you invoke changes the stack's shape: the link sets it up first.
+    nxt = scenario_json(c["failure"], plain, catalog=c)["next"]
+    assert nxt["id"] == "serverless-b" and nxt["setup_recipe"] == "local-invoke"
+    wci = StackFacts(profile="local", shape="serverless-wci")
+    assert scenario_json(c["wci-b"], wci, catalog=c)["next"]["setup_recipe"] is None
+    # On kind, the local-only scenarios are skipped and kind-up already is the shape.
+    kind = StackFacts(profile="kind", shape="serverless-invoke")
+    assert scenario_json(c["crash"], kind, catalog=c)["next"]["id"] == "serverless-b"
+    assert scenario_json(c["serverless-b"], kind, catalog=c)["next"] == {
+        "id": "load",
+        "short": "Load",
+        "setup_recipe": None,
+    }
+    assert scenario_json(c["cleanup"], plain, catalog=c)["next"] is None
+    # Without the catalog (older callers) there is no link.
+    assert scenario_json(c["case-a"], plain)["next"] is None
+
+
+def test_unknown_next_is_a_startup_error() -> None:
+    text = (files("demo_console") / "data" / "scenarios.toml").read_text()
+    with pytest.raises(PredicateError, match="unknown scenario"):
+        load_catalog(text.replace('next = "case-b"', 'next = "case-z"'))

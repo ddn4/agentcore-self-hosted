@@ -26,13 +26,13 @@ from demo_console.settings import (
     AGENTS_NS,
     DEV_TQ,
     FINANCE_TQ,
+    PROFILES,
     SERVICES_NS,
     SMOKE_TQ,
     VERSIONED_TQ,
     Settings,
 )
 
-ALL_PROFILES = ("local", "kind", "kind-plaintext")
 STOP_GRACE_S = 8.0
 
 
@@ -88,7 +88,7 @@ SPECS: dict[str, ProcSpec] = {
             "worker-support",
             "Support worker (plain)",
             {"scripted": "worker-support-scripted", "live": "worker-support"},
-            profiles=ALL_PROFILES,
+            profiles=PROFILES,
             polls=f"{AGENTS_NS}/{DEV_TQ}",
             certs={"kind": ".certs/laptop-support"},
         ),
@@ -96,7 +96,7 @@ SPECS: dict[str, ProcSpec] = {
             "worker-support-versioned",
             "Support worker (versioned, long-lived)",
             {"live": "worker-support-versioned"},
-            profiles=ALL_PROFILES,
+            profiles=PROFILES,
             needs=("build_id",),
             polls=f"{AGENTS_NS}/{VERSIONED_TQ}",
             certs={"kind": ".certs/agentcore-worker"},
@@ -106,7 +106,7 @@ SPECS: dict[str, ProcSpec] = {
             "Local AgentCore app",
             {"scripted": "agentcore-local-scripted", "live": "agentcore-local"},
             ports=(8080,),
-            profiles=ALL_PROFILES,
+            profiles=PROFILES,
             needs=("build_id",),
             certs={"kind": ".certs/agentcore-worker"},
         ),
@@ -186,6 +186,8 @@ class ProcessManager:
         #: The Build ID the last stack probe resolved (``known`` once it ran).
         self.build_id_hint: str | None = None
         self.build_id_known = False
+        #: kind client certs from the last stack probe: ok | missing | stale | unknown | None.
+        self.certs_state: str | None = None
         self.proc_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -278,6 +280,8 @@ class ProcessManager:
         cert_dir = spec.certs.get(profile)
         if cert_dir and not (self.settings.root / cert_dir / "tls.crt").is_file():
             return f"No client certificate in {cert_dir}/ (make certs-pull)."
+        if cert_dir and self.certs_state == "stale":
+            return "Client certs in .certs/ are from an older cluster (make certs-pull)."
         return None
 
     def _external(self, spec: ProcSpec) -> bool:

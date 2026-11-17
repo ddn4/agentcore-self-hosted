@@ -1,7 +1,7 @@
 // Demo console entry: router (#/runs/<wf>, #/scenarios/<id>, #/notes), the SSE stream, the
 // store and fixture mode (?fixture=<name> or ?demo=1). No build step; ES modules only.
 import { enc, get, isFixture, openStream, useBackend } from "./js/api.js";
-import { refreshLists, upsertJob, upsertProcess } from "./js/actions.js";
+import { actionById, refreshLists, upsertJob, upsertProcess } from "./js/actions.js";
 import { updateApproval } from "./js/approval.js";
 import { loadFixture } from "./js/fixture.js";
 import { clock, h, icon, ms, stateGlyph } from "./js/format.js";
@@ -10,10 +10,10 @@ import { renderNotes, wireNotes } from "./js/notes.js";
 import { renderRuns } from "./js/runs.js";
 import { renderRunView, unmountRunView } from "./js/runview.js";
 import { openSheet, renderSheet, wireSheet } from "./js/sheet.js";
-import { renderBanners, renderStackBar, toggleNotes, toggleProjector, wireStackBar } from "./js/stackbar.js";
+import { pairNotes, renderBanners, renderStackBar, toggleNotes, toggleProjector, wireStackBar } from "./js/stackbar.js";
 import { toggleTick } from "./js/steps.js";
 import { store } from "./js/store.js";
-import { toast } from "./js/ui.js";
+import { patch, toast } from "./js/ui.js";
 
 const root = document.documentElement;
 const q = new URLSearchParams(location.search);
@@ -51,14 +51,24 @@ async function loadRun(wf) {
   }
 }
 
+let lastRoute = null;
+
 function route() {
   const r = parseRoute();
+  const was = lastRoute;
+  lastRoute = r.name;
   root.dataset.route = r.name;
   root.dataset.drawer = "closed";
   store.set({ route: r });
   if (r.name !== "run") unmountRunView();
   focus(r.wf || null);
   if (r.name === "run" && channel) channel.postMessage({ wf: r.wf });
+  // Entering or leaving #/notes by hash pairs or unpairs the other windows, like opening or
+  // closing one (boot announces the first route itself). Leaving, ask whether another lives.
+  if (channel && was !== null && (was === "notes") !== (r.name === "notes")) {
+    if (r.name === "notes") channel.postMessage({ notes: "here" });
+    else { channel.postMessage({ notes: "gone" }); channel.postMessage({ ping: 1 }); }
+  }
 }
 
 // ------------------------------------------------------------------ stream
@@ -76,6 +86,25 @@ function scheduleListRefresh() {
     lastListRefresh = Date.now();
     await refreshLists();
   }, wait);
+}
+
+// A job that ended while the page watched it: failures always say where and why; long jobs
+// and recipes also say when they are done (the button's own words, DESIGN 3.6).
+function announceJob(prev, job) {
+  if (job.status === "running") return;
+  const watched = prev ? prev.status === "running" : Date.now() - ms(job.ended_at) < 15000;
+  if (!watched) return;
+  const title = job.title || actionById(job.action)?.label || job.action;
+  const r = job.result || {};
+  if (job.status === "failed") {
+    const at = r.step_label ? ` at ${r.step_label}` : "";
+    toast(`${title} failed${at}: ${r.error || "see its log"}.`.replace(/\.\.$/, "."), { level: "error", hint: r.hint || "Open Manage stack for the log." });
+  } else if (job.status === "ended") {
+    // Adopted after a console restart: it ended, but nobody saw how.
+    toast(`${title} ended. ${r.note || "Its exit code is unknown."}`, { hint: r.hint });
+  } else if (job.action === "start-recipe" || actionById(job.action)?.long) {
+    toast(`${title}: done.`, { level: "ok" });
+  }
 }
 
 function onEvent(name, data) {
@@ -106,7 +135,12 @@ function onEvent(name, data) {
       store.set({ rows: { workflow_id: data.workflow_id, t0: data.t0 || st.rows.t0, rows_version: data.rows_version, rows } });
       break;
     }
-    case "job": upsertJob(data); break;
+    case "job": {
+      const prev = (st.jobs || []).find((j) => j.id === data.id);
+      upsertJob(data);
+      announceJob(prev, data);
+      break;
+    }
     case "process": upsertProcess(data); break;
     case "alert":
       if (data.level === "info") { toast(data.message, { hint: data.hint }); break; }
@@ -123,27 +157,23 @@ function onEvent(name, data) {
 
 function renderHome(state, el) {
   const waiting = (state.runs?.runs || []).filter((r) => r.status === "RUNNING");
-  el.innerHTML = String(h`<div class="welcome">
+  // The first two scenarios in story order that run on this profile.
+  const first = (state.scenarios || []).filter((s) => s.fit !== "wrong_profile").slice(0, 2);
+  patch(el, h`<div class="welcome">
     <h1>Support asks Finance for a refund</h1>
     <p>Two teams, two namespaces, one published contract over Nexus. Pick a scenario from the list to check the stack and start a run. Every run you start opens here, with both workflows side by side.</p>
     ${waiting.length ? h`<p>Still running:</p><ul class="leftovers">${waiting.slice(0, 5).map((r) => h`<li><a class="id" href="#/runs/${enc(r.workflow_id)}">${r.workflow_id}</a>${stateGlyph(r.task_state, r.task_state || "running")}</li>`)}</ul>` : ""}
-    <div class="acts"><a class="btn primary" href="#/scenarios/case-a">${icon("play")}Case A</a><a class="btn ghost" href="#/scenarios/case-b">${icon("play")}Case B</a>
+    <div class="acts">${first.map((s, i) => h`<a class="btn ${i ? "ghost" : "primary"}" href="#/scenarios/${enc(s.id)}">${icon("play")}${s.short || s.title}</a>`)}
     <button class="btn ghost" type="button" data-open-sheet>${icon("wrench")}Manage stack</button></div></div>`);
 }
 
 function renderMain(state) {
   const el = document.getElementById("main");
   const r = state.route;
-  if (r.name === "run") { renderRunView(state, el); return; }
+  if (r.name === "run") { el.__html = null; renderRunView(state, el); return; }
   if (r.name === "notes") return;
-  // Keep focus and caret in the scenario form across re-renders.
-  const a = document.activeElement;
-  const keep = a && el.contains(a) && a.name ? { name: a.name, s: a.selectionStart, e: a.selectionEnd } : null;
+  // patch() writes only what changed and keeps focus and caret across re-renders.
   if (r.name === "scenario") renderScenarioCard(state, el); else renderHome(state, el);
-  if (keep) {
-    const f = el.querySelector(`[name="${keep.name}"]`);
-    if (f) { f.focus(); try { f.setSelectionRange(keep.s, keep.e); } catch { /* number inputs */ } }
-  }
 }
 
 // ------------------------------------------------------------------ boot
@@ -151,11 +181,11 @@ function renderMain(state) {
 function wire() {
   store.subscribe("stackbar", ["config", "stack", "fixture"], renderStackBar);
   store.subscribe("banners", ["connection", "stack", "alerts", "config", "fixture"], renderBanners);
-  store.subscribe("scenarios", ["scenarios", "route", "config"], renderScenarioList);
+  store.subscribe("scenarios", ["scenarios", "route", "config", "stack"], renderScenarioList);
   store.subscribe("runs", ["runs", "route", "stack"], renderRuns);
-  store.subscribe("main", ["route", "run", "rows", "scenarios", "stack", "ui", "config", "runs", "runMissing"], renderMain);
+  store.subscribe("main", ["route", "run", "rows", "scenarios", "stack", "ui", "config", "runs", "runMissing", "jobs", "actions"], renderMain);
   store.subscribe("notes", ["route", "run", "scenarios", "processes", "actions", "ui", "config"], renderNotes);
-  store.subscribe("sheet", ["processes", "jobs", "actions", "config", "ui"], renderSheet);
+  store.subscribe("sheet", ["processes", "jobs", "actions", "config", "ui", "stack", "route", "scenarios"], renderSheet);
   wireStackBar(openSheet);
   wireLauncher();
   wireNotes();
@@ -170,18 +200,39 @@ function wire() {
   });
   document.addEventListener("keydown", (e) => {
     if (e.target.closest("input, textarea, select, dialog") || e.metaKey || e.ctrlKey || e.altKey) return;
+    // A manual step is a toggle button: Enter and Space tick it, like a click.
+    const tick = (e.key === "Enter" || e.key === " ") && e.target.closest("[data-tick]");
+    if (tick) {
+      e.preventDefault();
+      if (store.state.run) { toggleTick(store.state.run.workflow_id, tick.dataset.tick); store.touch("run"); }
+      return;
+    }
     if (e.key === "n" || e.key === "N") toggleNotes();
     else if (e.key === "p" || e.key === "P") toggleProjector();
     else if (e.key === "Escape") root.dataset.drawer = "closed";
   });
   window.addEventListener("hashchange", route);
   if (channel) {
+    // A #/notes window says so; every other window then turns its own notes off (they would
+    // only repeat it, and on a mirrored screen they would show the script), and back on when
+    // that window goes.
+    const isNotes = () => store.state.route.name === "notes";
     channel.onmessage = (m) => {
-      if (store.state.route.name === "notes" && m.data && m.data.wf) {
-        store.set({ route: { name: "notes", wf: m.data.wf, scenario: null } });
-        focus(m.data.wf);
+      const d = m.data || {};
+      if (isNotes()) {
+        if (d.wf) {
+          store.set({ route: { name: "notes", wf: d.wf, scenario: null } });
+          focus(d.wf);
+        }
+        if (d.ping) channel.postMessage({ notes: "here" });
+        return;
       }
+      if (d.notes === "here") {
+        pairNotes(true);
+        if (store.state.route.name === "run") channel.postMessage({ wf: store.state.route.wf });
+      } else if (d.notes === "gone") pairNotes(false);
     };
+    window.addEventListener("pagehide", () => { if (isNotes()) channel.postMessage({ notes: "gone" }); });
   }
   // Live clocks: anything with data-since counts up from that instant.
   setInterval(() => {
@@ -213,6 +264,7 @@ async function boot() {
     store.set({ connection: "down" });
   }
   route();
+  if (channel) channel.postMessage(store.state.route.name === "notes" ? { notes: "here" } : { ping: 1 });
   await refreshLists();
   lastListRefresh = Date.now();
   if (isFixture()) store.set({ connection: "up" });

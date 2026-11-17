@@ -17,6 +17,7 @@ from typing import Final
 from demo_console import __version__
 
 PROFILES: Final[tuple[str, ...]] = ("local", "kind", "kind-plaintext")
+KIND_PROFILES: Final[tuple[str, ...]] = tuple(p for p in PROFILES if p.startswith("kind"))
 #: Env vars the Makefile unexports outside ``local``.
 LOCAL_ONLY_ENV: Final[tuple[str, ...]] = ("TEMPORAL_TLS", "TEMPORAL_ADDRESS")
 #: A parent make's own state; never passed on to the console's ``make -s <target>`` children.

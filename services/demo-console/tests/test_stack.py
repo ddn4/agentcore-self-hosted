@@ -12,6 +12,7 @@ from demo_console.events import EventBus
 from demo_console.fakes import FakeGateway, FakeHttp, FakeRunner, make_settings
 from demo_console.payloads import iso, now
 from demo_console.procs import ProcessManager, ProcRecord
+from demo_console.scenarios import precondition
 from demo_console.stack import StackProbe, compute_kind, drop_drained_lifetimes, fresh
 
 pytestmark = pytest.mark.unit
@@ -245,3 +246,55 @@ def test_only_the_running_lifetime_counts_while_busy() -> None:
     assert drop_drained_lifetimes([old, new], "HealthyBusy", "laptop", running=5) == [new]
     # An app started outside the console has no log here: keep both (the server's minute).
     assert drop_drained_lifetimes([old, new], "HealthyBusy", "laptop") == [old, new]
+
+
+async def test_a_failed_read_is_unknown_not_missing(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    async def denied(name: str) -> Any:
+        raise PermissionError("operator API: permission denied")
+
+    gateway.nexus_endpoint = denied  # type: ignore[method-assign]
+    p = probe(tmp_path, gateway, runner, http)
+    snap = await p.snapshot()
+    ep = comp(snap, "endpoint")
+    assert ep["status"] == "unknown"
+    assert ep["detail"] == (
+        "could not read finance-agent: PermissionError: operator API: permission denied"
+    )
+    assert snap["read_errors"] == {"endpoint": "PermissionError: operator API: permission denied"}
+    # The checklist says it could not check, and offers no "Create endpoint" for it.
+    pre = precondition("endpoint", p.facts)
+    assert pre is not None and pre["ok"] is False and pre["unknown"] is True
+    assert "fix" not in pre and pre["note"].startswith("Could not read it: PermissionError")
+    # A real miss keeps its fix.
+    gateway.nexus_endpoint = FakeGateway.nexus_endpoint.__get__(gateway)  # type: ignore[method-assign]
+    await p.snapshot()
+    pre = precondition("endpoint", p.facts)
+    assert pre is not None and pre["fix"]["action"] == "nexus-endpoint"
+    assert comp(p.last or {}, "endpoint")["status"] == "down"
+
+
+async def test_a_failed_version_read_leaves_the_compute_check_unknown(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    gateway.deployment_info = {
+        "name": "support-supervisor",
+        "current_build": "4ee7f87",
+        "versions": ["4ee7f87"],
+    }
+
+    async def denied(name: str, build_id: str) -> Any:
+        raise PermissionError("describe version: permission denied")
+
+    gateway.deployment_version = denied  # type: ignore[method-assign]
+    p = probe(tmp_path, gateway, runner, http, TEMPORAL_BUILD_ID="4ee7f87")
+    snap = await p.snapshot()
+    denied_text = "PermissionError: describe version: permission denied"
+    assert snap["read_errors"] == {"version": denied_text}
+    # The build is current (that read worked); only the compute is unread.
+    current = precondition("version-current", p.facts)
+    assert current is not None and current["ok"] is True
+    wci = precondition("version-wci", p.facts)
+    assert wci is not None and wci["ok"] is False and wci["unknown"] is True
+    assert "fix" not in wci and "describe version" in wci["note"]

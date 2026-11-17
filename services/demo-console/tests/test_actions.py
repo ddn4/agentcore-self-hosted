@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import signal
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from demo_console.actions import ActionError
+from demo_console.actions import SPECS, ActionError
 from demo_console.app import Console, create_app
 from demo_console.fakes import FakeGateway, FakeHttp, FakeRunner, make_settings
+from demo_console.jobs import Job
+from demo_console.payloads import iso, now
+from demo_console.settings import PROFILES
 
 pytestmark = pytest.mark.unit
 
@@ -84,8 +90,9 @@ async def test_load_and_wci_history(
 ) -> None:
     c = await ready(console(tmp_path, gateway, runner, http))
     await c.actions.run("load", {"n": "3", "kind": "ping"}, False)
-    argv, env, _ = runner.spawned[-1]
-    assert argv == ["make", "-s", "load", "N=3"] and env["LOAD_KIND"] == "ping"
+    argv = runner.spawned[-1][0]
+    # LOAD_KIND is a make variable on the command line: make exports it to load.sh.
+    assert argv == ["make", "-s", "load", "N=3", "LOAD_KIND=ping"]
     await c.actions.run("wci-history", {}, False)
     assert runner.spawned[-1][0] == ["make", "-s", "wci-history", "BUILD=4ee7f87"]
 
@@ -166,4 +173,175 @@ async def test_actions_listing(
     kind = await ready(console(tmp_path / "k", gateway, runner, http, profile="kind"))
     k = {a["id"]: a for a in kind.actions.describe_all()}
     assert k["kind-temporal"]["make"] == "make kind-temporal KIND_TLS=1 TEMPORAL_PROFILE=kind"
-    assert k["start-recipe"]["params"][0]["default"] == "kind-laptop"
+    assert k["start-recipe"]["params"][0]["default"] == "kind-up"
+    assert k["kind-workers"]["make"] == (
+        "make kind-workers FINANCE_MODEL=scripted KIND_TLS=1 TEMPORAL_PROFILE=kind"
+    )
+
+
+# --- one source for each command ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize("profile", PROFILES)
+async def test_the_shown_command_is_the_argv_that_runs(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp, profile: str
+) -> None:
+    c = await ready(console(tmp_path, gateway, runner, http, profile=profile))
+    for spec in SPECS.values():
+        if spec.in_process or profile not in spec.profiles:
+            continue
+        params = c.actions._validate(spec, {})
+        argv = c.actions.argv(spec, params, "4ee7f87", "ab12")
+        assert argv[:3] == ["make", "-s", spec.make[0]], spec.id
+        shown = c.actions.make_text(spec, params, "4ee7f87", "ab12")
+        assert shown == " ".join(["make", *argv[2:]]), spec.id
+    if profile == "kind-plaintext":
+        listing = {a["id"]: a for a in c.actions.describe_all()}
+        assert listing["kind-workers"]["make"] == (
+            "make kind-workers FINANCE_MODEL=scripted KIND_TLS=0 TEMPORAL_PROFILE=kind-plaintext"
+        )
+
+
+async def test_a_job_runs_and_logs_the_command_it_shows(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    c = await ready(console(tmp_path, gateway, runner, http, profile="kind-plaintext"))
+    _, job = await c.actions.run("kind-workers", {}, confirm=True)
+    argv = runner.spawned[-1][0]
+    assert job["command"] == " ".join(["make", *argv[2:]])
+    assert "KIND_TLS=0" in argv
+
+
+# --- job lifecycle -------------------------------------------------------------------------------
+
+
+async def test_a_command_that_cannot_start_fails_its_job(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    async def broken(*args: Any, **kwargs: Any) -> Any:
+        raise FileNotFoundError(2, "No such file or directory", "make")
+
+    runner.spawn = broken  # type: ignore[method-assign]
+    c = await ready(console(tmp_path, gateway, runner, http))
+    status, job = await c.actions.run("nexus-endpoint", {}, False)
+    assert status == 202 and job["status"] == "failed"
+    assert job["result"]["error"].startswith("make could not start")
+    assert not c.jobs.running()
+
+
+async def test_a_command_past_its_time_is_stopped_and_fails(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    c = await ready(console(tmp_path, gateway, runner, http))
+    job = await c.jobs.run_command("card", ["make", "-s", "card"], env={}, within=0.3)
+    pgid = job.pgid
+    ended = await c.jobs.wait(job.id, within=5)
+    assert ended.status == "failed"
+    assert "ran longer than 0.3s and was stopped" in ended.result["error"]
+    assert pgid is not None and (pgid, signal.SIGTERM) in runner.signals
+
+
+async def test_an_adopted_job_ends_without_claiming_success(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    c = console(tmp_path, gateway, runner, http)
+    record = Job(
+        id="j-pf",
+        action="pf",
+        command="make pf",
+        cost="free",
+        started_at=iso(now()) or "",
+        pgid=4343,
+    )
+    jobs_dir = c.settings.state_dir / "jobs"
+    jobs_dir.mkdir(parents=True, exist_ok=True)
+    (jobs_dir / "j-pf.json").write_text(json.dumps(record.record()))
+    runner.alive_groups.add(4343)
+    again = console(tmp_path, gateway, runner, http)
+    again.jobs.adopt()
+    runner.alive_groups.discard(4343)
+    ended = await again.jobs.wait("j-pf", within=5)
+    assert ended.status == "ended" and ended.exit_code is None
+    assert "exit code is unknown" in ended.result["note"]
+
+
+async def test_a_sync_action_still_running_answers_202(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    c = await ready(console(tmp_path, gateway, runner, http))
+
+    async def slow(log: Any) -> dict[str, Any]:
+        await asyncio.sleep(10)
+        return {}
+
+    c.actions._ping_body = slow  # type: ignore[method-assign]
+
+    real_wait = c.jobs.wait
+
+    async def quick(job_id: str, within: float | None = None) -> Job:
+        return await real_wait(job_id, within=0.05)
+
+    c.jobs.wait = quick  # type: ignore[method-assign]
+    status, job = await c.actions.run("agentcore-ping", {}, False)
+    assert status == 202 and job["status"] == "running"
+    await c.jobs.shutdown()
+
+
+async def test_one_recipe_at_a_time(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    c = await ready(console(tmp_path, gateway, runner, http))
+    gate = asyncio.Event()
+
+    async def held(log: Any, recipe: str, variant: str) -> dict[str, Any]:
+        await gate.wait()
+        return {}
+
+    async def build_id() -> str:
+        await asyncio.sleep(0)  # both clicks pass the first check before either job exists
+        return "4ee7f87"
+
+    c.actions.recipe = held  # type: ignore[method-assign]
+    c.actions.stack.build_id = build_id  # type: ignore[method-assign]
+    first, second = await asyncio.gather(
+        c.actions.run("start-recipe", {"recipe": "local-invoke"}, True),
+        c.actions.run("start-recipe", {"recipe": "local-invoke"}, True),
+        return_exceptions=True,
+    )
+    results = [first, second]
+    errors = [r for r in results if isinstance(r, ActionError)]
+    assert len(errors) == 1, results
+    assert errors[0].code == "precondition_failed"  # 409
+    assert errors[0].message == "Local, serverless (invoke-local) is still running."
+    assert errors[0].hint and "One stack job runs at a time" in errors[0].hint
+    gate.set()
+    await c.jobs.shutdown()
+
+
+def test_the_catalog_names_real_actions_and_labels_every_step() -> None:
+    from demo_console.scenarios import load_catalog
+
+    # load.sh bounds its own Workflows at 15 min; the job limit must not cut it short.
+    assert SPECS["load"].within > 15 * 60
+
+    for s in load_catalog().values():
+        if s.start_action:
+            spec = SPECS[s.start_action]
+            # The Start button's options are the action's params, nothing else.
+            assert {o["id"] for o in s.options} <= {p["id"] for p in spec.params}, s.id
+        if s.extra_action:
+            assert s.extra_action["action"] in SPECS and s.extra_action["label"], s.id
+        assert s.view in (None, "cleanup"), s.id
+        for step in s.steps:
+            assert step.short, (s.id, step.id)
+            if step.action and step.action not in ("start-run", "approve", "reject"):
+                assert step.action in SPECS or step.action.startswith("process."), step.action
+
+
+def test_a_scenario_whose_start_runs_an_action_offers_only_its_params() -> None:
+    from demo_console.scenarios import StackFacts, load_catalog, scenario_json
+
+    catalog = load_catalog()
+    body = scenario_json(catalog["load"], StackFacts(profile="local"), catalog=catalog)
+    assert [o["id"] for o in body["options"]] == ["n", "kind"]
+    assert body["start_action"] == "load" and body["start_label"] == "Start {n} conversations"

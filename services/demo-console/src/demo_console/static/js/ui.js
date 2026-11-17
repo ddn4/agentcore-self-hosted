@@ -55,12 +55,14 @@ export const copyBox = (text) => h`<div class="copy"><code>${text}</code><button
 
 /**
  * Run a mutating call behind the cost gate. `call(confirm)` performs the request.
+ * Asks first when it costs tokens or when `ask` is set (long or destructive jobs).
  * Handles the server's own 409 confirm_required by asking and retrying once.
  */
-export async function gated({ key, cost = "free", title, body = null, command = null, ok = null, call }) {
+export async function gated({ key, cost = "free", ask = false, danger = false, title, body = null, command = null, confirmLabel = null, ok = null, call }) {
   let confirm = false;
-  if (cost === "tokens") {
-    confirm = await confirmDialog({ title, body, cost, command, confirmLabel: title });
+  const label = confirmLabel || title;
+  if (cost === "tokens" || ask) {
+    confirm = await confirmDialog({ title, body, cost, command, confirmLabel: label, danger });
     if (!confirm) return null;
   }
   store.busy(key, true);
@@ -70,7 +72,7 @@ export async function gated({ key, cost = "free", title, body = null, command = 
     return res;
   } catch (err) {
     if (err instanceof ApiError && err.code === "confirm_required" && !confirm) {
-      const yes = await confirmDialog({ title, body: err.message, cost: cost === "free" ? "tokens" : cost, command, confirmLabel: title });
+      const yes = await confirmDialog({ title, body: err.message, cost, command, confirmLabel: label, danger });
       if (yes) {
         try {
           const res = await call(true);
@@ -92,3 +94,41 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-copy]");
   if (b) { e.preventDefault(); copyText(b.dataset.copy); }
 });
+
+// Disclosures that survive re-renders: a <details data-keep="key"> keeps what the presenter
+// chose. Only clicks on the summary are remembered, so a default (open when something failed)
+// still follows the state until someone overrides it.
+const keptOpen = new Map();
+document.addEventListener("click", (e) => {
+  const s = e.target.closest("details[data-keep] > summary");
+  if (s) keptOpen.set(s.parentElement.dataset.keep, !s.parentElement.open);
+});
+/** `open` for a kept disclosure: what the presenter chose, else `dflt`. */
+export const openAttr = (key, dflt = false) => ((keptOpen.has(key) ? keptOpen.get(key) : dflt) ? "open" : "");
+
+/**
+ * Replace el's HTML only when it changed, so a re-render with nothing new (an unrelated stream
+ * event) keeps focus, typed values, open disclosures and scroll. When it does write, focus
+ * goes back to the element with the same name and data-* attributes, caret included.
+ * Returns true when it wrote. Code that writes el some other way sets el.__html = null.
+ */
+export function patch(el, html) {
+  const s = String(html);
+  if (el.__html === s) return false;
+  const a = document.activeElement;
+  let sel = null;
+  let caret = null;
+  if (a && a !== el && el.contains(a)) {
+    const keys = [...a.attributes].filter((x) => x.name === "name" || x.name.startsWith("data-"));
+    if (keys.length) sel = a.tagName.toLowerCase() + keys.map((x) => `[${x.name}="${CSS.escape(x.value)}"]`).join("");
+    try { caret = [a.selectionStart, a.selectionEnd]; } catch { /* number inputs have none */ }
+  }
+  el.__html = s;
+  el.innerHTML = s;
+  const f = sel && el.querySelector(sel);
+  if (f) {
+    f.focus({ preventScroll: true });
+    if (caret && caret[0] !== null) { try { f.setSelectionRange(caret[0], caret[1]); } catch { /* not a text field */ } }
+  }
+  return true;
+}

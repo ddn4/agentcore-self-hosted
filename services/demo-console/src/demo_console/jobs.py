@@ -3,6 +3,10 @@
 A job is either a command (``make -s ...`` in its own session, output to the job's log) or a
 coroutine that writes its own log lines (recipes, in-process steps). Records live at
 ``.temporal/console/jobs/<id>.json``; a console restart adopts running ones by process group.
+
+A recipe plans a numbered checklist (``Job.steps``) and runs each step inside
+``JobLog.step(id)``. A step that fails raises ``StepError``; the job's ``result`` then names
+the step, the cause (one line), a hint and the last meaningful output lines.
 """
 
 from __future__ import annotations
@@ -11,7 +15,9 @@ import asyncio
 import contextlib
 import json
 import re
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+import signal
+import time
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,11 +46,18 @@ class Job:
     result: Any = None
     params: dict[str, Any] = field(default_factory=dict)
     pgid: int | None = None
+    #: What the button said ("Bring up kind"); toasts and the sheet reuse it.
+    title: str | None = None
+    #: A recipe's checklist: ``[{id, label, status, note, elapsed_s}]``, status
+    #: ``todo | running | done | skipped | failed``.
+    steps: list[dict[str, Any]] | None = None
 
     def record(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "action": self.action,
+            "title": self.title,
+            "steps": self.steps,
             "command": self.command,
             "cost": self.cost,
             "started_at": self.started_at,
@@ -57,18 +70,109 @@ class Job:
         }
 
 
-class JobLog:
-    """What a coroutine job writes to (one line at a time)."""
+class StepError(Exception):
+    """A recipe step failed: ``message`` is the cause in one line, ``hint`` the next move."""
 
-    def __init__(self, path: Path, on_line: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        message: str,
+        hint: str | None = None,
+        *,
+        step: str | None = None,
+        tail: list[str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.hint = hint
+        self.step = step
+        self.tail = tail or []
+
+
+class JobLog:
+    """What a coroutine job writes to (one line at a time), plus its checklist."""
+
+    def __init__(
+        self,
+        path: Path,
+        on_line: Callable[[], None],
+        job: Job | None = None,
+        on_save: Callable[[], None] | None = None,
+    ) -> None:
         self.path = path
         self._on_line = on_line
+        self._job = job
+        self._on_save = on_save
+
+    def hold(self, pgid: int | None) -> None:
+        """Record the process group a streamed step runs in (``None`` when it ends).
+
+        A console restart then adopts the live group instead of closing the job, so the
+        exclusive-job check keeps blocking a second helm or kind run until it exits.
+        """
+        if self._job is None:
+            return
+        self._job.pgid = pgid
+        if self._on_save is not None:
+            self._on_save()
 
     def line(self, text: str) -> None:
         with self.path.open("a") as f:
             for part in str(text).splitlines() or [""]:
                 f.write(part + "\n")
         self._on_line()
+
+    def touch(self) -> None:
+        """Something else appended to the log file (a streamed step): push the job."""
+        self._on_line()
+
+    # --- the checklist ---------------------------------------------------------------------
+
+    @property
+    def steps(self) -> list[dict[str, Any]]:
+        return (self._job.steps if self._job else None) or []
+
+    def plan(self, steps: Sequence[Mapping[str, str]]) -> None:
+        items = [
+            {"id": s["id"], "label": s["label"], "status": "todo", "note": None, "elapsed_s": None}
+            for s in steps
+        ]
+        if self._job is not None:
+            self._job.steps = items
+        self._on_line()
+
+    def _item(self, step_id: str) -> dict[str, Any]:
+        for item in self.steps:
+            if item["id"] == step_id:
+                return item
+        raise KeyError(f"step {step_id!r} is not in the recipe's plan")
+
+    def skip(self, step_id: str, note: str) -> None:
+        item = self._item(step_id)
+        item["status"], item["note"] = "skipped", note
+        self.line(f"= skip {item['label']}: {note}")
+
+    @contextlib.contextmanager
+    def step(self, step_id: str) -> Iterator[dict[str, Any]]:
+        item = self._item(step_id)
+        n = self.steps.index(item) + 1
+        item["status"] = "running"
+        self.line(f"[{n}/{len(self.steps)}] {item['label']}")
+        t0 = time.monotonic()
+        try:
+            yield item
+        except StepError as err:
+            err.step = err.step or step_id
+            item["status"], item["note"] = "failed", err.message
+            raise
+        except Exception as err:
+            item["status"], item["note"] = "failed", str(err)
+            raise StepError(str(err), getattr(err, "hint", None), step=step_id) from err
+        else:
+            if item["status"] == "running":
+                item["status"] = "done"
+        finally:
+            item["elapsed_s"] = round(time.monotonic() - t0, 1)
+            self._on_line()
 
 
 JobBody = Callable[[JobLog], Awaitable[Any]]
@@ -80,6 +184,8 @@ class JobStore:
         self.runner = runner
         self.bus = bus
         self.jobs: dict[str, Job] = {}
+        #: Called with every job that ends (the stack probe drops its kind facts).
+        self.on_finish: list[Callable[[Job], None]] = []
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._last_push: dict[str, float] = {}
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -117,7 +223,34 @@ class JobStore:
         while job.pgid and self.runner.group_alive(job.pgid):
             await asyncio.sleep(1.0)
             self._push(job)
-        self._finish(job, "succeeded", None, {"note": "exit code unknown (adopted after restart)"})
+        if job.steps:
+            # A recipe: only its running step outlived the restart; the rest never ran.
+            step = next((s for s in job.steps if s["status"] == "running"), None)
+            label = step["label"] if step else "a step"
+            if step:
+                step["status"], step["note"] = "failed", "the console restarted during it"
+            self._finish(
+                job,
+                "failed",
+                None,
+                {
+                    "error": f"the console restarted during {label}",
+                    "step": step["id"] if step else None,
+                    "step_label": label,
+                    "hint": f"Run {job.title or job.command} again; finished steps are skipped.",
+                },
+            )
+            return
+        # Its exit code went to the console that started it: say so, never "succeeded".
+        self._finish(
+            job,
+            "ended",
+            None,
+            {
+                "note": "The console restarted while it ran, so its exit code is unknown.",
+                "hint": "Check the stack, or run it again.",
+            },
+        )
 
     def _save(self, job: Job) -> None:
         (self.dir / f"{job.id}.json").write_text(json.dumps(job.record(), indent=2))
@@ -129,6 +262,8 @@ class JobStore:
         return {
             "id": job.id,
             "action": job.action,
+            "title": job.title,
+            "steps": job.steps,
             "status": job.status,
             "command": job.command,
             "cost": job.cost,
@@ -137,6 +272,7 @@ class JobStore:
             "exit_code": job.exit_code,
             "log_tail": tail_file(self.log_path(job.id), lines),
             "result": job.result,
+            "params": job.params,
         }
 
     def get(self, job_id: str) -> Job | None:
@@ -177,9 +313,17 @@ class JobStore:
             job.result = result
         self._save(job)
         self.bus.publish("job", self.view(job))
+        for hook in self.on_finish:
+            with contextlib.suppress(Exception):
+                hook(job)
 
     def _create(
-        self, action: str, command: str, cost: str, params: Mapping[str, Any] | None
+        self,
+        action: str,
+        command: str,
+        cost: str,
+        params: Mapping[str, Any] | None,
+        title: str | None = None,
     ) -> Job:
         job = Job(
             id=self._new_id(action),
@@ -188,6 +332,7 @@ class JobStore:
             cost=cost,
             started_at=iso(now()) or "",
             params=dict(params or {}),
+            title=title,
         )
         self.jobs[job.id] = job
         self.log_path(job.id).write_text(f"$ {command}\n")
@@ -205,30 +350,61 @@ class JobStore:
         params: Mapping[str, Any] | None = None,
         parse: Callable[[str], Any] | None = None,
         display: str | None = None,
+        title: str | None = None,
+        within: float = 600.0,
     ) -> Job:
-        """Start ``argv`` as a job and return at once (``202``)."""
-        job = self._create(action, display or " ".join(argv), cost, params)
-        spawned = await self.runner.spawn(
-            list(argv), env=env, cwd=self.settings.root, log_path=self.log_path(job.id)
-        )
+        """Start ``argv`` as a job and return at once (``202``).
+
+        A command that cannot start fails the job at once; one that runs longer than
+        ``within`` seconds has its process group stopped and fails, so no job stays running.
+        """
+        job = self._create(action, display or " ".join(argv), cost, params, title)
+        try:
+            spawned = await self.runner.spawn(
+                list(argv), env=env, cwd=self.settings.root, log_path=self.log_path(job.id)
+            )
+        except OSError as err:
+            with self.log_path(job.id).open("a") as f:
+                f.write(f"could not start: {err}\n")
+            self._finish(job, "failed", None, {"error": f"{argv[0]} could not start: {err}"})
+            return job
         job.pgid = spawned.pid
         self._save(job)
 
         async def follow() -> None:
             waiter = asyncio.ensure_future(spawned.wait())
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + within
             size = -1
+            timed_out = False
             while not waiter.done():
-                await asyncio.sleep(PUSH_INTERVAL_S)
+                await asyncio.wait({waiter}, timeout=PUSH_INTERVAL_S)
                 new = self.log_path(job.id).stat().st_size
                 if new != size:
                     size = new
                     self._push(job)
+                if not waiter.done() and loop.time() > deadline and not timed_out:
+                    timed_out = True
+                    self.runner.signal_group(spawned.pid, signal.SIGTERM)
+                    try:
+                        await asyncio.wait_for(asyncio.shield(waiter), 8)
+                    except TimeoutError:
+                        self.runner.signal_group(spawned.pid, signal.SIGKILL)
             code = waiter.result()
             text = "\n".join(tail_file(self.log_path(job.id), 2000))
+            if timed_out:
+                result = {
+                    "error": f"{job.command} ran longer than {within:g}s and was stopped",
+                    "tail": meaningful(text)[-8:],
+                }
+                self._finish(job, "failed", code, result)
+                return
             result = None
             if parse is not None:
                 with contextlib.suppress(Exception):
                     result = parse(text)
+            if code != 0 and result is None:
+                result = failure_of(text, f"{job.command} exited {code}")
             self._finish(job, "succeeded" if code == 0 else "failed", code, result)
 
         self._tasks[job.id] = asyncio.create_task(follow())
@@ -242,17 +418,32 @@ class JobStore:
         *,
         cost: str = "free",
         params: Mapping[str, Any] | None = None,
+        title: str | None = None,
     ) -> Job:
         """Run a coroutine as a job (recipes); its return value is the job's ``result``."""
-        job = self._create(action, command, cost, params)
-        log = JobLog(self.log_path(job.id), lambda: self._push(job))
+        job = self._create(action, command, cost, params, title)
+        log = JobLog(
+            self.log_path(job.id), lambda: self._push(job), job, on_save=lambda: self._save(job)
+        )
 
         async def go() -> None:
             try:
                 result = await body(log)
+            except StepError as err:
+                label = next((s["label"] for s in log.steps if s["id"] == err.step), err.step)
+                log.line(f"failed at {label}: {err.message}")
+                if err.hint:
+                    log.line(f"  next: {err.hint}")
+                failed = {"error": err.message, "step": err.step, "step_label": label}
+                failed.update({"hint": err.hint, "tail": err.tail[-8:]})
+                self._finish(job, "failed", 1, failed)
+                return
             except Exception as err:
                 log.line(f"failed: {err}")
-                self._finish(job, "failed", 1, {"error": str(err)})
+                result: dict[str, Any] = {"error": str(err)}
+                if getattr(err, "hint", None):
+                    result["hint"] = getattr(err, "hint", None)
+                self._finish(job, "failed", 1, result)
                 return
             self._finish(job, "succeeded", 0, result)
 
@@ -273,3 +464,33 @@ class JobStore:
         for task in self._tasks.values():
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
+
+
+_NOISE = re.compile(r"^(make(\[\d+\])?: \*\*\*|make(\[\d+\])?: (Entering|Leaving))")
+_CAUSE = re.compile(
+    r"error|refused|denied|not found|failed|cannot|timed out|x509|unknown authority|no such"
+    r"|not listening|unable to",
+    re.IGNORECASE,
+)
+
+
+def meaningful(output: str) -> list[str]:
+    """Output lines without blanks and make's own ``make: *** [...] Error 1`` noise."""
+    return [
+        line.strip()
+        for line in output.splitlines()
+        if line.strip() and not _NOISE.match(line.strip()) and not line.startswith("$ ")
+    ]
+
+
+def cause_line(output: str) -> str | None:
+    """The last line that names an error, else the last meaningful line."""
+    lines = meaningful(output)
+    return next((line for line in reversed(lines) if _CAUSE.search(line)), None) or (
+        lines[-1] if lines else None
+    )
+
+
+def failure_of(output: str, fallback: str) -> dict[str, Any]:
+    """A failed command job's ``result``: the cause line and the last meaningful lines."""
+    return {"error": cause_line(output) or fallback, "tail": meaningful(output)[-8:]}

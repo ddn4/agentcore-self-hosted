@@ -14,10 +14,10 @@ from starlette.responses import HTMLResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from demo_console.actions import ActionService
+from demo_console.actions import EXCLUSIVE, ActionService
 from demo_console.clients import Clients, Gateway
 from demo_console.events import EventBus
-from demo_console.jobs import JobStore
+from demo_console.jobs import Job, JobStore
 from demo_console.lifetimes import WciReader
 from demo_console.procs import ProcessManager
 from demo_console.routes import ROUTES, Guard
@@ -88,6 +88,8 @@ class Console:
         )
         self.hub = StreamHub(settings, self.stack, self.runs, self.bus, intervals)
         self.runs.stack_refresh = self.hub.stack_cache.get
+        # A cluster job or recipe that ended changed a kind layer: probe again at once.
+        self.jobs.on_finish.append(self._job_ended)
 
     async def startup(self) -> None:
         self.settings.state_dir.mkdir(parents=True, exist_ok=True)
@@ -102,11 +104,19 @@ class Console:
         await self.jobs.shutdown()
         await self.gateway.close()
 
+    def _job_ended(self, job: Job) -> None:
+        if job.action == "certs-pull" and job.status == "succeeded":
+            self.procs.certs_state = "ok"
+        if job.action in EXCLUSIVE:
+            self.stack.kind.invalidate()
+            self.hub.stack_cache.invalidate()
+
     async def switch_profile(self, profile: str) -> None:
         """Reconnect with another profile (the caller checked the managed processes)."""
         self.settings.profile = profile
         await self.gateway.close()
         self.stack._detection = None
+        self.stack.kind.invalidate()
         self.stack.last = None
         self.stack.facts.profile = profile
         self.hub.stack_cache.invalidate()

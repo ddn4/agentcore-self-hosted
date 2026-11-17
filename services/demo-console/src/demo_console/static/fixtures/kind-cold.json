@@ -1,0 +1,2781 @@
+{
+ "fixture": "kind-cold",
+ "description": "Profile kind on a cold laptop: the Docker VM is stopped. The banner names it and offers Start Docker VM; the last Bring up kind stopped at its first step.",
+ "now": "2026-11-02T14:02:40.004Z",
+ "focus": null,
+ "config": {
+  "profile": "kind",
+  "profiles": [
+   "local",
+   "kind",
+   "kind-plaintext"
+  ],
+  "ui_base": "http://127.0.0.1:8233",
+  "console_version": "0.1.0",
+  "debounce_s": 20.0,
+  "auto_approve_limit_usd": 100.0,
+  "default_approver": "dana.finance"
+ },
+ "stack": {
+  "checked_at": "2026-11-02T14:02:40.004Z",
+  "profile": {
+   "configured": "kind",
+   "detected": null,
+   "mismatch": null,
+   "tls": true
+  },
+  "shape": "unknown",
+  "model": {
+   "mode": "unknown",
+   "source": "unknown"
+  },
+  "build_id": {
+   "value": "4ee7f87",
+   "source": "build-id.sh"
+  },
+  "deployment": {
+   "name": "support-supervisor",
+   "current_build": null,
+   "compute": null,
+   "behavior": null
+  },
+  "wci": {
+   "mode": "cluster",
+   "invokes_total": null
+  },
+  "agentcore_app": {
+   "status": "down",
+   "lifetime": null,
+   "url": "http://127.0.0.1:8080"
+  },
+  "components": [
+   {
+    "id": "cluster",
+    "label": "Cluster",
+    "group": "temporal",
+    "status": "down",
+    "detail": "Docker VM agentcore is stopped",
+    "fix": {
+     "kind": "action",
+     "action": "colima-up",
+     "params": {},
+     "label": "Start Docker VM"
+    }
+   },
+   {
+    "id": "temporal",
+    "label": "Temporal",
+    "status": "down",
+    "detail": "Temporal is not reachable at 127.0.0.1:7233",
+    "group": "temporal"
+   },
+   {
+    "id": "web-ui",
+    "label": "Web UI",
+    "status": "down",
+    "detail": "http://127.0.0.1:8233",
+    "group": "temporal"
+   },
+   {
+    "id": "endpoint",
+    "label": "Nexus endpoint",
+    "status": "unknown",
+    "detail": "finance-agent is missing (make nexus-endpoint)",
+    "group": "temporal"
+   },
+   {
+    "id": "finance",
+    "label": "Finance workers",
+    "status": "unknown",
+    "detail": "0 pollers",
+    "count": 0,
+    "group": "finance"
+   },
+   {
+    "id": "support",
+    "label": "Support workers",
+    "status": "unknown",
+    "detail": "0 on support-dev-tq",
+    "count": 0,
+    "group": "support",
+    "process": "worker-support"
+   },
+   {
+    "id": "agentcore",
+    "label": "AgentCore app",
+    "status": "down",
+    "detail": "not running on :8080",
+    "group": "support",
+    "process": "agentcore-local"
+   }
+  ],
+  "pollers": {
+   "agents/support-dev-tq": [],
+   "agents/support-tq": [],
+   "agent-services/agent-services-tq": [],
+   "agents/nexus-smoke-tq": []
+  },
+  "port_forward": null,
+  "kind": {
+   "docker": false,
+   "cluster": null,
+   "port_forward": false,
+   "certs": "missing",
+   "gap": {
+    "layer": "docker",
+    "cause": "Docker VM agentcore is stopped",
+    "fix": {
+     "kind": "action",
+     "action": "colima-up",
+     "params": {},
+     "label": "Start Docker VM"
+    }
+   }
+  },
+  "temporal_error": "connection refused"
+ },
+ "runs": {
+  "runs": [],
+  "groups": [],
+  "next_page_token": null
+ },
+ "scenarios": {
+  "scenarios": [
+   {
+    "id": "case-a",
+    "title": "Case A: $40 headphones, auto-approved",
+    "short": "Case A",
+    "sub": "$40 headphones, auto-approved",
+    "run_label": "Case A",
+    "summary": "Support's agents look up the order, ask Finance over Nexus, and Finance approves on its own.",
+    "story": {
+     "tag": "v0.5-a2a-over-nexus",
+     "doc": "docs/story/v0.5-a2a-over-nexus.md"
+    },
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "fit": "needs_setup",
+    "cost": "free",
+    "cost_note": "scripted model; Bedrock tokens when the model is live",
+    "case": "A",
+    "order_id": "1042",
+    "amount_usd": 40.0,
+    "options": [
+     {
+      "id": "a2a_mode",
+      "label": "How Support asks Finance",
+      "type": "choice",
+      "choices": [
+       "tool",
+       "handoff"
+      ],
+      "default": "tool"
+     },
+     {
+      "id": "nexus_send_timeout",
+      "label": "Support's budget for Finance's answer",
+      "type": "duration",
+      "default": "25h"
+     },
+     {
+      "id": "queue",
+      "label": "Support's task queue",
+      "type": "choice",
+      "choices": [
+       "dev",
+       "versioned"
+      ],
+      "default": "dev"
+     },
+     {
+      "id": "workflow_id",
+      "label": "Workflow ID",
+      "type": "text",
+      "default": "support-1042-l2ho"
+     }
+    ],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "endpoint",
+      "label": "Nexus endpoint finance-agent",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "nexus-endpoint",
+       "params": {},
+       "label": "Create endpoint"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "finance",
+      "label": "A Finance worker polls agent-services-tq",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "support-plain",
+      "label": "A Support worker polls support-dev-tq",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "worker-support",
+       "label": "Start Support worker"
+      }
+     }
+    ],
+    "steps": [
+     {
+      "id": "start",
+      "n": 1,
+      "title": "Start Case A",
+      "kind": "action",
+      "done_when": "run.started",
+      "talk": "A customer wants $40 back for broken headphones.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
+      "action": "start-run",
+      "make": "make case-a WF=support-1042-l2ho"
+     },
+     {
+      "id": "card",
+      "n": 2,
+      "title": "Support discovers Finance's Agent Card",
+      "kind": "watch",
+      "done_when": "card.discovered",
+      "talk": "First the A2A discovery: get_agent_card over the finance-agent endpoint.",
+      "short": "Agent Card",
+      "point": "The short wire to the seam: get_agent_card, the one thing Finance publishes."
+     },
+     {
+      "id": "ask",
+      "n": 3,
+      "title": "Support asks Finance for the refund",
+      "kind": "watch",
+      "done_when": "task.state in [submitted, working, input-required, completed, rejected, failed]",
+      "talk": "send_message crosses into namespace agent-services. Workers never talk to each other.",
+      "short": "Ask Finance",
+      "point": "The wire crossing the seam into Finance's lane: one Nexus call between two namespaces."
+     },
+     {
+      "id": "approved",
+      "n": 4,
+      "title": "Finance approves on its own",
+      "kind": "watch",
+      "done_when": "task.state in [completed, rejected, failed]",
+      "talk": "Under $100 at low risk, Finance's policy approves automatically: approved_by auto.",
+      "short": "Approved",
+      "point": "Finance's lane: approved_by auto. No human was needed under $100."
+     },
+     {
+      "id": "reply",
+      "n": 5,
+      "title": "Support replies with the refund ID",
+      "kind": "watch",
+      "done_when": "run.closed",
+      "talk": "The answer came back over Nexus, and Support quotes the refund ID.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish.",
+      "point_versioned": "The reply quoting the refund ID, and the pinned Build ID in the header.",
+      "make": "make result WF=support-1042-l2ho"
+     }
+    ],
+    "notes": "Support can't move money, so it asks Finance: a different team's agent, through a published contract and a named endpoint. It isn't a child workflow, and only the contract is shared.",
+    "setup_recipe": "kind-up",
+    "setup_blocked": {
+     "why": "Start the Docker VM first.",
+     "fix": {
+      "kind": "action",
+      "action": "colima-up",
+      "params": {},
+      "label": "Start Docker VM"
+     }
+    },
+    "next": {
+     "id": "case-b",
+     "short": "Case B",
+     "setup_recipe": null
+    },
+    "start_action": null,
+    "start_label": "Start Case A",
+    "view": null,
+    "extra_action": null
+   },
+   {
+    "id": "case-b",
+    "title": "Case B: $450 laptop, a human approves",
+    "short": "Case B",
+    "sub": "$450 laptop, a human approves",
+    "run_label": "Case B",
+    "summary": "Over $100, Finance's agent asks a human. Support can be switched off while it waits.",
+    "story": {
+     "tag": "v0.6-human-in-the-loop",
+     "doc": "docs/story/v0.6-human-in-the-loop.md"
+    },
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "fit": "needs_setup",
+    "cost": "free",
+    "cost_note": "scripted model; Bedrock tokens when the model is live",
+    "case": "B",
+    "order_id": "2077",
+    "amount_usd": 450.0,
+    "options": [
+     {
+      "id": "a2a_mode",
+      "label": "How Support asks Finance",
+      "type": "choice",
+      "choices": [
+       "tool",
+       "handoff"
+      ],
+      "default": "tool"
+     },
+     {
+      "id": "nexus_send_timeout",
+      "label": "Support's budget for Finance's answer",
+      "type": "duration",
+      "default": "25h"
+     },
+     {
+      "id": "queue",
+      "label": "Support's task queue",
+      "type": "choice",
+      "choices": [
+       "dev",
+       "versioned"
+      ],
+      "default": "dev"
+     },
+     {
+      "id": "workflow_id",
+      "label": "Workflow ID",
+      "type": "text",
+      "default": "support-2077-kz68"
+     },
+     {
+      "id": "approver",
+      "label": "Finance approver",
+      "type": "text",
+      "default": "dana.finance"
+     }
+    ],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "endpoint",
+      "label": "Nexus endpoint finance-agent",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "nexus-endpoint",
+       "params": {},
+       "label": "Create endpoint"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "finance",
+      "label": "A Finance worker polls agent-services-tq",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "support-plain",
+      "label": "A Support worker polls support-dev-tq",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "worker-support",
+       "label": "Start Support worker"
+      }
+     }
+    ],
+    "steps": [
+     {
+      "id": "start",
+      "n": 1,
+      "title": "Start Case B",
+      "kind": "action",
+      "done_when": "run.started",
+      "talk": "A customer asks for $450 back on a laptop with a cracked screen.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
+      "action": "start-run",
+      "make": "make case-b WF=support-2077-kz68"
+     },
+     {
+      "id": "input-required",
+      "n": 2,
+      "title": "Finance asks a human",
+      "kind": "watch",
+      "done_when": "task.state==input-required",
+      "talk": "Over $100, Finance's agent says 'I need a human'. The task is input-required.",
+      "short": "A human is asked",
+      "point": "The big state, input-required, and the approval card waiting in Finance's lane.",
+      "make": "make task-state WF=support-2077-kz68"
+     },
+     {
+      "id": "stop-support",
+      "n": 3,
+      "title": "Stop the Support worker (optional)",
+      "kind": "action",
+      "done_when": "compute.running==false",
+      "talk": "I switch Support off completely. The Nexus call stays open on the server.",
+      "short": "Stop Support",
+      "point": "The compute rail goes dark: no Support worker runs. Finance keeps waiting; nothing is lost.",
+      "action": "process.stop",
+      "params": {
+       "name": "worker-support",
+       "signal": "TERM"
+      },
+      "optional": true,
+      "make": "make pending WF=support-2077-kz68"
+     },
+     {
+      "id": "approve",
+      "n": 4,
+      "title": "Approve or reject the refund",
+      "kind": "human",
+      "done_when": "task.state in [completed, rejected, failed]",
+      "talk": "I approve as dana.finance.",
+      "short": "Approve",
+      "point": "The empty Support rail and the glowing held-open line in the seam, side by side. Then the approval card in Finance's lane.",
+      "action": "approve",
+      "make": "make approve WF=support-2077-kz68 APPROVER=dana.finance"
+     },
+     {
+      "id": "restart-support",
+      "n": 5,
+      "title": "Start the Support worker again (if stopped)",
+      "kind": "action",
+      "done_when": "compute.running==true",
+      "talk": "A Support worker comes back and picks the conversation up where it was.",
+      "short": "Restart Support",
+      "point": "A new worker identity in Support's lane, on the same run.",
+      "action": "process.start",
+      "params": {
+       "name": "worker-support"
+      },
+      "optional": true
+     },
+     {
+      "id": "reply",
+      "n": 6,
+      "title": "Support replies",
+      "kind": "watch",
+      "done_when": "run.closed",
+      "talk": "The reply quotes the refund ID, or apologises if Finance rejected it.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish.",
+      "point_versioned": "The reply quoting the refund ID, and the pinned Build ID in the header.",
+      "make": "make result WF=support-2077-kz68"
+     },
+     {
+      "id": "report",
+      "n": 7,
+      "title": "Read the approval report",
+      "kind": "watch",
+      "done_when": "run.closed",
+      "talk": "Support's history went quiet while Finance waited: one Workflow Task recorded that the call started, then nothing until the answer.",
+      "short": "Report",
+      "point": "The report: how long the approval took, and seconds from approval to reply. This run is unversioned: plain workers on support-dev-tq.",
+      "point_versioned": "The report: lifetimes, one Build ID, and seconds from approval to reply.",
+      "make": "make approval-report WF=support-2077-kz68"
+     }
+    ],
+    "notes": "Over $100, Finance's agent says 'I need a human', and the task goes to input-required. I switch Support off completely. Nothing is lost, and when the approver signals, the conversation picks up again.",
+    "setup_recipe": "kind-up",
+    "setup_blocked": {
+     "why": "Start the Docker VM first.",
+     "fix": {
+      "kind": "action",
+      "action": "colima-up",
+      "params": {},
+      "label": "Start Docker VM"
+     }
+    },
+    "next": {
+     "id": "crash",
+     "short": "Worker crash",
+     "setup_recipe": null
+    },
+    "start_action": null,
+    "start_label": "Start Case B",
+    "view": null,
+    "extra_action": null
+   },
+   {
+    "id": "crash",
+    "title": "Worker crash: kill Support mid-thought",
+    "short": "Worker crash",
+    "sub": "Kill Support mid-thought; it resumes",
+    "run_label": "Case A, worker crash",
+    "summary": "SIGKILL the Support worker while a model turn runs; a new worker carries on from history.",
+    "story": {
+     "tag": "v0.2-durable-agent",
+     "doc": "docs/story/v0.2-durable-agent.md"
+    },
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "fit": "needs_setup",
+    "cost": "free",
+    "cost_note": "scripted model",
+    "case": "A",
+    "order_id": "1042",
+    "amount_usd": 40.0,
+    "options": [
+     {
+      "id": "a2a_mode",
+      "label": "How Support asks Finance",
+      "type": "choice",
+      "choices": [
+       "tool",
+       "handoff"
+      ],
+      "default": "tool"
+     },
+     {
+      "id": "nexus_send_timeout",
+      "label": "Support's budget for Finance's answer",
+      "type": "duration",
+      "default": "25h"
+     },
+     {
+      "id": "queue",
+      "label": "Support's task queue",
+      "type": "choice",
+      "choices": [
+       "dev",
+       "versioned"
+      ],
+      "default": "dev"
+     },
+     {
+      "id": "workflow_id",
+      "label": "Workflow ID",
+      "type": "text",
+      "default": "support-1042-crash-g5ue"
+     }
+    ],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "endpoint",
+      "label": "Nexus endpoint finance-agent",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "nexus-endpoint",
+       "params": {},
+       "label": "Create endpoint"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "finance",
+      "label": "A Finance worker polls agent-services-tq",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "support-plain-managed",
+      "label": "The console runs the Support worker (so it can kill it)",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "worker-support",
+       "label": "Start Support worker"
+      }
+     }
+    ],
+    "steps": [
+     {
+      "id": "start",
+      "n": 1,
+      "title": "Start Case A",
+      "kind": "action",
+      "done_when": "run.started",
+      "talk": "Same Case A. Watch the Support lane: each model turn is an Activity.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
+      "action": "start-run",
+      "make": "make case-a WF=support-1042-crash-g5ue"
+     },
+     {
+      "id": "kill",
+      "n": 2,
+      "title": "Kill the Support worker mid-thought",
+      "kind": "action",
+      "done_when": "process.worker-support==stopped",
+      "talk": "kill -9 while the Supervisor is thinking. No graceful shutdown.",
+      "short": "Kill worker",
+      "point": "The rail: the lifetime ends abruptly with a red cut.",
+      "action": "process.stop",
+      "params": {
+       "name": "worker-support",
+       "signal": "KILL"
+      }
+     },
+     {
+      "id": "restart",
+      "n": 3,
+      "title": "Start a new Support worker",
+      "kind": "action",
+      "done_when": "compute.lifetimes>=2",
+      "talk": "A new process with a new pid. It replays the history and carries on.",
+      "short": "Restart Support",
+      "point": "A new worker identity in Support's lane, on the same run.",
+      "action": "process.start",
+      "params": {
+       "name": "worker-support"
+      }
+     },
+     {
+      "id": "reply",
+      "n": 4,
+      "title": "The same run finishes",
+      "kind": "watch",
+      "done_when": "run.closed",
+      "talk": "Two workers, one conversation, nothing repeated that had finished.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish."
+     }
+    ],
+    "notes": "Every model call and tool call is an Activity. I kill the process mid-thought, and it carries on from exactly where it stopped.",
+    "setup_recipe": "kind-up",
+    "setup_blocked": {
+     "why": "Start the Docker VM first.",
+     "fix": {
+      "kind": "action",
+      "action": "colima-up",
+      "params": {},
+      "label": "Start Docker VM"
+     }
+    },
+    "next": {
+     "id": "serverless-b",
+     "short": "AgentCore: you invoke",
+     "setup_recipe": null
+    },
+    "start_action": null,
+    "start_label": "Start Case A",
+    "view": null,
+    "extra_action": null
+   },
+   {
+    "id": "failure",
+    "title": "Finance outage: Finance disappears mid-call",
+    "short": "Finance outage",
+    "sub": "Finance goes away; Nexus retries",
+    "run_label": "Case A, Finance outage",
+    "summary": "The Finance worker goes away; Support's Nexus call retries until it comes back.",
+    "story": {
+     "tag": "v0.5-a2a-over-nexus",
+     "doc": "docs/story/v0.5-a2a-over-nexus.md"
+    },
+    "profiles": [
+     "local"
+    ],
+    "fit": "wrong_profile",
+    "cost": "free",
+    "cost_note": "stops and restarts the console-managed Finance worker",
+    "case": "A",
+    "order_id": "1042",
+    "amount_usd": 40.0,
+    "options": [
+     {
+      "id": "a2a_mode",
+      "label": "How Support asks Finance",
+      "type": "choice",
+      "choices": [
+       "tool",
+       "handoff"
+      ],
+      "default": "tool"
+     },
+     {
+      "id": "nexus_send_timeout",
+      "label": "Support's budget for Finance's answer",
+      "type": "duration",
+      "default": "25h"
+     },
+     {
+      "id": "queue",
+      "label": "Support's task queue",
+      "type": "choice",
+      "choices": [
+       "dev",
+       "versioned"
+      ],
+      "default": "dev"
+     },
+     {
+      "id": "workflow_id",
+      "label": "Workflow ID",
+      "type": "text",
+      "default": "support-1042-failure-y9w9"
+     }
+    ],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      }
+     },
+     {
+      "id": "endpoint",
+      "label": "Nexus endpoint finance-agent",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "nexus-endpoint",
+       "params": {},
+       "label": "Create endpoint"
+      }
+     },
+     {
+      "id": "finance-managed",
+      "label": "A Finance worker polls agent-services-tq",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      }
+     },
+     {
+      "id": "support-plain",
+      "label": "A Support worker polls support-dev-tq",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "worker-support",
+       "label": "Start Support worker"
+      }
+     }
+    ],
+    "steps": [
+     {
+      "id": "start",
+      "n": 1,
+      "title": "Start Case A",
+      "kind": "action",
+      "done_when": "run.started",
+      "talk": "Case A again.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
+      "action": "start-run",
+      "make": "make case-a WF=support-1042-failure-y9w9"
+     },
+     {
+      "id": "card",
+      "n": 2,
+      "title": "Discovery completes",
+      "kind": "watch",
+      "done_when": "card.discovered",
+      "talk": "Discovery is synchronous: Finance must be up for it.",
+      "short": "Agent Card",
+      "point": "The short wire to the seam: get_agent_card, the one thing Finance publishes."
+     },
+     {
+      "id": "stop-finance",
+      "n": 3,
+      "title": "Stop Finance",
+      "kind": "action",
+      "done_when": "process.worker-finance==stopped",
+      "talk": "Finance goes away. Nobody polls agent-services-tq.",
+      "short": "Stop Finance",
+      "point": "Finance's pip in the stack bar goes down.",
+      "action": "process.stop",
+      "params": {
+       "name": "worker-finance",
+       "signal": "TERM"
+      }
+     },
+     {
+      "id": "retrying",
+      "n": 4,
+      "title": "The Nexus call retries",
+      "kind": "watch",
+      "done_when": "nexus.attempt>=2",
+      "talk": "Attempt 2, 3... with the last failure. Nothing fails on Support's side.",
+      "short": "Retries",
+      "point": "The seam: send_message on attempt 2, then 3, with the last failure. Support's code has no retry loop.",
+      "make": "make pending WF=support-1042-failure-y9w9"
+     },
+     {
+      "id": "start-finance",
+      "n": 5,
+      "title": "Start Finance again",
+      "kind": "action",
+      "done_when": "nexus.completed",
+      "talk": "Finance is back and the operation completes.",
+      "short": "Start Finance",
+      "point": "The same call completing as soon as Finance is back.",
+      "action": "process.start",
+      "params": {
+       "name": "worker-finance"
+      }
+     },
+     {
+      "id": "reply",
+      "n": 6,
+      "title": "Support replies",
+      "kind": "watch",
+      "done_when": "run.closed",
+      "talk": "The customer never knew.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish."
+     }
+    ],
+    "notes": "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives.",
+    "setup_recipe": null,
+    "setup_blocked": null,
+    "next": {
+     "id": "serverless-b",
+     "short": "AgentCore: you invoke",
+     "setup_recipe": null
+    },
+    "start_action": null,
+    "start_label": "Start Case A",
+    "view": null,
+    "extra_action": null
+   },
+   {
+    "id": "serverless-b",
+    "title": "AgentCore, you invoke: Case B with a worker built to die",
+    "short": "AgentCore: you invoke",
+    "sub": "Case B; you start each worker lifetime",
+    "run_label": "Case B, you invoke",
+    "summary": "Support's worker is built to die: it starts when invoked and drains when idle. You play the WCI.",
+    "story": {
+     "tag": "v0.7-serverless-shape",
+     "doc": "docs/story/v0.7-serverless-shape.md"
+    },
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "fit": "needs_setup",
+    "cost": "free",
+    "cost_note": "scripted model",
+    "case": "B",
+    "order_id": "2077",
+    "amount_usd": 450.0,
+    "options": [
+     {
+      "id": "a2a_mode",
+      "label": "How Support asks Finance",
+      "type": "choice",
+      "choices": [
+       "tool",
+       "handoff"
+      ],
+      "default": "tool"
+     },
+     {
+      "id": "nexus_send_timeout",
+      "label": "Support's budget for Finance's answer",
+      "type": "duration",
+      "default": "25h"
+     },
+     {
+      "id": "queue",
+      "label": "Support's task queue",
+      "type": "choice",
+      "choices": [
+       "dev",
+       "versioned"
+      ],
+      "default": "versioned"
+     },
+     {
+      "id": "workflow_id",
+      "label": "Workflow ID",
+      "type": "text",
+      "default": "support-2077-sl-btw8"
+     },
+     {
+      "id": "approver",
+      "label": "Finance approver",
+      "type": "text",
+      "default": "dana.finance"
+     }
+    ],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "endpoint",
+      "label": "Nexus endpoint finance-agent",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "nexus-endpoint",
+       "params": {},
+       "label": "Create endpoint"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "finance",
+      "label": "A Finance worker polls agent-services-tq",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "build-id",
+      "label": "Support's Build ID is known",
+      "ok": true
+     },
+     {
+      "id": "agentcore",
+      "label": "AgentCore app on :8080",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "agentcore-local",
+       "label": "Start AgentCore app"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "version-current",
+      "label": "support-supervisor:4ee7f87 is current",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "register-version",
+       "params": {
+        "mode": "--poller"
+       },
+       "label": "Register version"
+      },
+      "by_setup": true
+     }
+    ],
+    "steps": [
+     {
+      "id": "start",
+      "n": 1,
+      "title": "Start Case B on support-tq",
+      "kind": "action",
+      "done_when": "run.started",
+      "talk": "The conversation is pinned to support-supervisor at this Build ID. Nothing polls support-tq yet.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
+      "action": "start-run",
+      "make": "make case-b-serverless WF=support-2077-sl-btw8"
+     },
+     {
+      "id": "invoke1",
+      "n": 2,
+      "title": "Invoke the AgentCore app (lifetime 1)",
+      "kind": "action",
+      "done_when": "compute.lifetimes>=1",
+      "talk": "I am the WCI: POST /invocations asks for capacity, not work. Lifetime 1 picks the run up.",
+      "short": "Lifetime 1",
+      "point": "The compute rail lighting up: lifetime 1. Nothing polled support-tq until the AgentCore app was invoked.",
+      "action": "invoke-local",
+      "make": "TEMPORAL_BUILD_ID=4ee7f87 make invoke-local"
+     },
+     {
+      "id": "input-required",
+      "n": 3,
+      "title": "Finance asks a human",
+      "kind": "watch",
+      "done_when": "task.state==input-required",
+      "talk": "Over $100, Finance's agent says 'I need a human'.",
+      "short": "A human is asked",
+      "point": "The big state, input-required, and the approval card waiting in Finance's lane."
+     },
+     {
+      "id": "drained",
+      "n": 4,
+      "title": "Support's compute drains",
+      "kind": "watch",
+      "done_when": "compute.drain==drained",
+      "talk": "Nothing to do, so after the debounce the lifetime drains: /ping is Healthy again.",
+      "short": "Compute drains",
+      "point": "The rail on the left is an empty dashed lane: no Support worker exists. The glowing line in the Nexus seam: the server is holding Support's call to Finance open.",
+      "make": "make agentcore-ping"
+     },
+     {
+      "id": "approve",
+      "n": 5,
+      "title": "Approve the refund",
+      "kind": "human",
+      "done_when": "task.state in [completed, rejected, failed]",
+      "talk": "I approve as dana.finance.",
+      "short": "Approve",
+      "point": "The empty Support rail and the glowing held-open line in the seam, side by side. Then the approval card in Finance's lane.",
+      "action": "approve",
+      "make": "make approve WF=support-2077-sl-btw8 APPROVER=dana.finance"
+     },
+     {
+      "id": "invoke2",
+      "n": 6,
+      "title": "Invoke again (lifetime 2)",
+      "kind": "action",
+      "done_when": "compute.lifetimes>=2",
+      "talk": "Finance's answer is in Support's history. A new lifetime picks it up.",
+      "short": "Lifetime 2",
+      "point": "The rail lights up again as lifetime 2 (with the server's WCI, its InvokeWorker row sits on the rail's edge).",
+      "action": "invoke-local",
+      "make": "TEMPORAL_BUILD_ID=4ee7f87 make invoke-local"
+     },
+     {
+      "id": "reply",
+      "n": 7,
+      "title": "Support replies with the refund ID",
+      "kind": "watch",
+      "done_when": "run.status==COMPLETED",
+      "talk": "Same build, pinned.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish.",
+      "point_versioned": "The reply quoting the refund ID, and the pinned Build ID in the header."
+     },
+     {
+      "id": "report",
+      "n": 8,
+      "title": "Read the report",
+      "kind": "watch",
+      "done_when": "run.closed",
+      "talk": "Two lifetimes, one Build ID.",
+      "short": "Report",
+      "point": "The report: how long the approval took, and seconds from approval to reply. This run is unversioned: plain workers on support-dev-tq.",
+      "point_versioned": "The report: lifetimes, one Build ID, and seconds from approval to reply.",
+      "make": "uv run --frozen python scripts/serverless_report.py support-2077-sl-btw8"
+     }
+    ],
+    "notes": "Support's Worker is now built to die. It starts when invoked, drains when idle, and when Finance answers, a new invocation picks the conversation up, pinned to the exact build.",
+    "setup_recipe": "kind-up",
+    "setup_blocked": {
+     "why": "Start the Docker VM first.",
+     "fix": {
+      "kind": "action",
+      "action": "colima-up",
+      "params": {},
+      "label": "Start Docker VM"
+     }
+    },
+    "next": {
+     "id": "load",
+     "short": "Load",
+     "setup_recipe": null
+    },
+    "start_action": null,
+    "start_label": "Start Case B",
+    "view": null,
+    "extra_action": null
+   },
+   {
+    "id": "wci-b",
+    "title": "AgentCore, WCI invokes: Temporal starts the worker",
+    "short": "AgentCore: WCI invokes",
+    "sub": "Case B; Temporal starts the worker",
+    "run_label": "Case B, WCI invokes",
+    "summary": "Finance waits for a human while Support's compute is gone; the server restarts it.",
+    "story": {
+     "tag": "v0.7-serverless-shape",
+     "doc": "docs/story/v0.7-serverless-shape.md"
+    },
+    "profiles": [
+     "local"
+    ],
+    "fit": "wrong_profile",
+    "cost": "free",
+    "cost_note": "scripted model",
+    "case": "B",
+    "order_id": "2077",
+    "amount_usd": 450.0,
+    "options": [
+     {
+      "id": "a2a_mode",
+      "label": "How Support asks Finance",
+      "type": "choice",
+      "choices": [
+       "tool",
+       "handoff"
+      ],
+      "default": "tool"
+     },
+     {
+      "id": "nexus_send_timeout",
+      "label": "Support's budget for Finance's answer",
+      "type": "duration",
+      "default": "25h"
+     },
+     {
+      "id": "queue",
+      "label": "Support's task queue",
+      "type": "choice",
+      "choices": [
+       "dev",
+       "versioned"
+      ],
+      "default": "versioned"
+     },
+     {
+      "id": "workflow_id",
+      "label": "Workflow ID",
+      "type": "text",
+      "default": "support-2077-wci-z143"
+     },
+     {
+      "id": "approver",
+      "label": "Finance approver",
+      "type": "text",
+      "default": "dana.finance"
+     }
+    ],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      }
+     },
+     {
+      "id": "wci",
+      "label": "Dev server runs with the WCI (WCI=1)",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "start-recipe",
+       "params": {
+        "recipe": "local-wci"
+       },
+       "label": "Restart with WCI"
+      }
+     },
+     {
+      "id": "emulator",
+      "label": "WCI emulator on :4599",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "agentcore-emulator",
+       "label": "Start emulator"
+      }
+     },
+     {
+      "id": "agentcore",
+      "label": "AgentCore app on :8080",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "agentcore-local",
+       "label": "Start AgentCore app"
+      }
+     },
+     {
+      "id": "build-id",
+      "label": "Support's Build ID is known",
+      "ok": true
+     },
+     {
+      "id": "version-wci",
+      "label": "support-supervisor:4ee7f87 is current with local WCI compute",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "register-version",
+       "params": {
+        "mode": "--local-wci"
+       },
+       "label": "Register version"
+      }
+     },
+     {
+      "id": "finance",
+      "label": "A Finance worker polls agent-services-tq",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      }
+     },
+     {
+      "id": "endpoint",
+      "label": "Nexus endpoint finance-agent",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "nexus-endpoint",
+       "params": {},
+       "label": "Create endpoint"
+      }
+     }
+    ],
+    "steps": [
+     {
+      "id": "start",
+      "n": 1,
+      "title": "Start Case B on support-tq",
+      "kind": "action",
+      "done_when": "run.started",
+      "talk": "A customer asks for $450 back on a laptop.",
+      "short": "Start",
+      "point": "The ticket at the top, and the first rows in Support's lane.",
+      "action": "start-run",
+      "make": "make case-b-serverless WF=support-2077-wci-z143"
+     },
+     {
+      "id": "invoke1",
+      "n": 2,
+      "title": "The WCI starts lifetime 1",
+      "kind": "watch",
+      "done_when": "compute.lifetimes>=1",
+      "talk": "Nothing was polling. The server's Worker Controller invoked AgentCore.",
+      "short": "Lifetime 1",
+      "point": "The compute rail lighting up: lifetime 1. Nothing polled support-tq until the AgentCore app was invoked."
+     },
+     {
+      "id": "input-required",
+      "n": 3,
+      "title": "Finance asks a human",
+      "kind": "watch",
+      "done_when": "task.state==input-required",
+      "talk": "Over $100, Finance's agent says 'I need a human'.",
+      "short": "A human is asked",
+      "point": "The big state, input-required, and the approval card waiting in Finance's lane."
+     },
+     {
+      "id": "drained",
+      "n": 4,
+      "title": "Support's compute drains",
+      "kind": "watch",
+      "done_when": "compute.drain==drained",
+      "talk": "Support's worker is gone. Nothing runs and nothing is billed.",
+      "short": "Compute drains",
+      "point": "The rail on the left is an empty dashed lane: no Support worker exists. The glowing line in the Nexus seam: the server is holding Support's call to Finance open."
+     },
+     {
+      "id": "approve",
+      "n": 5,
+      "title": "Approve the refund",
+      "kind": "human",
+      "done_when": "task.state in [completed, rejected, failed]",
+      "talk": "I approve as dana.finance.",
+      "short": "Approve",
+      "point": "The empty Support rail and the glowing held-open line in the seam, side by side. Then the approval card in Finance's lane.",
+      "action": "approve",
+      "make": "make approve WF=support-2077-wci-z143 APPROVER=dana.finance"
+     },
+     {
+      "id": "invoke2",
+      "n": 6,
+      "title": "The WCI starts lifetime 2",
+      "kind": "watch",
+      "done_when": "compute.lifetimes>=2",
+      "talk": "Finance's answer landed in Support's history, so the server starts a worker.",
+      "short": "Lifetime 2",
+      "point": "The rail lights up again as lifetime 2 (with the server's WCI, its InvokeWorker row sits on the rail's edge)."
+     },
+     {
+      "id": "reply",
+      "n": 7,
+      "title": "Support replies with the refund ID",
+      "kind": "watch",
+      "done_when": "run.status==COMPLETED",
+      "talk": "Same build, pinned.",
+      "short": "Reply",
+      "point": "The reply quoting the refund ID. Same run ID from start to finish.",
+      "point_versioned": "The reply quoting the refund ID, and the pinned Build ID in the header."
+     },
+     {
+      "id": "report",
+      "n": 8,
+      "title": "Read the report",
+      "kind": "watch",
+      "done_when": "run.closed",
+      "talk": "Two lifetimes, one Build ID, reply seconds after the approval.",
+      "short": "Report",
+      "point": "The report: how long the approval took, and seconds from approval to reply. This run is unversioned: plain workers on support-dev-tq.",
+      "point_versioned": "The report: lifetimes, one Build ID, and seconds from approval to reply.",
+      "make": "make wci-history BUILD=4ee7f87"
+     }
+    ],
+    "notes": "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh worker to finish the reply.",
+    "setup_recipe": null,
+    "setup_blocked": null,
+    "next": {
+     "id": "load",
+     "short": "Load",
+     "setup_recipe": null
+    },
+    "start_action": null,
+    "start_label": "Start Case B",
+    "view": null,
+    "extra_action": null
+   },
+   {
+    "id": "load",
+    "title": "Load: N conversations at once",
+    "short": "Load",
+    "sub": "Up to 20 conversations at once",
+    "run_label": "Load",
+    "summary": "N Workflows on support-tq with nothing polling; the WCI scales Support up and back to zero.",
+    "story": {
+     "tag": "v0.7-serverless-shape",
+     "doc": "docs/story/v0.7-serverless-shape.md"
+    },
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "fit": "needs_setup",
+    "cost": "free",
+    "cost_note": "ping: no model; case-a: model turns",
+    "case": null,
+    "order_id": null,
+    "amount_usd": null,
+    "options": [
+     {
+      "id": "n",
+      "label": "Conversations",
+      "type": "number",
+      "default": 10,
+      "min": 1,
+      "max": 20
+     },
+     {
+      "id": "kind",
+      "label": "What each one runs",
+      "type": "choice",
+      "choices": [
+       "ping",
+       "case-a"
+      ],
+      "default": "ping"
+     }
+    ],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "build-id",
+      "label": "Support's Build ID is known",
+      "ok": true
+     },
+     {
+      "id": "version",
+      "label": "support-supervisor:4ee7f87 is current",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "register-version",
+       "params": {
+        "mode": "--poller"
+       },
+       "label": "Register version"
+      },
+      "by_setup": true
+     },
+     {
+      "id": "serverless-compute",
+      "label": "AgentCore app on :8080",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "agentcore-local",
+       "label": "Start AgentCore app"
+      },
+      "by_setup": true
+     }
+    ],
+    "steps": [
+     {
+      "id": "load",
+      "n": 1,
+      "title": "Start the load",
+      "kind": "action",
+      "done_when": "job.load==succeeded",
+      "talk": "N at once on support-tq.",
+      "short": "Load",
+      "action": "load",
+      "make": "make load N=10 LOAD_KIND=ping"
+     }
+    ],
+    "notes": "Ten conversations arrive at once. Nothing polls Support's queue until the server's Worker Controller starts capacity, and it all drains back to zero.",
+    "setup_recipe": "kind-up",
+    "setup_blocked": {
+     "why": "Start the Docker VM first.",
+     "fix": {
+      "kind": "action",
+      "action": "colima-up",
+      "params": {},
+      "label": "Start Docker VM"
+     }
+    },
+    "next": {
+     "id": "cleanup",
+     "short": "Clean up",
+     "setup_recipe": null
+    },
+    "start_action": "load",
+    "start_label": "Start {n} conversations",
+    "view": null,
+    "extra_action": null
+   },
+   {
+    "id": "smoke",
+    "title": "Nexus hop with no AI",
+    "short": "Nexus hop, no AI",
+    "sub": "Smoke caller and Agent Card",
+    "run_label": "Smoke",
+    "summary": "A2ASmokeWorkflow calls Finance over Nexus with no model on the caller; then a standalone get_agent_card.",
+    "story": {
+     "tag": "v0.4-finance-agent",
+     "doc": "docs/story/v0.4-finance-agent.md"
+    },
+    "profiles": [
+     "local"
+    ],
+    "fit": "wrong_profile",
+    "cost": "free",
+    "cost_note": "no model on the caller",
+    "case": null,
+    "order_id": "1042",
+    "amount_usd": 40.0,
+    "options": [],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      }
+     },
+     {
+      "id": "endpoint",
+      "label": "Nexus endpoint finance-agent",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "nexus-endpoint",
+       "params": {},
+       "label": "Create endpoint"
+      }
+     },
+     {
+      "id": "finance",
+      "label": "A Finance worker polls agent-services-tq",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      }
+     },
+     {
+      "id": "smoke-worker",
+      "label": "Smoke worker polls nexus-smoke-tq",
+      "ok": false,
+      "fix": {
+       "kind": "process",
+       "process": "worker-smoke",
+       "label": "Start smoke worker"
+      }
+     }
+    ],
+    "steps": [
+     {
+      "id": "smoke",
+      "n": 1,
+      "title": "Run the smoke caller",
+      "kind": "action",
+      "done_when": "job.smoke==succeeded",
+      "talk": "A Workflow in agents calls a named endpoint; the server routes it into agent-services.",
+      "short": "Smoke",
+      "action": "smoke",
+      "make": "make smoke"
+     },
+     {
+      "id": "card",
+      "n": 2,
+      "title": "Standalone get_agent_card",
+      "kind": "action",
+      "done_when": "job.card==succeeded",
+      "talk": "A Nexus operation with no Workflow at all, from the CLI.",
+      "short": "Agent Card",
+      "point": "The short wire to the seam: get_agent_card, the one thing Finance publishes.",
+      "action": "card",
+      "make": "make card"
+     }
+    ],
+    "notes": "The Finance team publishes exactly one thing, an A2A-shaped contract. No AI on the caller yet, just the hop.",
+    "setup_recipe": null,
+    "setup_blocked": null,
+    "next": {
+     "id": "cleanup",
+     "short": "Clean up",
+     "setup_recipe": null
+    },
+    "start_action": "smoke",
+    "start_label": "Run the smoke caller",
+    "view": null,
+    "extra_action": {
+     "action": "card",
+     "label": "Fetch the Agent Card"
+    }
+   },
+   {
+    "id": "cleanup",
+    "title": "Clean up: runs still waiting for a human",
+    "short": "Clean up",
+    "sub": "Reject or terminate stuck runs",
+    "run_label": "Clean up",
+    "summary": "Runs still waiting in input-required. Reject or terminate them.",
+    "story": {
+     "tag": "v0.7-serverless-shape",
+     "doc": "docs/story/v0.7-serverless-shape.md"
+    },
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "fit": "needs_setup",
+    "cost": "free",
+    "cost_note": "signals and terminations only",
+    "case": null,
+    "order_id": null,
+    "amount_usd": null,
+    "options": [],
+    "preconditions": [
+     {
+      "id": "temporal",
+      "label": "Temporal is up",
+      "ok": false,
+      "fix": {
+       "kind": "action",
+       "action": "colima-up",
+       "params": {},
+       "label": "Start Docker VM"
+      }
+     }
+    ],
+    "steps": [],
+    "notes": "Housekeeping before the next demo.",
+    "setup_recipe": null,
+    "setup_blocked": null,
+    "next": null,
+    "start_action": null,
+    "start_label": "Start",
+    "view": "cleanup",
+    "extra_action": null
+   }
+  ]
+ },
+ "actions": {
+  "actions": [
+   {
+    "id": "start-recipe",
+    "label": "Set up the stack",
+    "cost": "free",
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": true,
+    "why_not": null,
+    "params": [
+     {
+      "id": "recipe",
+      "type": "choice",
+      "choices": [
+       "local-plain",
+       "local-invoke",
+       "local-wci",
+       "kind-up",
+       "kind-laptop",
+       "teardown"
+      ],
+      "default": "kind-up"
+     },
+     {
+      "id": "variant",
+      "type": "choice",
+      "choices": [
+       "scripted",
+       "live"
+      ],
+      "default": "scripted"
+     }
+    ],
+    "make": "recipe Bring up kind",
+    "long": false,
+    "group": "recipe",
+    "recipes": [
+     {
+      "id": "local-plain",
+      "title": "Local, plain Support",
+      "profiles": [
+       "local"
+      ],
+      "long": false,
+      "danger": false,
+      "variants": [
+       "scripted",
+       "live"
+      ],
+      "steps": {
+       "scripted": [
+        {
+         "id": "dev-server",
+         "label": "dev-server-up WCI=0"
+        },
+        {
+         "id": "stop",
+         "label": "stop agentcore-local, agentcore-emulator"
+        },
+        {
+         "id": "payments-mock",
+         "label": "payments-mock"
+        },
+        {
+         "id": "worker-finance",
+         "label": "worker-finance-scripted"
+        },
+        {
+         "id": "nexus-endpoint",
+         "label": "nexus-endpoint"
+        },
+        {
+         "id": "worker-support",
+         "label": "worker-support-scripted"
+        }
+       ],
+       "live": [
+        {
+         "id": "dev-server",
+         "label": "dev-server-up WCI=0"
+        },
+        {
+         "id": "stop",
+         "label": "stop agentcore-local, agentcore-emulator"
+        },
+        {
+         "id": "payments-mock",
+         "label": "payments-mock"
+        },
+        {
+         "id": "worker-finance",
+         "label": "worker-finance"
+        },
+        {
+         "id": "nexus-endpoint",
+         "label": "nexus-endpoint"
+        },
+        {
+         "id": "worker-support",
+         "label": "worker-support"
+        }
+       ]
+      },
+      "available": false,
+      "why_not": "Not on profile kind."
+     },
+     {
+      "id": "local-invoke",
+      "title": "Local, serverless (invoke-local)",
+      "profiles": [
+       "local"
+      ],
+      "long": false,
+      "danger": false,
+      "variants": [
+       "scripted",
+       "live"
+      ],
+      "steps": {
+       "scripted": [
+        {
+         "id": "dev-server",
+         "label": "dev-server-up WCI=0"
+        },
+        {
+         "id": "stop",
+         "label": "stop worker-support"
+        },
+        {
+         "id": "payments-mock",
+         "label": "payments-mock"
+        },
+        {
+         "id": "worker-finance",
+         "label": "worker-finance-scripted"
+        },
+        {
+         "id": "nexus-endpoint",
+         "label": "nexus-endpoint"
+        },
+        {
+         "id": "agentcore-local",
+         "label": "agentcore-local-scripted"
+        },
+        {
+         "id": "ping",
+         "label": "wait for /ping"
+        },
+        {
+         "id": "invoke-local",
+         "label": "invoke-local"
+        },
+        {
+         "id": "register-version",
+         "label": "register-version MODE=--poller"
+        }
+       ],
+       "live": [
+        {
+         "id": "dev-server",
+         "label": "dev-server-up WCI=0"
+        },
+        {
+         "id": "stop",
+         "label": "stop worker-support"
+        },
+        {
+         "id": "payments-mock",
+         "label": "payments-mock"
+        },
+        {
+         "id": "worker-finance",
+         "label": "worker-finance"
+        },
+        {
+         "id": "nexus-endpoint",
+         "label": "nexus-endpoint"
+        },
+        {
+         "id": "agentcore-local",
+         "label": "agentcore-local"
+        },
+        {
+         "id": "ping",
+         "label": "wait for /ping"
+        },
+        {
+         "id": "invoke-local",
+         "label": "invoke-local"
+        },
+        {
+         "id": "register-version",
+         "label": "register-version MODE=--poller"
+        }
+       ]
+      },
+      "available": false,
+      "why_not": "Not on profile kind."
+     },
+     {
+      "id": "local-wci",
+      "title": "Local, serverless (WCI emulator)",
+      "profiles": [
+       "local"
+      ],
+      "long": false,
+      "danger": false,
+      "variants": [
+       "scripted",
+       "live"
+      ],
+      "steps": {
+       "scripted": [
+        {
+         "id": "drain",
+         "label": "wait for /ping Healthy"
+        },
+        {
+         "id": "dev-server",
+         "label": "dev-server-up WCI=1"
+        },
+        {
+         "id": "stop",
+         "label": "stop worker-support"
+        },
+        {
+         "id": "payments-mock",
+         "label": "payments-mock"
+        },
+        {
+         "id": "worker-finance",
+         "label": "worker-finance-scripted"
+        },
+        {
+         "id": "nexus-endpoint",
+         "label": "nexus-endpoint"
+        },
+        {
+         "id": "agentcore-emulator",
+         "label": "agentcore-emulator"
+        },
+        {
+         "id": "agentcore-local",
+         "label": "agentcore-local-scripted"
+        },
+        {
+         "id": "ping",
+         "label": "wait for /ping"
+        },
+        {
+         "id": "register-version",
+         "label": "register-version MODE=--local-wci"
+        }
+       ],
+       "live": [
+        {
+         "id": "drain",
+         "label": "wait for /ping Healthy"
+        },
+        {
+         "id": "dev-server",
+         "label": "dev-server-up WCI=1"
+        },
+        {
+         "id": "stop",
+         "label": "stop worker-support"
+        },
+        {
+         "id": "payments-mock",
+         "label": "payments-mock"
+        },
+        {
+         "id": "worker-finance",
+         "label": "worker-finance"
+        },
+        {
+         "id": "nexus-endpoint",
+         "label": "nexus-endpoint"
+        },
+        {
+         "id": "agentcore-emulator",
+         "label": "agentcore-emulator"
+        },
+        {
+         "id": "agentcore-local",
+         "label": "agentcore-local"
+        },
+        {
+         "id": "ping",
+         "label": "wait for /ping"
+        },
+        {
+         "id": "register-version",
+         "label": "register-version MODE=--local-wci"
+        }
+       ]
+      },
+      "available": false,
+      "why_not": "Not on profile kind."
+     },
+     {
+      "id": "kind-up",
+      "title": "Bring up kind",
+      "profiles": [
+       "kind",
+       "kind-plaintext"
+      ],
+      "long": true,
+      "danger": false,
+      "variants": [
+       "scripted",
+       "live"
+      ],
+      "steps": {
+       "scripted": [
+        {
+         "id": "docker",
+         "label": "check Docker VM agentcore"
+        },
+        {
+         "id": "kind-up",
+         "label": "kind-up, unless the cluster is up"
+        },
+        {
+         "id": "kind-temporal",
+         "label": "kind-temporal KIND_TLS=1, unless installed"
+        },
+        {
+         "id": "certs-pull",
+         "label": "certs-pull"
+        },
+        {
+         "id": "pf",
+         "label": "pf, wait for Temporal on :7233"
+        },
+        {
+         "id": "kind-workers",
+         "label": "kind-workers FINANCE_MODEL=scripted, unless polling"
+        },
+        {
+         "id": "nexus-endpoint",
+         "label": "nexus-endpoint"
+        },
+        {
+         "id": "agentcore-local",
+         "label": "agentcore-local-scripted"
+        },
+        {
+         "id": "ping",
+         "label": "wait for /ping"
+        },
+        {
+         "id": "invoke-local",
+         "label": "invoke-local"
+        },
+        {
+         "id": "register-version",
+         "label": "register-version MODE=--poller"
+        }
+       ],
+       "live": [
+        {
+         "id": "docker",
+         "label": "check Docker VM agentcore"
+        },
+        {
+         "id": "kind-up",
+         "label": "kind-up, unless the cluster is up"
+        },
+        {
+         "id": "kind-temporal",
+         "label": "kind-temporal KIND_TLS=1, unless installed"
+        },
+        {
+         "id": "certs-pull",
+         "label": "certs-pull"
+        },
+        {
+         "id": "pf",
+         "label": "pf, wait for Temporal on :7233"
+        },
+        {
+         "id": "kind-aws-creds",
+         "label": "kind-aws-creds"
+        },
+        {
+         "id": "kind-workers",
+         "label": "kind-workers FINANCE_MODEL=bedrock, unless polling"
+        },
+        {
+         "id": "nexus-endpoint",
+         "label": "nexus-endpoint"
+        },
+        {
+         "id": "agentcore-local",
+         "label": "agentcore-local"
+        },
+        {
+         "id": "ping",
+         "label": "wait for /ping"
+        },
+        {
+         "id": "invoke-local",
+         "label": "invoke-local"
+        },
+        {
+         "id": "register-version",
+         "label": "register-version MODE=--poller"
+        }
+       ]
+      },
+      "available": true,
+      "why_not": null
+     },
+     {
+      "id": "kind-laptop",
+      "title": "Laptop side only (cluster already up)",
+      "profiles": [
+       "kind",
+       "kind-plaintext"
+      ],
+      "long": false,
+      "danger": false,
+      "variants": [
+       "scripted",
+       "live"
+      ],
+      "steps": {
+       "scripted": [
+        {
+         "id": "temporal",
+         "label": "check Temporal on :7233"
+        },
+        {
+         "id": "nexus-endpoint",
+         "label": "nexus-endpoint"
+        },
+        {
+         "id": "agentcore-local",
+         "label": "agentcore-local-scripted"
+        },
+        {
+         "id": "ping",
+         "label": "wait for /ping"
+        },
+        {
+         "id": "invoke-local",
+         "label": "invoke-local"
+        },
+        {
+         "id": "register-version",
+         "label": "register-version MODE=--poller"
+        }
+       ],
+       "live": [
+        {
+         "id": "temporal",
+         "label": "check Temporal on :7233"
+        },
+        {
+         "id": "nexus-endpoint",
+         "label": "nexus-endpoint"
+        },
+        {
+         "id": "agentcore-local",
+         "label": "agentcore-local"
+        },
+        {
+         "id": "ping",
+         "label": "wait for /ping"
+        },
+        {
+         "id": "invoke-local",
+         "label": "invoke-local"
+        },
+        {
+         "id": "register-version",
+         "label": "register-version MODE=--poller"
+        }
+       ]
+      },
+      "available": false,
+      "why_not": "Temporal on kind is not reachable: run Bring up kind first."
+     },
+     {
+      "id": "teardown",
+      "title": "Tear down local",
+      "profiles": [
+       "local"
+      ],
+      "long": false,
+      "danger": true,
+      "variants": [],
+      "steps": {
+       "scripted": [
+        {
+         "id": "stop",
+         "label": "stop every managed process"
+        },
+        {
+         "id": "dev-server",
+         "label": "dev-server-down"
+        }
+       ]
+      },
+      "available": false,
+      "why_not": "Not on profile kind."
+     }
+    ]
+   },
+   {
+    "id": "nexus-endpoint",
+    "label": "Create the Nexus endpoint finance-agent",
+    "cost": "free",
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": true,
+    "why_not": null,
+    "params": [],
+    "make": "make nexus-endpoint TEMPORAL_PROFILE=kind",
+    "long": false,
+    "group": "oneshot"
+   },
+   {
+    "id": "register-version",
+    "label": "Register Support's version",
+    "cost": "free",
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": true,
+    "why_not": null,
+    "params": [
+     {
+      "id": "mode",
+      "type": "choice",
+      "choices": [
+       "--poller",
+       "--local-wci"
+      ],
+      "default": "--poller"
+     }
+    ],
+    "make": "make register-version MODE=--poller TEMPORAL_PROFILE=kind",
+    "long": false,
+    "group": "oneshot"
+   },
+   {
+    "id": "invoke-local",
+    "label": "Invoke AgentCore app",
+    "cost": "free",
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": true,
+    "why_not": null,
+    "params": [],
+    "make": "make invoke-local TEMPORAL_BUILD_ID=4ee7f87 TEMPORAL_PROFILE=kind",
+    "long": false,
+    "group": "oneshot"
+   },
+   {
+    "id": "agentcore-ping",
+    "label": "Ping the AgentCore app",
+    "cost": "free",
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": true,
+    "why_not": null,
+    "params": [],
+    "make": "make agentcore-ping TEMPORAL_PROFILE=kind",
+    "long": false,
+    "group": "oneshot"
+   },
+   {
+    "id": "smoke",
+    "label": "Run the smoke caller",
+    "cost": "free",
+    "profiles": [
+     "local"
+    ],
+    "available": false,
+    "why_not": "Not on profile kind.",
+    "params": [],
+    "make": "make smoke WF=smoke-1042-<id> TEMPORAL_PROFILE=kind",
+    "long": false,
+    "group": "oneshot"
+   },
+   {
+    "id": "card",
+    "label": "Standalone get_agent_card",
+    "cost": "free",
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": true,
+    "why_not": null,
+    "params": [],
+    "make": "make card TEMPORAL_PROFILE=kind",
+    "long": false,
+    "group": "oneshot"
+   },
+   {
+    "id": "load",
+    "label": "Start N conversations",
+    "cost": "free",
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": true,
+    "why_not": null,
+    "params": [
+     {
+      "id": "n",
+      "type": "number",
+      "default": 10,
+      "min": 1,
+      "max": 20
+     },
+     {
+      "id": "kind",
+      "type": "choice",
+      "choices": [
+       "ping",
+       "case-a"
+      ],
+      "default": "ping"
+     }
+    ],
+    "make": "make load N=10 LOAD_KIND=ping TEMPORAL_PROFILE=kind",
+    "long": false,
+    "group": "oneshot"
+   },
+   {
+    "id": "wci-history",
+    "label": "Show the WCI's history",
+    "cost": "free",
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": true,
+    "why_not": null,
+    "params": [],
+    "make": "make wci-history BUILD=4ee7f87 TEMPORAL_PROFILE=kind",
+    "long": false,
+    "group": "oneshot"
+   },
+   {
+    "id": "colima-up",
+    "label": "Start Docker VM",
+    "cost": "free",
+    "profiles": [
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": true,
+    "why_not": null,
+    "params": [],
+    "make": "make colima-up TEMPORAL_PROFILE=kind",
+    "long": true,
+    "group": "cluster"
+   },
+   {
+    "id": "kind-up",
+    "label": "Create the kind cluster",
+    "cost": "free",
+    "profiles": [
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": false,
+    "why_not": "Docker VM agentcore is stopped: Start Docker VM first.",
+    "params": [],
+    "make": "make kind-up TEMPORAL_PROFILE=kind",
+    "long": true,
+    "group": "cluster"
+   },
+   {
+    "id": "kind-temporal",
+    "label": "Install Temporal on kind",
+    "cost": "free",
+    "profiles": [
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": false,
+    "why_not": "Docker VM agentcore is stopped: Start Docker VM first.",
+    "params": [],
+    "make": "make kind-temporal KIND_TLS=1 TEMPORAL_PROFILE=kind",
+    "long": true,
+    "group": "cluster"
+   },
+   {
+    "id": "kind-workers",
+    "label": "Deploy Finance pods (scripted)",
+    "cost": "free",
+    "profiles": [
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": false,
+    "why_not": "Docker VM agentcore is stopped: Start Docker VM first.",
+    "params": [],
+    "make": "make kind-workers FINANCE_MODEL=scripted KIND_TLS=1 TEMPORAL_PROFILE=kind",
+    "long": true,
+    "group": "cluster"
+   },
+   {
+    "id": "certs-pull",
+    "label": "Pull client certs",
+    "cost": "free",
+    "profiles": [
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": false,
+    "why_not": "Docker VM agentcore is stopped: Start Docker VM first.",
+    "params": [],
+    "make": "make certs-pull TEMPORAL_PROFILE=kind",
+    "long": true,
+    "group": "cluster"
+   },
+   {
+    "id": "pf",
+    "label": "Start port-forward",
+    "cost": "free",
+    "profiles": [
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": false,
+    "why_not": "Docker VM agentcore is stopped: Start Docker VM first.",
+    "params": [],
+    "make": "make pf TEMPORAL_PROFILE=kind",
+    "long": true,
+    "group": "cluster"
+   },
+   {
+    "id": "pf-stop",
+    "label": "Stop port-forward",
+    "cost": "free",
+    "profiles": [
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": true,
+    "why_not": null,
+    "params": [],
+    "make": "make pf-stop TEMPORAL_PROFILE=kind",
+    "long": true,
+    "group": "cluster"
+   },
+   {
+    "id": "kind-down",
+    "label": "Delete the kind cluster",
+    "cost": "free",
+    "profiles": [
+     "kind",
+     "kind-plaintext"
+    ],
+    "available": false,
+    "why_not": "Docker VM agentcore is stopped: Start Docker VM first.",
+    "params": [],
+    "make": "make kind-down TEMPORAL_PROFILE=kind",
+    "long": true,
+    "group": "cluster"
+   }
+  ]
+ },
+ "processes": {
+  "processes": [
+   {
+    "name": "dev-server",
+    "label": "Temporal dev server",
+    "variant": "default",
+    "variants": [
+     "default"
+    ],
+    "status": "unavailable",
+    "pid": null,
+    "started_at": null,
+    "exit_code": null,
+    "make": "make dev-server-up WCI=0",
+    "cost": "free",
+    "ports": [
+     7233,
+     8233
+    ],
+    "profiles": [
+     "local"
+    ],
+    "needs": [],
+    "managed": false,
+    "why": "Not on profile kind: the console only runs laptop processes there.",
+    "wci": null
+   },
+   {
+    "name": "payments-mock",
+    "label": "Payments mock",
+    "variant": "default",
+    "variants": [
+     "default"
+    ],
+    "status": "unavailable",
+    "pid": null,
+    "started_at": null,
+    "exit_code": null,
+    "make": "make payments-mock",
+    "cost": "free",
+    "ports": [
+     8081
+    ],
+    "profiles": [
+     "local"
+    ],
+    "needs": [],
+    "managed": false,
+    "why": "Not on profile kind: the console only runs laptop processes there."
+   },
+   {
+    "name": "worker-finance",
+    "label": "Finance worker",
+    "variant": "scripted",
+    "variants": [
+     "scripted",
+     "live"
+    ],
+    "status": "unavailable",
+    "pid": null,
+    "started_at": null,
+    "exit_code": null,
+    "make": "make worker-finance-scripted",
+    "cost": "free",
+    "ports": [],
+    "profiles": [
+     "local"
+    ],
+    "needs": [],
+    "managed": false,
+    "why": "Not on profile kind: the console only runs laptop processes there."
+   },
+   {
+    "name": "worker-support",
+    "label": "Support worker (plain)",
+    "variant": "scripted",
+    "variants": [
+     "scripted",
+     "live"
+    ],
+    "status": "unavailable",
+    "pid": null,
+    "started_at": null,
+    "exit_code": null,
+    "make": "make worker-support-scripted",
+    "cost": "free",
+    "ports": [],
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "needs": [],
+    "managed": false,
+    "why": "No client certificate in .certs/laptop-support/ (make certs-pull)."
+   },
+   {
+    "name": "worker-support-versioned",
+    "label": "Support worker (versioned, long-lived)",
+    "variant": "live",
+    "variants": [
+     "live"
+    ],
+    "status": "unavailable",
+    "pid": null,
+    "started_at": null,
+    "exit_code": null,
+    "make": "make worker-support-versioned",
+    "cost": "tokens",
+    "ports": [],
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "needs": [
+     "build_id"
+    ],
+    "managed": false,
+    "why": "No client certificate in .certs/agentcore-worker/ (make certs-pull)."
+   },
+   {
+    "name": "agentcore-local",
+    "label": "Local AgentCore app",
+    "variant": "scripted",
+    "variants": [
+     "scripted",
+     "live"
+    ],
+    "status": "unavailable",
+    "pid": null,
+    "started_at": null,
+    "exit_code": null,
+    "make": "make agentcore-local-scripted",
+    "cost": "free",
+    "ports": [
+     8080
+    ],
+    "profiles": [
+     "local",
+     "kind",
+     "kind-plaintext"
+    ],
+    "needs": [
+     "build_id"
+    ],
+    "managed": false,
+    "why": "No client certificate in .certs/agentcore-worker/ (make certs-pull)."
+   },
+   {
+    "name": "agentcore-emulator",
+    "label": "WCI emulator (AgentCore API)",
+    "variant": "default",
+    "variants": [
+     "default"
+    ],
+    "status": "unavailable",
+    "pid": null,
+    "started_at": null,
+    "exit_code": null,
+    "make": "make agentcore-emulator",
+    "cost": "free",
+    "ports": [
+     4599
+    ],
+    "profiles": [
+     "local"
+    ],
+    "needs": [],
+    "managed": false,
+    "why": "Not on profile kind: the console only runs laptop processes there."
+   },
+   {
+    "name": "worker-smoke",
+    "label": "Smoke caller worker",
+    "variant": "default",
+    "variants": [
+     "default"
+    ],
+    "status": "unavailable",
+    "pid": null,
+    "started_at": null,
+    "exit_code": null,
+    "make": "make worker-smoke",
+    "cost": "free",
+    "ports": [],
+    "profiles": [
+     "local"
+    ],
+    "needs": [],
+    "managed": false,
+    "why": "Not on profile kind: the console only runs laptop processes there."
+   }
+  ]
+ },
+ "jobs": {
+  "jobs": [
+   {
+    "id": "j-20261102-140131-start-recipe",
+    "action": "start-recipe",
+    "title": "Bring up kind",
+    "steps": [
+     {
+      "id": "docker",
+      "label": "check Docker VM agentcore",
+      "status": "failed",
+      "note": "Docker VM agentcore is stopped",
+      "elapsed_s": 0.4
+     },
+     {
+      "id": "kind-up",
+      "label": "kind-up, unless the cluster is up",
+      "status": "todo",
+      "note": null,
+      "elapsed_s": null
+     },
+     {
+      "id": "kind-temporal",
+      "label": "kind-temporal KIND_TLS=1, unless installed",
+      "status": "todo",
+      "note": null,
+      "elapsed_s": null
+     },
+     {
+      "id": "certs-pull",
+      "label": "certs-pull",
+      "status": "todo",
+      "note": null,
+      "elapsed_s": null
+     },
+     {
+      "id": "pf",
+      "label": "pf, wait for Temporal on :7233",
+      "status": "todo",
+      "note": null,
+      "elapsed_s": null
+     },
+     {
+      "id": "kind-workers",
+      "label": "kind-workers FINANCE_MODEL=scripted, unless polling",
+      "status": "todo",
+      "note": null,
+      "elapsed_s": null
+     },
+     {
+      "id": "nexus-endpoint",
+      "label": "nexus-endpoint",
+      "status": "todo",
+      "note": null,
+      "elapsed_s": null
+     },
+     {
+      "id": "agentcore-local",
+      "label": "agentcore-local-scripted",
+      "status": "todo",
+      "note": null,
+      "elapsed_s": null
+     },
+     {
+      "id": "ping",
+      "label": "wait for /ping",
+      "status": "todo",
+      "note": null,
+      "elapsed_s": null
+     },
+     {
+      "id": "invoke-local",
+      "label": "invoke-local",
+      "status": "todo",
+      "note": null,
+      "elapsed_s": null
+     },
+     {
+      "id": "register-version",
+      "label": "register-version MODE=--poller",
+      "status": "todo",
+      "note": null,
+      "elapsed_s": null
+     }
+    ],
+    "status": "failed",
+    "command": "recipe Bring up kind",
+    "cost": "free",
+    "started_at": "2026-11-02T14:01:31.200Z",
+    "ended_at": "2026-11-02T14:01:31.640Z",
+    "exit_code": 1,
+    "log_tail": [
+     "$ recipe Bring up kind",
+     "[1/11] check Docker VM agentcore",
+     "failed at check Docker VM agentcore: Docker VM agentcore is stopped",
+     "  next: Start Docker VM (Manage stack), then run Bring up kind again."
+    ],
+    "result": {
+     "error": "Docker VM agentcore is stopped",
+     "step": "docker",
+     "step_label": "check Docker VM agentcore",
+     "hint": "Start Docker VM (Manage stack), then run Bring up kind again.",
+     "tail": []
+    },
+    "params": {
+     "recipe": "kind-up",
+     "variant": "scripted"
+    }
+   }
+  ]
+ },
+ "extra_runs": {},
+ "run": null,
+ "rows": null,
+ "report": null,
+ "route": "#/scenarios/case-b"
+}

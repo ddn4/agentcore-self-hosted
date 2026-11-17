@@ -50,8 +50,8 @@ PYTEST := $(UV) pytest
         agentcore-ping agentcore-emulator \
         worker-support-versioned register-version wci-history case-b-serverless \
         case-a-serverless tools kind-up kind-temporal kind-images kind-workers kind-aws-creds \
-        certs-pull pf pf-stop kind-status kind-down cert-renew kind-env env \
-        failure load ui-shot console console-shots
+        certs-pull pf pf-stop kind-status kind-down cert-renew kind-env env colima-up \
+        failure load ui-shot console console-fixtures console-shots
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -268,6 +268,16 @@ failure: ## Failure demo on kind: Finance to 0 mid-Case A -> pending Nexus op re
 # kubectl/helm/kind use .temporal/kubeconfig-agentcore-demo (never ~/.kube/config) and
 # DOCKER_CONTEXT=colima-agentcore. KIND_TLS=1 (default) installs with values.tls.yaml.
 KIND_TLS ?= 1
+COLIMA_PROFILE ?= agentcore
+
+# The docker context colima-$(COLIMA_PROFILE) appears once the VM runs, so colima itself runs
+# without DOCKER_CONTEXT (a context that does not exist yet would fail its docker calls).
+colima-up: ## Start the Docker VM (colima profile agentcore, 6 CPU / 12 GB); idempotent
+	@if env -u DOCKER_CONTEXT colima status -p $(COLIMA_PROFILE) >/dev/null 2>&1; then \
+	  echo "colima $(COLIMA_PROFILE) is running"; \
+	else \
+	  env -u DOCKER_CONTEXT colima start -p $(COLIMA_PROFILE) --cpu 6 --memory 12; \
+	fi
 
 kind-up: ## kind cluster + cert-manager + root CA / temporal-ca ClusterIssuer + postgres
 	scripts/kind.sh up
@@ -327,6 +337,9 @@ CONSOLE_PORT ?= 8099
 
 console: ## Demo console on http://127.0.0.1:8099 (TEMPORAL_PROFILE=local|kind|kind-plaintext)
 	$(UV) python -m demo_console --port $(CONSOLE_PORT)
+
+console-fixtures: ## Recompute the fixtures' config, scenarios and actions from the backend code (static/fixtures; no Temporal needed)
+	$(UV) python -m demo_console.fixtures
 
 console-shots: ## Screenshots of the console's fixture views (dark/light, 1440x900 + 390x844) -> .temporal/console/shots/ (no Temporal needed)
 	scripts/console-shot.sh --all

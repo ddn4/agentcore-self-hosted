@@ -42,9 +42,9 @@ console that has to work when projected from the back of the room:
 | The audience must see | What the console shows | Where |
 |---|---|---|
 | **Two teams, one contract.** Support (namespace `agents`) asks Finance (namespace `agent-services`) for a refund. They share an A2A contract and a named Nexus endpoint, not code, workers or a child workflow. | Two swimlanes with a vertical **boundary seam** between them, labelled with the endpoint `finance-agent`. Every Nexus call is drawn as a connector that crosses the seam. Nothing else crosses it. | Run view, lanes |
-| **The A2A task has a state, and a human owns one of them.** `submitted -> working -> input-required -> completed / rejected / failed`. | The **state track**, with the current protocol token set very large (`input-required`). The approval card sits *inside Finance's lane*, at the moment the task went to input-required. | Run view, header and Finance lane |
-| **Support's compute is gone, and nothing is lost.** While Finance waits, Support has no worker at all (scale to zero). The server holds the Nexus call open and the conversation stays in history. | The **compute rail** at the left of the Support lane is lit while a worker or AgentCore lifetime runs and **goes dark** when it drains. Beside the dark stretch, the seam shows a violet "held open" bar, with a running clock, for the pending `send_message`. A large counter reads "Support workers running: 0". | Run view, compute rail and seam |
-| **A new lifetime picks up, pinned to the same build.** After approval, the Nexus completion makes the WCI (or the presenter, with invoke-local) start lifetime 2. It finishes the reply on the same Build ID. | The rail lights again as "lifetime 2". A `wci InvokeWorker` row appears on the rail edge. The run header always shows `pinned to support-supervisor:4ee7f87`. The report strip shows the Q15 deltas (approval to InvokeWorker to first Workflow Task to reply). | Run view, rail and report strip |
+| **The A2A task has a state, and a human owns one of them.** `submitted -> working -> input-required -> completed / rejected / failed`. | The **state track** in the run header, with the current protocol token as the word (`input-required`). The approval card sits *inside Finance's lane*, at the moment the task went to input-required. | Run view, header and Finance lane |
+| **Support's compute is gone, and nothing is lost.** While Finance waits, Support has no worker at all (scale to zero). The server holds the Nexus call open and the conversation stays in history. | The **compute rail** at the left of the Support lane is lit while a worker or AgentCore lifetime runs and **goes dark** when it drains. Beside the dark stretch, the seam shows a violet "held open" bar, with a running clock, for the pending `send_message`. The "now" row says how long Support has had no compute. | Run view, compute rail and seam |
+| **A new lifetime picks up, pinned to the same build.** After approval, the Nexus completion makes the WCI (or the presenter, with invoke-local) start lifetime 2. It finishes the reply on the same Build ID. | The rail lights again as "lifetime 2". A `wci InvokeWorker` row appears on the rail edge. "Run details" in the run header shows `pinned to support-supervisor:4ee7f87`, and the report names the one Build ID. The report strip shows the Q15 deltas (approval to InvokeWorker to first Workflow Task to reply). | Run view, rail and report strip |
 
 The secondary stories (crash demo: kill the worker mid-thought; failure demo: Finance
 disappears and the Nexus call retries; handoff mode; load) reuse the same view. Each adds
@@ -52,14 +52,18 @@ one visible thing: a lifetime that ends abruptly, an attempt counter on the seam
 small runs.
 
 **Presenter flow** (for every scenario):
-1. Pick the scenario in the launcher. Its preconditions are checked against the live stack,
-   and each missing piece has a fix button (local) or the exact make command (kind).
+1. Pick the scenario in the launcher. Its preconditions are checked against the live stack.
+   When something is missing, one **Set up for <short>** button runs the scenario's stack
+   recipe (2.2) and the checklist ticks as the stack comes up; each missing piece also keeps
+   its own compact fix button (on kind: the first missing layer's action).
 2. Press **Start**. The console starts the workflow with a fresh ID and opens the run view.
 3. Follow the guided step list. Each step ticks itself when Temporal shows it happened
    (derived from history, task state and the compute signals; never from button clicks). The
    current step carries the talk-track line in presenter notes.
 4. Act where a human is needed: approve or reject, invoke-local, kill or restart a worker.
-5. Open the Temporal Web UI from any row (deep links), and finish on the report strip.
+5. Open the Temporal Web UI from any row (deep links), and finish on the report strip, which
+   ends with **Next: <short>** (or **Set up and go to <short>** when the next scenario needs
+   the stack in another shape), so moving on never needs the scenario column.
 
 ---
 
@@ -68,99 +72,193 @@ small runs.
 ### 2.1 Regions
 
 ```
-┌ Stack bar ─────────────────────────────────────────────────────────────────────────────┐
-│ AgentCore demo console   [local | kind]            Support: serverless via WCI emulator │
-│ Model: scripted   ● Temporal ● Web UI ● Endpoint ● Finance 1 ○ Support 0 ● AgentCore    │
-│ ● Emulator ● Payments   Build 4ee7f87 (current, pinned)     [Manage stack] [N] [P] [◐]  │
+┌ Stack bar (one row) ───────────────────────────────────────────────────────────────────┐
+│ AgentCore demo console [Recorded] [local|kind · mTLS|kind · plaintext] ● 8 of 8 up      │
+│                                          (+ key pips only when down) [Manage stack][N][P][◐]│
 ├──────────────────────┬─────────────────────────────────────────────────┬───────────────┤
-│ Scenarios            │ Run header: support-2077-wci-k3f9               │ Presenter     │
-│  Case A  ($40)       │ "Order #2077: my laptop arrived with a cracked…"│ notes         │
-│  Case B  ($450) ●    │ Case B on the WCI emulator; pinned 4ee7f87      │ (toggle N)    │
-│  Crash demo          │ [Support in Temporal UI] [Finance task in UI]   │               │
-│  Serverless B        ├─────────────────────────────────────────────────┤ talk line for │
-│  B on WCI emulator   │ submitted  working  INPUT-REQUIRED  completed…  │ the current   │
-│  B on AgentCore      │ Support workers 0 · held open 46 s · lifetimes 1│ step; what to │
-│  Failure demo        ├─────────────────────────────────────────────────┤ point at; the │
-│  Smoke + card        │ 1 ✓ 2 ✓ 3 ✓ 4 ✓ 5 ✓ [6 Approve] 7 8  (stepper)  │ make command  │
-│  Load                ├────┬──────────────┬────────┬────────────────────┤               │
-│                      │rail│ Support      │ seam   │ Finance            │               │
-│ Runs                 │ ██ │ started      │        │                    │               │
-│  support-2077-wci… ◐ │ ██ │ model turn   │        │                    │               │
-│  support-1042-k2x  ✓ │ ██ │ send_message ├──────▶ │ task started       │               │
-│  load-…  10/10     ✓ │ ██ │              │ ┃      │ fraud_score        │               │
-│                      │ ░░ │   46 s: Support has no compute ┃ input-req.  │               │
+│ Scenarios            │ "Order #2077: my laptop…"  ••input-required∘    │ Presenter     │
+│  Case A  ($40)       │   held open 1:39  lifetimes 1  [Support↗][Finance↗]│ notes      │
+│  Case B  ($450) ●    │ task message (hidden while the card shows)      │ (toggle N)    │
+│  Worker crash        │                               Run details ▾     │ 1✓ 2✓ [5 Approve] 6 7 8 │
+│  …                   ├────┬──────────────┬────────┬────────────────────┤ talk line for │
+│                      │rail│ Support      │ seam   │ Finance            │ the current   │
+│ Runs                 │ ██ │ Ticket received│      │                    │ step; what to │
+│  support-2077-wci… ◐ │ ██ │ 3 agents, 2 tools · 3.1 s ▸ │ │             │ point at; the │
+│  support-1042-k2x  ✓ │ ██ │ Asks Finance ├──────▶ │ A2A task started   │ make command  │
+│  load-…  10/10     ✓ │ ██ │              │ ┃      │ Refund agent, 2 tools ▸│           │
+│                      │ ░░ │ 1:16 with no Support compute ┃ asks a human │               │
 │                      │ ░░ │              │ ┃held  │ ┌ approval card ┐  │               │
 │                      │ ░░ │              │ ┃open  │ │approve/reject │  │               │
 │                      │    │              │        │ └───────────────┘  │               │
 ├──────────────────────┴────┴──────────────┴────────┴────────────────────┴───────────────┤
-│ Report strip (after close): lifetimes 2 · Build IDs 1 · approval → reply 9.1 s · R-10015│
+│ (after close the quiet line holds the report: approved by · refund · approval wait …) │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 (The `·` separators in this sketch are only for the ASCII drawing. In the UI each fact is its own
 labelled cell.)
 
-- **Stack bar** (always visible, one or two lines, sticky). It shows the profile (a segmented
-  control; switching asks first if managed processes are running), Support's shape (plain
-  worker / serverless invoke-local / serverless WCI emulator), the model
-  mode, and one status pip per component. A pip is a small shape and a word, never colour
-  alone. **Manage stack** opens the stack sheet: processes with start/stop/log, stack recipes,
-  one-shot actions and kind jobs. `N` toggles presenter notes, `P` toggles
+- **Stack bar** (always visible, one row on desktop, sticky). It shows the brand, a
+  "Recorded data" pill in fixture mode only, the three profile pills (a segmented control,
+  always visible; switching asks first if managed processes are running), one summary pip
+  ("8 of 8 up", neutral when healthy, red with the count when something is down; it opens
+  the sheet) and, only when one of them is not up, the key pips (Temporal, Finance,
+  Support). A pip is a small shape and a word, never colour alone. Support's shape (plain
+  worker / serverless invoke-local / serverless WCI emulator), the model mode, the Build ID
+  and one pip per component live in the header of the **Manage stack** sheet, which also
+  holds the stack recipes first (the one for the scenario on screen has the primary button,
+  each recipe's steps folded behind "N steps"), then **Advanced** disclosures for Cluster (kind
+  only, first), Processes, One-shot actions and Jobs, each one line with a count until opened.
+  A disclosure opens by itself when something in it failed; Cluster also opens when Bring up
+  kind stopped at its Docker VM step, since Start Docker VM lives there. A running job is
+  pinned at the top with its current step and last lines; otherwise the newest job, when it failed. `N` toggles presenter notes, `P` toggles
   projector mode and `◐` switches between the dark theme (default) and light.
-- **Scenario launcher** (left column). Each scenario shows its title, the amount, and a fit
-  marker for the current profile: ready, needs N things, or not on this profile. Selecting one
-  opens its card in the main column if no run is focused. The card shows preconditions with
-  fix buttons, options (A2A mode tool|handoff, Nexus budget, workflow ID, approver default),
-  cost labels and **Start**.
+- **Scenario launcher** (left column), in story order. Each scenario shows its short name and
+  sub, and a muted fit marker for the current profile: "ready", "N missing", or "local only".
+  A line whose read failed counts as "N not checked", never as missing ("1 missing, 1 not
+  checked").
+  While Temporal is down every scenario misses things for that one reason, so the markers are
+  dropped and one line at the top says "Stack not ready: Temporal is down". Selecting one
+  opens its card in the main column if no run is focused. The card, top to bottom, fits a
+  1440x900 screen:
+  1. title, one-line lede, and the facts that matter to the room (cost, model, refund amount
+     and order);
+  2. **Start** with a setup chip beside it: "Ready" with a check, or "3 missing". When the
+     scenario's recipe fixes something that is missing, **Set up for <short>** comes first as
+     the primary button and Start turns secondary (you can still start; the run waits);
+  3. **Options** as a one-line disclosure showing the current values ("tool · 25h ·
+     support-2077-k3f9"); the form (A2A mode tool|handoff, Nexus budget, queue, workflow ID,
+     approver) opens under it. The defaults are right for a live demo;
+  4. **Before you start**, only while something is missing: one line per precondition (a
+     hollow ring when missing, a muted check when there), each missing one with its own
+     compact fix at the end of the line (a fix shared by several lines, such as Start Docker
+     VM, shows once). While the setup recipe runs, a line above says which step it is on; if
+     it stopped, where and why, with a link to its log;
+  5. **What happens**: the numbered step titles, with who acts ("you press a button",
+     "Temporal shows it"); each step's talk line opens on demand. The notes show talk lines
+     only once a run is on, so this is the pre-run preview of what to say.
+  Profiles and the story tag are not on the card (the story doc is in the notes).
 - **Runs** (left column, below). This is a visibility list of recent `SupportSupervisorWorkflow`
   runs (plus load batches grouped by `load-<epoch>`). Each entry shows status and the A2A task
   state glyph. Selecting one focuses the run view (URL `#/runs/<wf>`), so a console restart or
   reload returns to the same run.
 - **Run view** (main column), top to bottom:
-  1. *Run header*: the ticket as a quote on one line with the Temporal UI deep links
-     ("Support", "Finance task") beside it, then one meta line: the workflow ID (mono), the
-     scenario name, queue, `pinned to support-supervisor:<build>` (from describe
-     `versioning_info`), A2A mode and budget. Header, hero and stepper together are one compact
-     strip so the lanes get most of the height (about 60% of a 900 px screen).
-  2. *State track* (the hero): the five A2A states as a track, with the current state token set
-     large. Beside it are three facts: **Support workers running** (0 is shown in the
-     "dark" colour), **Nexus call held open** (a live clock while pending) and
-     **Lifetimes** (count), with the task's message under or between them. Once the run has
-     closed, the report (held open, lifetimes, Build IDs, approval wait and to reply, approver,
-     refund) takes the facts' place, and the all-done stepper is hidden.
-  3. *Guided steps*: a horizontal stepper (numbered, because it is a sequence) kept to one
-     line. Done steps collapse to a check (full title in the tooltip), the current step shows
-     its short label in a pill, and the steps still to come show short labels. Its action
+  1. *Run header*, one line: the ticket as a quote (up to two lines, clipped), the **state
+     track** (a small dot for each other A2A state, filled when passed, open when to come,
+     struck when passed over, with the current state as the word itself, weight 300 at
+     2–2.4 rem with a plain 2 px underline in its state colour), the **Nexus call held open**
+     clock (live while pending) and, on serverless runs or once a worker has had more than
+     one lifetime, **Lifetimes**; then the Temporal UI deep links ("Support", "Finance").
+     Under it, one quiet line: the task's message, hidden while the approval card shows
+     (the card carries amount, limit and risk) and once the run closed with Finance's
+     answer; after close the same line holds the report (approved by, refund ID, approval
+     wait, approval to reply, Build ID), each fact once, then the Next button. At its right end, **Run details**
+     (a disclosure) holds the workflow ID, scenario name, queue, `pinned to
+     support-supervisor:<build>`, A2A mode and budget: setup facts the audience does not need.
+     Header and quiet line together leave the lanes about 85% of a 1440x900 screen. With notes
+     on at 1440x900, a Case A run (10 rows) fits all but about 10 px. Case B waiting on the
+     approval (10 rows) does not fit whole, because the approval card is tall, so its start
+     scrolls off the top. The two hop rows and the card stay on screen together. A finished
+     serverless Case B (17 rows, with the reply) is about 1.8 screens tall. That is the limit
+     of one row per fact.
+  2. *Compute*: whether Support has a worker is told by the compute rail and the "now" row
+     only (no separate counter).
+  3. *Guided steps*: a horizontal stepper (numbered, because it is a sequence). It is
+     presenter navigation, so it sits at the top of the presenter notes; the run view shows
+     it above the lanes only while the notes are off. Done steps collapse to a check (full
+     title in the tooltip), the current step shows its label in a neutral pill. Its action
      button and talk line live in presenter notes and in the lanes, not in the stepper.
   4. *Lanes*: `time | compute rail | Support | seam (Nexus) | Finance`. Time flows down, in event
-     order, with **compressed gaps**: a gap longer than 4 s between consecutive rows is shown as
-     a band carrying its duration ("2:00 with no Support compute"). This keeps a 24 h approval
-     wait readable. Rows carry their agent attribution ("Order Lookup agent") and, on hover or
+     order. A thought carries its own think time on its row ("Support Supervisor thinks ·
+     4.0 s"). Each fact is one row. A lifetime's bring-up is "Lifetime 2 starts · polls
+     support-tq", with the WCI step ("task-add-signal, then InvokeWorker (WCI)") as its detail.
+     Its idle and drained markers become "Lifetime 2 drains after the 20 s debounce".
+     "Finance asks a human" carries the approval timer. Consecutive agent turns and tool calls
+     in one lane, between story events, fold into one row ("3 agents, 2 tools · 16 s", the
+     agent and tool names under it). That row is a button that expands the member rows
+     (keyboard accessible, `aria-expanded`). Some rows never fold: a wire, a lifetime change,
+     a state change, the approval, the reply, or a retry (a later attempt, a new worker
+     identity in that lane, or an `activity.timed_out`). A folded group never hides an
+     identity change from the next visible row.
+     **Compressed gaps**: a gap longer than 4 s becomes a band carrying its duration only
+     when it tells the story ("2:00 with no Support compute", the server retrying a call,
+     Finance working or waiting on a human while the call is held). Other gaps, the debounce
+     among them (the drain row says it), show only as the jump in the time column. This keeps a 24 h approval wait
+     readable. Rows carry their agent attribution ("Order Lookup agent") and, on hover or
      focus, the worker identity and a deep link. Nexus rows pair up into connectors across the
      seam (when the two ends are within 0.2 s, they render as one row with a wire across).
-     On wide screens the page itself does not scroll: header, hero and stepper stay fixed, and
+     On wide screens the page itself does not scroll: the header and quiet line stay fixed, and
      the lanes are the only scroller. They **follow the run**: the newest Nexus hop row
      (send_message out, the answer back, a failed attempt) stays at the top with as much after
      it as fits, while the newest row (the reply, once finished) keeps at least its title in
      view; the approval card always shows in full. Scrolling away pauses following and shows
-     a "Follow the run" button. Projector mode hides the side column, the stepper and (unless
-     turned on there) the notes, so the lanes keep about 60% of a 1280x720 screen. The last row is always a live
+     a "Follow the run" button. Projector mode hides the side column, the stepper, Run details and (unless
+     turned on there) the notes, so the lanes keep most of a 1280x720 screen. The last row is always a live
      **"now" row**. While the task is `input-required`, the **approval card sits in Finance's
      cell of the "now" row**, so the card, the dark rail and the held-open bar are on screen
      together. The earlier `input-required` row stays in the history as "Finance asks a
      human". (The first mockup put the card at that earlier row; with tail-follow it scrolled
      out of view on a 900 px laptop.)
-  5. *Reply and report strip*: once the run closes, Support's final reply (from the
-     `WorkflowExecutionCompleted` payload) plus the report: lifetimes, distinct Build IDs,
-     approval wait, approval-to-reply, refund ID, and the Q15 deltas on serverless runs.
+  5. *Reply and report*: once the run closes, Support's final reply (from the
+     `WorkflowExecutionCompleted` payload) sits on the reply row; the report is on the quiet
+     line under the header (held open and lifetimes stay in the header), and the Q15 deltas
+     on serverless runs sit on one line under the lanes.
 - **Presenter notes** (right column, toggle `N`; or a separate window at `/#/notes` for the
-  presenter's own screen). This holds the scenario talk track from the README story index,
-  the talk line of the current step, what to point at, and the equivalent make command
-  (useful when the audience asks "what did that button do").
-- **Projector mode** (`P`): type scale ×1.25, hides the scenario column, process logs and
-  identities, and keeps the stack bar to one line. Use it on the projected window.
+  presenter's own screen). This holds the stepper, the talk line of the current step, what
+  to point at, the step's button (once the run has closed, the same Next button as the
+  report line), the equivalent make command (useful when the audience asks
+  "what did that button do") and the scenario talk track; the story doc path is folded under
+  "Story doc". When a `#/notes` window is open (announced over a `BroadcastChannel`), every
+  other console window turns its own notes off, and back on when that window closes or
+  leaves `#/notes`. The pairing is state, not a preference: `P` does not bring the notes
+  back while a `#/notes` window lives.
+- **Projector mode** (`P`): type scale ×1.25, hides the scenario column, process logs,
+  identities, the profile pills, the "Recorded data" pill, the "Manage stack" label and Run
+  details. Use it on the projected window.
 
 ### 2.2 Scenario catalog
+
+Each scenario has four names in the catalog: `title` heads the scenario card, `short` and
+`sub` are its entry in the left column, and `run_label` names its runs in the runs list and the
+run view. The UI keeps no names of its own, and no copy or behaviour keyed on a scenario id:
+the catalog also carries what the Start button says (`start_label`, with `{option}` filled from
+the form, so Load reads "Start 10 conversations"), the action it runs for scenarios that start
+no Support run (`start_action`: `load`, `smoke`, with `[[scenario.option]]` for that action's
+params), one more button next to it (`extra_action`, the smoke caller's "Fetch the Agent
+Card") and `view = "cleanup"` for the card that lists waiting runs instead. Each step carries
+its stepper label (`short`) and what the presenter points at (`point`, and `point_versioned`
+for a versioned run). The home page's buttons are the first two scenarios on the profile.
+
+The catalog lists scenarios in **story order**, grouped so the stack changes shape as rarely as
+possible: Case A → Case B → Worker crash → Finance outage (all plain Support) → AgentCore: you
+invoke → AgentCore: WCI invokes → Load → Nexus hop, no AI → Clean up. Each scenario's `next`
+names the one after it (an unknown id is a startup error); on a profile the next one does not
+run on, the link skips ahead to the first that does.
+
+**Setup recipe** (`setup_recipe`, derived in `scenarios.py`, not kept by hand). The one-click
+setup for a scenario is a stack recipe (2.3), chosen from its queue and steps:
+
+| Scenario | local | kind, kind-plaintext |
+|---|---|---|
+| queue `dev` (Worker crash, Finance outage) | Local, plain Support | Bring up kind |
+| queue `versioned` with an `invoke-local` step (you invoke) | Local, serverless (invoke-local) | Bring up kind |
+| queue `versioned` without one (WCI invokes, Load) | Local, serverless (WCI emulator) | Bring up kind |
+| queue `auto` (Case A, Case B) and the smoke caller | the recipe of the stack's current shape; Local, plain Support when it is unknown | Bring up kind |
+| Clean up (starts nothing) | none | none |
+
+Each precondition the recipe fixes is marked `by_setup`; the others (the Build ID, the smoke
+worker, the laptop Support worker on kind) keep only their own fix. The button runs the same
+`start-recipe` job as Manage stack, in the stack's current model (scripted or live; live asks
+first because it costs tokens). Bring up kind is long, so it asks first, and it never starts
+the Docker VM by itself (2.3): while the VM is stopped the card's primary button is Start Docker
+VM (it asks first), Set up is disabled with the visible reason "Start the Docker VM first.",
+and the checklist does not repeat the button. When a recipe is unavailable its reason is shown
+under the start bar, not only in a tooltip. A worker the console must own (Worker crash,
+Finance outage) that is already polling from a terminal is not marked `by_setup`: the recipe
+would skip it as already running. Its line has no fix button and says to stop it in its
+terminal. The next link carries a `setup_recipe` only when the next
+scenario's recipe differs from the one that produces the stack's current shape; its button
+then reads "Set up and go to <short>", opens that scenario's card and starts the recipe.
 
 Steps are a sequence and are numbered. "Done when" is a predicate the backend evaluates on the
 run view (section 5.4), so steps survive reloads and console restarts. *Cost*: `free` (no
@@ -170,43 +268,77 @@ tokens) or `tokens` (Bedrock).
 |---|---|---|---|---|---|
 | `case-a` | Case A: $40 headphones, auto-approved | all | plain (support-dev-tq) or serverless (support-tq) | start → sub-agents answer → agent card discovered → Nexus send_message → Finance completed `approved_by auto` → reply | free (scripted) / tokens (live) |
 | `case-b` | Case B: $450 laptop, a human approves | all | plain or serverless | start → input-required → (optional) stop Support worker → approve/reject → restart worker → reply | as above |
-| `crash` | Durable agent: kill the worker mid-thought | local, kind | plain | start Case A → wait for an `invoke_model` in flight → **Kill Support worker** (SIGKILL to its process group) → start it again → same run finishes; the rail shows two lifetimes, one ending abruptly | free / tokens |
-| `serverless-b` | Case B, AgentCore shape, invoke-local | local, kind | serverless invoke-local | AgentCore app up, Invoke and register version `--poller` (the recipe) → start on support-tq → **Invoke** (lifetime 1 picks the run up; the recipe's lifetime has usually drained by then) → input-required → drained (`/ping` Healthy) → approve → **Invoke** (lifetime 2) → reply → report | free / tokens |
-| `wci-b` | Case B, the server's WCI starts the worker | local | serverless WCI emulator | dev server `WCI=1` (restart only when `/ping` is Healthy) → emulator → register version `--local-wci` → start → input-required → drained → approve → WCI InvokeWorker → lifetime 2 → reply → report | free / tokens |
-| `failure` | Finance disappears mid-call | local (stop the Finance worker) | plain | start Case A → agent card done → **Stop Finance** → seam shows `send_message` attempt 2, 3… with lastAttemptFailure → **Start Finance** → completes | free |
-| `smoke` | The hop with no AI | all | smoke worker | `A2ASmokeWorkflow` on nexus-smoke-tq, then a standalone `get_agent_card` | free |
-| `load` | N conversations at once | local, kind | serverless (support-tq) | `load.sh N LOAD_KIND=ping|case-a` as a job; the runs list groups the batch; the report shows completed/failed and InvokeWorker count | free (ping or scripted) / tokens |
-| `cleanup` | Leftovers | all | — | lists runs still in `input-required` with Reject and Terminate | free |
+| `crash` | Worker crash: kill Support mid-thought | all | plain | start Case A → wait for an `invoke_model` in flight → **Kill Support worker** (SIGKILL to its process group) → start it again → same run finishes; the rail shows two lifetimes, one ending abruptly | free / tokens |
+| `failure` | Finance outage: Finance disappears mid-call | local (stop the Finance worker) | plain | start Case A → agent card done → **Stop Finance** → seam shows `send_message` attempt 2, 3… with lastAttemptFailure → **Start Finance** → completes | free |
+| `serverless-b` | AgentCore, you invoke: Case B with a worker built to die | all | serverless invoke-local | AgentCore app up, Invoke and register version `--poller` (the recipe) → start on support-tq → **Invoke** (lifetime 1 picks the run up; the recipe's lifetime has usually drained by then) → input-required → drained (`/ping` Healthy) → approve → **Invoke** (lifetime 2) → reply → report | free / tokens |
+| `wci-b` | AgentCore, WCI invokes: Temporal starts the worker | local | serverless WCI emulator | dev server `WCI=1` (restart only when `/ping` is Healthy) → emulator → register version `--local-wci` → start → input-required → drained → approve → WCI InvokeWorker → lifetime 2 → reply → report | free / tokens |
+| `load` | Load: N conversations at once | all | serverless (support-tq) | `load.sh N LOAD_KIND=ping|case-a` as a job; the runs list groups the batch; the report shows completed/failed and InvokeWorker count | free (ping or scripted) / tokens |
+| `smoke` | Nexus hop with no AI | local | smoke worker | `A2ASmokeWorkflow` on nexus-smoke-tq, then a standalone `get_agent_card` | free |
+| `cleanup` | Clean up: runs still waiting for a human | all | — | lists runs still in `input-required` with Reject and Terminate | free |
 
 Default workflow IDs follow the make defaults with a short base-36 suffix so that repeated runs
 do not collide: `support-1042-<sfx>`, `support-2077-sl-<sfx>`, `support-2077-wci-<sfx>`.
 The suffix is never 12 digits (scrub-check).
 
-### 2.3 Stack recipes (local profiles)
+### 2.3 Stack recipes
 
-One button per recipe brings the stack to a known shape as a job with a visible checklist.
-Each line is the make target the console runs, so the presenter can say what happened.
+One button per recipe brings the stack to a known shape as a job with a visible, numbered
+checklist. Each line is the make target (or check) the console runs, so the presenter can say
+what happened. The recipes are data in `actions.py` (`RECIPES`); `GET /api/actions` serves them
+on the `start-recipe` action (5.5) and the sheet renders exactly that list, so the card cannot
+drift from what runs (a recipe body that enters a step outside its plan fails).
 
-| Recipe | Starts (in order) | Stops |
+| Recipe | Profiles | Steps (in order) |
 |---|---|---|
-| Local, plain Support | `dev-server-up` (WCI=0), `payments-mock`, `worker-finance[-scripted]`, `nexus-endpoint`, `worker-support[-scripted]` | `agentcore-local*`, emulator |
-| Local, serverless (invoke-local) | as above without `worker-support`, then `agentcore-local[-scripted]`, `invoke-local`, `register-version MODE=--poller` | `worker-support*` |
-| Local, serverless (WCI emulator) | waits for `/ping` Healthy, `dev-server-down`, `dev-server-up WCI=1`, `agentcore-emulator`, `agentcore-local[-scripted]`, `register-version` (`--local-wci`) | `worker-support*` |
-| kind (laptop side only) | `nexus-endpoint`, `agentcore-local[-scripted]`, `invoke-local`, `register-version MODE=--poller` | — |
-| Tear down local | stops every managed process, `dev-server-down` | everything |
+| Local, plain Support | local | `dev-server-up WCI=0`, stop `agentcore-local`/emulator, `payments-mock`, `worker-finance[-scripted]`, `nexus-endpoint`, `worker-support[-scripted]` |
+| Local, serverless (invoke-local) | local | `dev-server-up WCI=0`, stop `worker-support`, `payments-mock`, `worker-finance[-scripted]`, `nexus-endpoint`, `agentcore-local[-scripted]`, wait for `/ping`, `invoke-local`, `register-version MODE=--poller` |
+| Local, serverless (WCI emulator) | local | wait for `/ping` Healthy, `dev-server-up WCI=1` (restarts a WCI=0 server), stop `worker-support`, `payments-mock`, `worker-finance[-scripted]`, `nexus-endpoint`, `agentcore-emulator`, `agentcore-local[-scripted]`, wait for `/ping`, `register-version MODE=--local-wci` |
+| **Bring up kind** (long, confirm first) | kind, kind-plaintext | check Docker VM `agentcore`; `kind-up` unless the cluster exists and postgres is ready; `kind-temporal KIND_TLS=<profile>` unless release `temporal` is deployed with that TLS setting; `certs-pull` (kind only, every time); `pf`, then wait up to 60 s for Temporal; `kind-aws-creds` (live only); `kind-workers FINANCE_MODEL=scripted\|bedrock` unless that image already polls; then the laptop side below |
+| Laptop side only (cluster already up) | kind, kind-plaintext | check `:7233` (refused at once with "Temporal on kind is not reachable: run Bring up kind first"), `nexus-endpoint`, `agentcore-local[-scripted]`, wait for `/ping`, `invoke-local`, `register-version MODE=--poller` |
+| Tear down local | local | stop every managed process, `dev-server-down` |
 
-The cluster lifecycle on kind (`kind-up kind-temporal kind-workers FINANCE_MODEL=scripted
-certs-pull pf`, `kind-down`) is offered as confirm-first jobs: Docker only, several minutes,
-and `kind-down` is destructive.
+Bring up kind is idempotent: a second press skips every layer that is up and continues where
+the last run stopped. It never starts the Docker VM: when `docker --context colima-agentcore
+info` fails it stops at step 1 with "Docker VM agentcore is stopped" and the fix **Start Docker
+VM** (`make colima-up`, its own confirm-first job). Cluster steps stream their output into the
+job log while they run and have their own time limits (kind-up 900 s, kind-temporal 1500 s,
+kind-workers 1200 s; other steps 180 s). A streamed step's process group is recorded on the
+job while it runs: when the console stops, the step gets `SIGTERM` (then `SIGKILL` after 8 s);
+if the console died instead, the restarted console adopts the live group, keeps the job
+running until the group exits, then marks it failed at that step ("the console restarted
+during <step>"; run it again and finished layers are skipped). A successful `certs-pull`
+clears the stale-certs check at once, so `agentcore-local` can start right after it. Cluster
+jobs and recipes run one at a time (409 "<title> is still running." with the hint "One stack
+job runs at a time", adopted ones included; checked again right before the job is created,
+so two quick clicks cannot both start one).
+
+The single cluster layers (`colima-up`, `kind-up`, `kind-temporal`, `kind-workers`,
+`certs-pull`, `pf`, `pf-stop`, `kind-down`) stay available as confirm-first jobs under
+**Cluster**; `kind-down` is destructive. Each is disabled with the reason when the layer under
+it is missing (Docker VM stopped, no cluster).
+
+**In the sheet** the recipes come first, as cards: the one for the scenario on screen (its
+`setup_recipe`; otherwise the recipe of the stack's current shape, or Bring up kind on kind)
+is listed first with the primary button and "for <short>" beside its title; Tear down is last.
+Each card's checklist is folded behind "N steps" and opens by itself while that recipe runs or
+after it failed.
+
+**Failures** say where and why. A failed job's `result` names the step (`step`, `step_label`),
+the cause in one line (`error`: the last output line that names an error, never make's own
+`*** Error 1`), a fixed `hint` for known causes (Docker daemon down, port 7233 refused, x509 on
+kind, AWS credentials) and the last meaningful lines (`tail`). The page raises an error toast
+"<title> failed at <step>: <cause>" when a job it watched ends failed, and the sheet opens with
+the newest job on top, expanded, when it failed.
 
 ### 2.4 Phone width (≤ 640 px)
 
-The stack bar collapses to profile + a single "n of m up" pip (tap to open the sheet). The
+The stack bar keeps the profile pills and the "n of m up" pip (tap to open the sheet); the
+key pips that are down move into the sheet. The run header wraps: the ticket on its own
+lines, then the state and the clock, then the deep links; the task's message wraps in full. The
 launcher and runs become a drawer. The lanes become **one interleaved column**: each row keeps
 a 4 px lane edge in its lane colour and a lane word ("Support", "Finance"). Seam crossings
 become full-width violet rows ("Nexus send_message to Finance"). The compute rail turns into a
-6 px strip on the left edge of every row, lit or dark. The state track shows only the current
-state and the next one. The approval card is a sticky bottom sheet. The side gutter is 16 px,
+6 px strip on the left edge of every row, lit or dark. The state track keeps its dots beside the state word. The approval card is a sticky bottom sheet. The side gutter is 16 px,
 and nothing scrolls horizontally.
 
 ---
@@ -250,16 +382,22 @@ behind the theme toggle (`:root[data-theme="light"]`, Off White `#F8FAFC` ground
 | `--band`, `--g-nexus` | purple→UV `#B664FF → #444CE7` | same, lighter | the Nexus seam band and its held-open core line |
 | `--support-fill`, `--support` | blue `#0066FF`, text `#4A93FF` | `#0066FF`, `#0057D9` | Support lane accent, reply bubble |
 | `--finance` | pink `#FF6BFF` | `#B4189E` | Finance lane accent (pink keeps it apart from the UV seam) |
-| `--ok`, `--alive` | mint `#1FF1A5` | `#06714C`, `#12C98A` | completed, healthy pips, compute alive (glow) |
-| `--hold` | lime `#C3FF62` | `#4A7000` | input-required: lime stripes on black under the state word and down the approval card |
+| `--ok`, `--alive` | mint `#1FF1A5` | `#06714C`, `#12C98A` | completed (state colour), compute alive (glow, on the rail only) |
+| `--hold` | lime `#C3FF62` | `#4A7000` | input-required: the state word's underline, and lime hazard stripes down the approval card (the only stripes) |
 | `--bad` | red `#FF5555` | `#C42929` | rejected, failed, Reject |
 | `--dead` | 40 % Off White, dashed | 32 % black | compute scaled to zero: dashed outline, no fill |
 | `--wire` | `#8E7BFF` | `#5F55E8` | Nexus connectors across the seam |
 | `--focus` | `#8C92FF` | `#444CE7` | 2 px focus ring, offset 2 px |
 
 Gradients (brand stops, used sparingly): purple→UV for the seam and the held line;
-lime→mint for **Approve refund** and the `completed` underline; red→purple for the
-`rejected`/`failed` underline. Approve is the only gradient button; other actions are solid UV.
+lime→mint for **Approve refund**. Approve is the only gradient button; other actions are
+solid UV. The state word's underline is a plain 2 px line in its state colour.
+
+**One accent per meaning.** Green means compute alive and lives on the rail; lime hazard
+means waiting on a human and lives on the approval card; red means a fault. Healthy status
+dots (stack pips, process states, met preconditions, ready scenarios) are neutral grey; the
+stepper's current and done chips are neutral. That leaves the glowing Nexus band (3.1) as the
+one memorable element.
 
 States map to colour plus shape plus word: `submitted` and `working` use Finance pink with an
 open and a filled dot; `input-required` a lime lozenge; `completed` a mint check; `rejected` a
@@ -273,8 +411,8 @@ lime or mint is above 12:1. The light theme's text tokens are AA on all three li
 
 - **Hanken Grotesk** (variable `wght` 100–900, OFL) stands in for Aeonik, which is commercial
   and is neither copied nor linked. All UI text. Headings are light (300–400) at large sizes
-  with tight tracking: the hero A2A state word (`input-required`, in the protocol's own
-  spelling) is weight 300, `min(5.1rem, 11.4cqi)`, tracking −0.045em; lane headers, the
+  with tight tracking: the A2A state word (`input-required`, in the protocol's own
+  spelling) is weight 300, `min(2.3rem, 7cqi)`, tracking −0.035em; lane headers, the
   approval title and dialog titles are 400; body 400; labels 500; buttons 600.
 - **IBM Plex Mono** (400/500, OFL), for identifiers only: workflow IDs, Build IDs, task queues,
   worker identities, make commands.
@@ -317,13 +455,13 @@ except the three toggles in the stack bar, which carry `aria-label` and a toolti
 
 ### 3.6 Copy rules
 
-Name things by what the audience sees ("Support workers running", "Nexus call held open",
+Name things by what the audience sees ("Nexus call held open", "with no Support compute",
 "Finance asks a human"). Show the Temporal term once beside the plain one (`input-required`,
 `send_message`). Buttons say exactly what happens: **Start Case B**, **Approve refund**,
 **Reject refund**, **Invoke AgentCore app**, **Stop Support worker**. Results reuse the
 button's verb ("Refund approved by dana.finance"). An error says what happened and how to fix
-it: "Temporal is not reachable at 127.0.0.1:7233. Start the dev server, or run `make pf` for
-kind." An empty state invites the next action: "No runs yet. Start Case A to see the hop."
+it: "Temporal on kind is not reachable: Docker VM agentcore is stopped. [Start Docker VM]".
+A job that ends failed says where: "Bring up kind failed at kind-temporal: <cause>." An empty state invites the next action: "No runs yet. Start Case A to see the hop."
 
 ---
 
@@ -347,6 +485,13 @@ kind." An empty state invites the next action: "No runs yet. Start Case A to see
   Temporal (stack every 3 s, runs every 3 s, the focused run every 1 s; adaptive back-off when
   nothing changes) and emits only on change (hash per snapshot). On reconnect the browser just
   re-renders from the next snapshots, so there is no replay protocol.
+- **Re-renders keep the presenter's place**: each region (stack bar, banners, scenario list,
+  runs, main card, notes, stepper, Manage stack) is written through `patch(el, html)`, which
+  skips the write when the HTML is unchanged and otherwise puts focus (and the caret) back on
+  the element with the same `name` and `data-*` attributes. The sheet keeps typed values as
+  they are typed (`input`, not only `change`), and an open process log refreshes its own
+  `<pre>` every 3 s instead of re-rendering the sheet. Manual steps are toggle buttons (Enter
+  and Space tick them); an option's choices are a radio group with one tab stop and arrow keys.
 
 ### 4.2 Connection and profiles
 
@@ -373,7 +518,8 @@ kind." An empty state invites the next action: "No runs yet. Start Case A to see
   console is on profile local. Switch to kind."
 - **Startup order**: the clients connect lazily, with 1 s → 10 s back-off. Until Temporal
   answers, the stack bar shows "Temporal is not reachable", plus a **Start dev server** button
-  on local or the `make pf` command on kind. The page itself always loads.
+  on local, or on kind the first missing layer (`kind.gap`, 5.1) and its button (Start Docker
+  VM, Bring up kind, Start port-forward). The page itself always loads.
 
 ### 4.3 Ledger 72: never query Support
 
@@ -422,7 +568,8 @@ TEMPORAL_BUILD_ID=<id>." The content hash covers only support-agent's exports, s
   `worker-smoke`. On kind only the laptop-side Support processes are offered
   (`agentcore-local*`, `worker-support*`; hybrid). This is a deliberate reading of "observe
   only": scenario 4 needs the laptop AgentCore app. Cluster lifecycle stays out except the
-  confirm-first kind jobs in 2.3.
+  confirm-first kind jobs and the Bring up kind recipe in 2.3. The Docker VM is started only
+  by its own button (Start Docker VM), never as a side effect.
 - **How**: each process is `make -s <target>` (so the Makefile stays the single source of truth
   for args and per-identity client certs, Makefile 452–470), spawned with
   `asyncio.create_subprocess_exec(..., start_new_session=True)`. It gets stdout/stderr to
@@ -533,11 +680,33 @@ Every non-2xx response:
 
 - `components[].status` ∈ `up | down | degraded | zero | unknown | external`. `zero` means
   up by design with nothing running (Support between lifetimes); it renders in `--off`, not red.
+- `read_errors` (only when a read failed): `{"endpoint" | "deployment" | "version" |
+  "<ns>/<tq>": "PermissionError: ..."}`. A failed read is not a missing thing: the component
+  it feeds is `unknown` with detail "could not read ...: <error>" (not "finance-agent is
+  missing"), the scenario precondition behind it is `unknown: true` with that error as its
+  `note` and no `fix` (Create endpoint would recreate something that may exist), and the
+  server log has one WARNING per read each time its error changes.
 - `shape` ∈ `plain | serverless-invoke | serverless-wci | unknown`. It is
   derived from the current deployment compute config, the WCI mode, the pollers and the
   managed processes.
 - `model.mode` ∈ `scripted | live | mixed | unknown`; `source` ∈ `managed | unknown`.
 - `port_forward`: `null` on local, else `{"kind": "kind", "frontend": true, "web": true}`.
+- `kind` (kind profiles; `null` on local): the layers under Temporal, bottom up, from cheap
+  checks with short timeouts, cached 15 s and refreshed in the background (never blocking the
+  snapshot), dropped after every cluster job:
+  `{"docker": bool, "cluster": bool|null, "port_forward": bool, "certs": "ok|missing|stale|unknown"|null,
+  "gap": {"layer": "docker|cluster|port-forward|temporal|certs", "cause": "Docker VM agentcore is stopped",
+  "fix": {"kind": "action", "action": "colima-up", "params": {}, "label": "Start Docker VM"}}|null}`.
+  `docker` = `docker --context colima-agentcore info` exits 0; `cluster` = `kind get clusters`
+  lists `agentcore-demo` (`null` while Docker is down); `port_forward` = the
+  `kind-pf-frontend` pidfile is alive; `certs` (profile kind only) compares `.certs/ca.crt`
+  with the cluster's CA (Secret `temporal-operator-tls`, cached 60 s): `stale` means the certs
+  are from an older cluster. The fixes are console actions: Start Docker VM (`colima-up`),
+  Bring up kind (`start-recipe` `kind-up`), Start port-forward (`pf`), Pull client certs
+  (`certs-pull`). On kind, `components` starts with a `cluster` pip ("Cluster") whose
+  `detail` is that cause and whose `fix` is that action; the Temporal-down banner names the
+  same cause with the same button (no copy box), and the scenario preconditions `temporal`
+  and `finance` use it too (`finance` otherwise: Deploy Finance pods, `kind-workers`).
 
 ### 5.2 Scenarios
 
@@ -589,6 +758,21 @@ Every non-2xx response:
 ```
 
 - `fit` ∈ `ready | needs_setup | wrong_profile`.
+- Also from the catalog (2.2): `start_label`, `start_action` (`null`: Start starts a Support
+  run with the run options; the `queue` option's default is the backend's choice for the
+  stack's shape), `extra_action` (`{action, label}` or `null`), `view` (`"cleanup"` or
+  `null`), and per step `short` (always set; the title when the catalog has none), `point`
+  and `point_versioned` (when set).
+- `preconditions[].unknown: true` when the read behind it failed (5.1 `read_errors`).
+- `setup_recipe`: the recipe id of the one-click setup on this profile, or `null` (2.2).
+  `preconditions[].by_setup: true` marks a missing precondition that recipe fixes. A missing
+  precondition no button can fix (a worker started outside the console) has no `fix` and a
+  `note` saying what to do instead.
+- `setup_blocked`: `{"why", "fix"}` when the setup recipe cannot get past its first step yet
+  (kind with the Docker VM stopped: `fix` is Start Docker VM), else `null`.
+- `next`: `{"id", "short", "setup_recipe"}` for the scenario after this one in story order on
+  this profile (or `null` after the last); `setup_recipe` is set only when going there changes
+  the stack's shape.
 - `steps[].kind` ∈ `action | watch | human | manual`. `manual` steps carry `make` text only
   and can be ticked by hand (the tick is kept client-side only,
   in localStorage).
@@ -734,8 +918,8 @@ The list's `task_state` is inferred from each running A2A task's history (no que
   seam; `wci` rows render on the rail edge; `human` rows are signals and render in Finance's
   lane with the human glyph.)
 - `kind` vocabulary:
-  `run.started, run.completed, run.failed, run.terminated, model.turn, activity, wft`
-  (shown only when its identity differs from the previous one),
+  `run.started, run.completed, run.failed, run.terminated, model.turn, activity,
+  activity.timed_out, wft` (shown only when its identity differs from the previous one),
   `nexus.scheduled, nexus.started, nexus.attempt_failed, nexus.completed, nexus.failed`,
   `task.started, task.state, timer.started, timer.fired, signal.approve, signal.reject`,
   `refund.issued, lifetime.start, lifetime.connected, lifetime.idle, lifetime.drained,
@@ -803,10 +987,37 @@ optional step passed over (e.g. "stop the Support worker").
   "make": "make register-version MODE=--local-wci", "long": false }
 ```
 
-Action ids: `start-recipe` (`recipe` = `local-plain | local-invoke | local-wci | kind-laptop |
-teardown`), `nexus-endpoint`, `register-version`, `invoke-local`, `agentcore-ping`, `smoke`,
-`card`, `load` (`n` 1..20, `kind` = `ping|case-a`), `wci-history`, `kind-up`, `kind-temporal`,
-`kind-workers`, `certs-pull`, `pf`, `pf-stop`, `kind-down` (long, confirm).
+Every Action also has `group` ∈ `recipe | oneshot | cluster` (where the sheet lists it).
+
+**One source for each command.** Each action's spec holds its make target and variables as
+templates (`("register-version", "MODE={mode}")`, `("kind-workers", "FINANCE_MODEL=scripted",
+"KIND_TLS={tls}")`); the job runs exactly `make -s <target> <VAR=value>...` (plus
+`TEMPORAL_PROFILE=<profile>` off local) and `make` is that argv without `-s`, so what the
+console shows is what a presenter can paste. `LOAD_KIND` is a make variable on the command
+line (make exports it to `load.sh`); the smoke caller's `WF` gets a fresh suffix per run
+(`<id>` in the listing). `invoke-local` and `agentcore-ping` run in-process; their `make` is the
+terminal equivalent.
+
+Action ids: `start-recipe` (`recipe` = `local-plain | local-invoke | local-wci | kind-up |
+kind-laptop | teardown`; the default is the recipe for the stack's current shape: `kind-up` on
+kind, and the sheet recommends it when no scenario is in view), `nexus-endpoint`, `register-version`,
+`invoke-local`, `agentcore-ping`, `smoke`, `card`, `load` (`n` 1..20, `kind` = `ping|case-a`),
+`wci-history`, `colima-up`, `kind-up`, `kind-temporal`, `kind-workers`, `certs-pull`, `pf`,
+`pf-stop`, `kind-down` (cluster group: long, confirm).
+
+`start-recipe` also carries `recipes`, the single source the sheet renders (2.3):
+
+```json
+{ "id": "kind-up", "title": "Bring up kind", "profiles": ["kind", "kind-plaintext"],
+  "long": true, "danger": false, "variants": ["scripted", "live"],
+  "steps": { "scripted": [ { "id": "docker", "label": "check Docker VM agentcore" }, "…" ],
+             "live": [ "…" ] },
+  "available": true, "why_not": null }
+```
+
+Steps are rendered for the current profile and each variant (`{v}` -scripted suffixes,
+`KIND_TLS`, certs-pull on kind only, kind-aws-creds on live only). A long recipe needs
+`confirm: true` like a long action.
 
 `POST /api/actions/{id}` with body `{"params": {"mode": "--local-wci"}, "confirm": false}` →
 `202` **Job**:
@@ -920,8 +1131,20 @@ these additions and clarifications:
   variables given to `make console` never override the profile the console switched to.
 - **Process**: `dev-server` adds `wci` (`"0"`, `"1"` or `null`); `unavailable` comes
   with `why` (wrong profile, no Build ID, or no client certificate under `.certs/…`).
-- **Job**: `status` ∈ `running | succeeded | failed`. `start-recipe` takes
-  `params: {recipe, variant: "scripted"|"live"}` (live = `tokens`).
+- **Job**: `status` ∈ `running | succeeded | failed | ended`. No job stays running for good: a
+  command that cannot start fails at once ("make could not start: ..."); a `make` job past its
+  time (cluster jobs 1800 s, `load` 1200 s so it outlasts `load.sh`'s own 15 min, the others
+  600 s) has its process group stopped (TERM, KILL after 8 s) and fails "ran longer than ...s and was stopped". A command job adopted after a console
+  restart ends as `ended` (exit code unknown, with a `note`), never `succeeded`; the page says
+  "<title> ended" instead of "done". A sync action (`invoke-local`, `agentcore-ping`) still
+  running after 30 s answers `202` with the running job. `start-recipe` takes
+  `params: {recipe, variant: "scripted"|"live"}` (live = `tokens`). A Job also has `title`
+  (what the button said), `params`, and for recipes `steps`:
+  `[{"id", "label", "status": "todo|running|done|skipped|failed", "note", "elapsed_s"}]`
+  (pushed as each step changes). A failed job's `result` is
+  `{"error", "step", "step_label", "hint", "tail"}` (2.3); a failed command job's is
+  `{"error", "tail"}`. Cluster jobs and recipes are exclusive: starting one while another runs
+  is `409 precondition_failed` with `job` (the running job's id).
 - **Errors** may carry extra fields next to `code/message/hint` (e.g. `processes` on a
   refused profile switch).
 - **Tests**: the fakes are in `demo_console.fakes` (pytest's `--import-mode=importlib` cannot
@@ -946,12 +1169,14 @@ scripted stdout/exit codes), `FakeHttp` (ping/invocations), and a tmp `.temporal
 | `test_rows.py` | Support/Finance/WCI/lifetime row builders on recorded histories (Case A, B approve, B reject, crash with two pids, failure with attempt 3); pairs across the seam; stable `seq` |
 | `test_runview.py` | RunView fields from history + describe; scenario inference; `held_open_s`; Q15 deltas; reply + refund ID; `get_task` timeout → `source: "history"` |
 | `test_ledger72.py` | building every RunView/route against `FakeAgents` issues **zero** queries in namespace `agents`; `AgentsClient.query` raises `SupportQueryForbidden` |
-| `test_steps.py` | every catalog `done_when` parses; statuses done/current/todo for each fixture |
-| `test_stack.py` | component statuses from fake pollers/pidfiles/ports; `zero` vs `down`; shape and model inference; Build ID resolution order (env → deployment → build-id.sh refusing on dirty uv.lock → none) |
+| `test_steps.py` | every catalog `done_when` parses; statuses done/current/todo for each fixture; setup recipes and what they mark `by_setup`; a worker polling from a terminal is not left to setup; kind setup waits for a stopped Docker VM (`setup_blocked`) |
+| `test_stack.py` | component statuses from fake pollers/pidfiles/ports; `zero` vs `down`; shape and model inference; Build ID resolution order (env → deployment → build-id.sh refusing on dirty uv.lock → none); a failed read is `unknown` with its error, not missing, and its precondition has no fix |
 | `test_detect.py` | profile detection from pidfiles (tmp dir, `kill -0` faked) and the TLS probe outcome |
 | `test_env.py` | `child_env()` strips `TEMPORAL_TLS`/`TEMPORAL_ADDRESS` outside local, sets `TEMPORAL_PROFILE`, `TEMPORAL_CONFIG_FILE` (absolute), `TEMPORAL_BUILD_ID` |
 | `test_procs.py` | start spawns `make -s <target>` in a new session; record written; adoption after "restart"; stop TERM→KILL; `external` detection; live variant needs confirm |
-| `test_actions.py` | cost gate (`confirm_required`); `register-version` argv per mode (`--poller`, `--local-wci`); recipes order |
+| `test_actions.py` | cost gate (`confirm_required`); `register-version` argv per mode (`--poller`, `--local-wci`); recipes order; on every profile the shown `make` is the argv that runs (KIND_TLS=0 on kind-plaintext); a command that cannot start or runs past its time fails; an adopted job ends `ended`, not `succeeded`; a slow sync action answers 202; one recipe at a time (two concurrent starts: one 409); the catalog's `start_action`/`extra_action` name real actions and every step has a `short` |
+| `test_fixtures.py` | every `static/fixtures/*.json` is in its on-disk format (indent 1) and its `config`, `scenarios` and `actions` equal what the backend derives from the fixture's own stack (`demo_console.fixtures`); on drift: `make console-fixtures` |
+| `test_kind.py` | every recipe offered on a profile is accepted there (and teardown is not on kind); Bring up kind's plan per profile/variant; order from a cold Docker VM, skips on a warm cluster, plaintext reinstall of a TLS release; stop at a stopped Docker VM; a failed step's cause/tail; certs-pull clears stale certs before agentcore-local; a streamed step is held by the job and stopped with the console; an adopted recipe blocks until its step exits, then fails at it; laptop-side refusal; one cluster job at a time; the `kind` facts, `cluster` pip and fixes per missing layer; stale certs |
 | `test_routes.py` | Starlette `TestClient`: Host check, `X-Console` check, error shapes, approve 409/422/200 paths, `POST /api/runs` arguments match case-a.sh (ticket, mode, budget, `USE_EXISTING`) |
 | `test_stream.py` | the SSE generator emits `hello`, `stack`, `run`, `rows` and only on change (hash); heartbeat |
 | `test_static.py` | `index.html` references only local assets (fonts are vendored); every JS module imported exists; no `localhost` |
@@ -987,13 +1212,19 @@ creates the endpoint with `demo_testing.nexus`. The console app is built with
   `app.js` read `static/fixtures/<name>.json` (StackSnapshot + RunView + rows) instead of the
   API and stream. It needs no Temporal, and presenters can use it to rehearse offline.
   Fixtures: `case-a-completed`, `case-b-input-required`, `case-b-completed-serverless`,
-  `failure-retrying`, `empty-stack`, plus `case-b-replay`. A fixture file is
+  `failure-retrying`, `empty-stack`, `kind-cold` (profile kind, Docker VM stopped, a failed
+  Bring up kind), plus `case-b-replay`. A fixture file is
   `{fixture, description, now, focus, route?, config, stack, runs, scenarios, actions,
   processes, jobs, run, rows, report, extra_runs: {wf: {run, rows}}, replay?}`, each value in
   its API shape. `replay` is `{frames: [{t, rows?, run?, stack?, runs?}], gate: {after, on,
   recorded_at}, branches: {approve: [...], reject: [...]}, reports: {...}}`: frames play at
   their offset `t` (seconds), pause at the gate, and Approve/Reject plays that branch.
   Every timestamp is shifted so the recording's `now` is the page's now.
+  `config`, `scenarios` and `actions` are not recorded but derived: `make console-fixtures`
+  (`python -m demo_console.fixtures`) recomputes them from the backend code with the facts read
+  off the fixture's own `stack` (its components, pollers, Build ID, deployment, kind layers),
+  keeping each scenario's recorded workflow ID, and `test_fixtures.py` fails when a fixture
+  drifts from them. The rest of a fixture is the recording and is kept as it is.
   `index.html?demo=1` replays `case-b-replay` live from the start (`&at=gate` jumps to the
   approval, `&at=end&verdict=approve|reject` to the end). A "Recorded data" badge in the
   stack bar marks both modes. In `case-b-input-required` the Approve and Reject buttons also
@@ -1031,6 +1262,7 @@ services/demo-console/
                                  AgentsClient guard (SupportQueryForbidden)
     detect.py                    profile detection (pidfiles, kill -0, TLS probe)
     stack.py                     StackProbe -> StackSnapshot (pollers, endpoint, deployment, ports, ping)
+    kind.py                      kind layers: Docker VM, cluster, port-forward, certs (cached facts, gap)
     rows.py                      Row model + builders: support, finance, nexus pairs, wci, lifetimes
     runs.py                      list_runs, run_view, report (approval + serverless + q15)
     lifetimes.py                 identities -> lifetimes; app-log parser; emulator jsonl; WCI chain walk
@@ -1041,6 +1273,7 @@ services/demo-console/
     jobs.py                      JobStore (.temporal/console/jobs)
     runner.py                    CommandRunner protocol + asyncio implementation
     stream.py                    SSE hub: pollers, change hashing, heartbeat
+    fixtures.py                  recompute the fixtures' config/scenarios/actions (make console-fixtures)
     static/
       index.html                 shell + SVG sprite + font preload
       styles.css                 tokens (section 3.2, BRAND.md), layout, lanes, motion
@@ -1064,6 +1297,9 @@ Makefile (new section `# --- v1.0: demo console ---`, all in `.PHONY`):
 ```make
 console: ## Demo console on http://127.0.0.1:8099 (TEMPORAL_PROFILE=local|kind|kind-plaintext)
 	$(UV) python -m demo_console --port $(or $(CONSOLE_PORT),8099)
+
+console-fixtures: ## Recompute the fixtures' config, scenarios and actions from the backend code
+	$(UV) python -m demo_console.fixtures
 
 console-shots: ## Screenshots of the console's fixture views (light/dark, laptop/phone) -> .temporal/console/shots/
 	scripts/console-shot.sh --all

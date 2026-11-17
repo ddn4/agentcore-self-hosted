@@ -1,6 +1,10 @@
 // The lanes: time | compute rail | Support | Nexus seam | Finance (DESIGN 2.1 item 4, 5.3 rows).
-// Rows pair into wires across the seam; gaps over 4 s become bands; the last row is a live
-// "now" row that carries the approval card while the task is input-required.
+// Rows pair into wires across the seam. Each fact is one row: a lifetime's bring-up (WCI,
+// start, polls) is one row, its idle and drained are one row, and Finance's ask and its
+// approval timer are one row. A thought carries its own think time; runs of agent and tool
+// rows in one lane fold into one expandable row; only gaps that tell the story (no compute,
+// retries, Finance working or waiting on a human) become bands. The last row is a live "now"
+// row that carries the approval card while the task is input-required.
 import { dur, h, icon, ms, offset, raw, sinceText } from "./format.js";
 import { approvalNode } from "./approval.js";
 
@@ -12,7 +16,7 @@ const LANE_WORD = { sup: "Support", cmp: "Support compute", wci: "Temporal serve
 
 const GLYPH = {
   "run.started": "start", "run.completed": "check", "run.failed": "x", "run.terminated": "x",
-  "model.turn": "think", activity: "tool", wft: "power",
+  "model.turn": "think", activity: "tool", "activity.timed_out": "warn", wft: "power",
   "nexus.scheduled": "seam", "nexus.started": "seam", "nexus.attempt_failed": "warn",
   "nexus.completed": "seam", "nexus.failed": "x",
   "task.started": "start", "timer.started": "clock", "timer.fired": "clock",
@@ -25,6 +29,68 @@ const STATE_ICON = { submitted: "ring", working: "dot", "input-required": "hold"
 
 const isDisco = (r) => /get_agent_card/.test(`${r.detail || ""} ${r.title || ""}`);
 const opName = (r) => ((`${r.detail || ""} ${r.title || ""}`).match(/(send_message|get_agent_card)/) || [])[1] || "Nexus";
+
+const lifeN = (r) => r.lifetime ?? Number(((r.title || "").match(/^Lifetime (\d+)/) || [])[1]);
+const sameLife = (a, b) => (a.identity && b.identity ? a.identity === b.identity : lifeN(a) === lifeN(b));
+const afterLife = (r) => (r.title || "").replace(/^Lifetime \d+\s*/, "").replace(/^is\s+/, "");
+
+/**
+ * One row per fact. A lifetime's bring-up (the WCI rows just before it, its start, its first
+ * poll) becomes "Lifetime N starts · polls support-tq" with the WCI step as detail; idle then
+ * drained becomes "Lifetime N drains after the 20 s debounce"; "Finance asks a human" carries
+ * the approval timer. Rows that never get their partner stay as they are (a run still live).
+ * A merged row keeps the seqs of what it absorbed in `merged` (for the new-row flash).
+ */
+export function mergeRows(rows, debounceS) {
+  const out = [];
+  const gone = new Set();
+  const absorb = (into, r) => { gone.add(r.seq); into.merged = [...(into.merged || [into.seq]), r.seq]; };
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i];
+    if (gone.has(r.seq)) continue;
+    if (r.kind === "lifetime.start") {
+      const m = { ...r };
+      const wci = [];
+      while (out.length && /^wci\.(signal|invoke)$/.test(out[out.length - 1].kind) && r.t - out[out.length - 1].t <= 5) {
+        wci.unshift(out.pop());
+      }
+      wci.forEach((w) => absorb(m, w));
+      const poll = rows.slice(i + 1).find((o) => !gone.has(o.seq) && o.t - r.t <= 5
+        && o.kind === "lifetime.connected" && sameLife(o, r));
+      if (poll) { absorb(m, poll); m.title = `${r.title} · ${afterLife(poll)}`; }
+      const how = wci.map((w) => w.detail || w.title).filter(Boolean).join(", then ");
+      m.detail = [how, r.detail].filter(Boolean).join(" · ") || null;
+      out.push(m);
+      continue;
+    }
+    if (r.kind === "lifetime.idle") {
+      const drained = rows.slice(i + 1).find((o) => !gone.has(o.seq) && o.t - r.t <= 60
+        && o.lane === "compute" && sameLife(o, r) && /^lifetime\./.test(o.kind));
+      if (drained && drained.kind === "lifetime.drained") {
+        const m = { ...drained, merged: [r.seq, drained.seq] };
+        gone.add(drained.seq);
+        const n = lifeN(r);
+        const who = Number.isFinite(n) ? `Lifetime ${n}` : "The worker";
+        m.title = `${who} drains after the ${Number.isFinite(debounceS) ? `${dur(debounceS)} ` : ""}debounce`;
+        out.push(m);
+        continue;
+      }
+    }
+    if (r.kind === "task.state" && r.state === "input-required") {
+      const timer = rows.slice(i + 1).find((o) => !gone.has(o.seq) && o.t - r.t <= 1
+        && o.kind === "timer.started" && o.lane === r.lane);
+      if (timer) {
+        const m = { ...r };
+        absorb(m, timer);
+        m.detail = [r.detail, `approval wait, ${timer.detail || timer.title}`].filter(Boolean).join(" · ");
+        out.push(m);
+        continue;
+      }
+    }
+    out.push(r);
+  }
+  return out;
+}
 
 /** Turn API rows into display items: crossings (out/back), discovery, stubs and singles. */
 export function pairRows(rows) {
@@ -120,7 +186,7 @@ function ev(r, cls, ctx, extra = {}) {
   if (/lifetime\.(idle|drained|released)/.test(r.kind)) k.push("drain");
   if (r.kind === "lifetime.killed") k.push("killed");
   if (r.kind === "signal.reject") k.push("reject");
-  if (/failed/.test(r.kind)) k.push("bad");
+  if (/failed|timed_out/.test(r.kind)) k.push("bad");
   const link = r.link || (cls === "fin" || cls === "hum" ? ctx.links.finance : ctx.links.support);
   const side = cls === "fin" || cls === "hum" ? "fin" : "sup";
   let ident = "";
@@ -128,7 +194,9 @@ function ev(r, cls, ctx, extra = {}) {
     ident = h`<span class="dd ident id">${r.identity}</span>`;
     ctx.lastIdent[side] = r.identity;
   }
-  return h`<div class="${k.join(" ")}" ${r.state ? h`data-state="${r.state}"` : ""}><span class="g">${icon(glyph)}</span><span class="tt"><span class="lane">${extra.lane || LANE_WORD[cls]}</span>${title(r)}${deep(link)}</span>${r.detail ? h`<span class="dd">${r.detail}</span>` : ""}${ident}${extra.after || ""}</div>`;
+  const d = r.kind === "model.turn" ? ctx.nextT.get(r.seq) : undefined;
+  const took = d !== undefined && d - r.t >= 0.1 ? h`<span class="took"> · ${dur(d - r.t)}</span>` : "";
+  return h`<div class="${k.join(" ")}" ${r.state ? h`data-state="${r.state}"` : ""}><span class="g">${icon(glyph)}</span><span class="tt"><span class="lane">${extra.lane || LANE_WORD[cls]}</span>${title(r)}${took}${deep(link)}</span>${r.detail ? h`<span class="dd">${r.detail}</span>` : ""}${ident}${extra.after || ""}</div>`;
 }
 
 function railCell(t, lts, it, ctx) {
@@ -143,11 +211,11 @@ function railCell(t, lts, it, ctx) {
   return h`<div class="c-rail ${cls}" aria-hidden="true"></div>`;
 }
 
-function itemHTML(it, ctx) {
+function itemHTML(it, ctx, more = "") {
   const { lts, held } = ctx;
   const t = it.t;
-  const isNew = ctx.fresh.size && [it.r, it.a, it.b, it.nx, it.fin].some((r) => r && ctx.fresh.has(r.seq));
-  const cls = `row${isNew ? " new" : ""}`;
+  const isNew = ctx.fresh.size && [it.r, it.a, it.b, it.nx, it.fin].some((r) => r && (r.merged || [r.seq]).some((q) => ctx.fresh.has(q)));
+  const cls = `row${isNew ? " new" : ""}${more}`;
   const time = h`<div class="c-time">${offset(t)}</div>`;
   const seam = seamCls(it, t, held);
   if (it.type === "out" || it.type === "back") {
@@ -185,42 +253,114 @@ function itemHTML(it, ctx) {
   if (r.kind === "run.completed" && ctx.run?.reply?.text) {
     after = h`<div class="reply"><div class="who">Reply to the customer</div><p>${ctx.run.reply.text}</p></div>`;
   }
-  const body = ev(r, lc, ctx, { after });
+  // The ticket itself is in the run header: here the row only marks when it arrived.
+  const body = ev(r.kind === "run.started" ? { ...r, detail: null } : r, lc, ctx, { after });
   const onFin = lc === "fin" || lc === "hum";
   const end = /^run\.(completed|failed|terminated)$/.test(r.kind) ? " end" : "";
   return h`<div class="${cls}${end}" role="listitem">${time}${railCell(t, lts, it, ctx)}<div class="c-sup">${onFin ? "" : body}</div><div class="c-seam ${seam}"></div><div class="c-fin">${onFin ? body : ""}</div></div>`;
 }
 
+// Agent turns and tool calls: the chatter between the story's moments. Never a wire, a
+// lifetime change, a retry (a later attempt, a new worker identity, a timeout), a state
+// change, the approval or the reply.
+const FOLDS = new Set(["model.turn", "activity"]);
+const sideOf = (lane) => (lane === "finance" || lane === "human" ? "fin" : "sup");
+
+/** Seqs of rows whose worker identity differs from the previous identity on that side. */
+function identityChanges(items) {
+  const last = {};
+  const changed = new Set();
+  for (const it of items) {
+    for (const r of [it.r, it.a, it.nx, it.fin]) {
+      if (!r || !r.identity) continue;
+      const side = sideOf(r.lane);
+      if (last[side] && last[side] !== r.identity) changed.add(r.seq);
+      last[side] = r.identity;
+    }
+  }
+  return changed;
+}
+
+/** Display units: the items, with each run of two or more foldable rows in one lane as a group. */
+export function groupItems(items) {
+  const changed = identityChanges(items);
+  const foldable = (it) => it.type === "single" && FOLDS.has(it.r.kind) && !it.r.state
+    && (it.r.lane === "support" || it.r.lane === "finance")
+    && !(it.r.attempt > 1) && !changed.has(it.r.seq);
+  const units = [];
+  let i = 0;
+  while (i < items.length) {
+    const it = items[i];
+    let j = i + 1;
+    if (foldable(it)) while (j < items.length && foldable(items[j]) && items[j].r.lane === it.r.lane) j += 1;
+    if (j - i >= 2) units.push({ type: "group", t: it.t, lane: it.r.lane, items: items.slice(i, j) });
+    else { units.push(it); j = i + 1; }
+    i = j;
+  }
+  return units;
+}
+
+const firstOf = (u) => (u.type === "group" ? u.items[0] : u);
+const lastOf = (u) => (u.type === "group" ? u.items[u.items.length - 1] : u);
+const openGroups = new Set(); // "<wf>:<first seq>" of groups the presenter expanded
+
+function groupHTML(g, ctx) {
+  const rs = g.items.map((it) => it.r);
+  const key = `${ctx.run.workflow_id}:${rs[0].seq}`;
+  const id = `grp-${rs[0].seq}`;
+  const open = openGroups.has(key);
+  const agents = [...new Set(rs.filter((r) => r.kind === "model.turn").map((r) => r.agent).filter(Boolean))];
+  const tools = rs.filter((r) => r.kind === "activity").map((r) => r.title);
+  const end = ctx.nextT.get(rs[rs.length - 1].seq);
+  const took = end !== undefined ? h`<span class="took"> · ${dur(end - g.t)}</span>` : "";
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const who = agents.length === 1 ? agents[0] : plural(agents.length, "agent");
+  const what = [agents.length ? who : null, tools.length ? plural(tools.length, "tool") : null].filter(Boolean).join(", ");
+  const lc = LANE_CLS[g.lane];
+  const isNew = rs.some((r) => ctx.fresh.has(r.seq));
+  const names = agents.length > 1 ? agents.map((a) => a.replace(/ agent$/, "")).join(", ") : "";
+  const btn = h`<button type="button" class="ev ${lc}-ev fold" data-fold="${key}" aria-expanded="${String(open)}" aria-controls="${id}">
+    <span class="g">${icon("think")}</span><span class="tt"><span class="lane">${LANE_WORD[lc]}</span>${what}${took}<span class="chev" aria-hidden="true"></span><span class="sr"> (${open ? "hide" : "show"} ${rs.length} rows)</span></span>
+    <span class="dd">${names}${names && tools.length ? " · " : ""}${tools.map((t, i) => h`${i ? ", " : ""}<span class="id">${t}</span>`)}</span></button>`;
+  const onFin = lc === "fin";
+  const head = h`<div class="row grp${isNew ? " new" : ""}" role="listitem"><div class="c-time">${offset(g.t)}</div>${railCell(g.t, ctx.lts, null, ctx)}<div class="c-sup">${onFin ? "" : btn}</div><div class="c-seam ${seamCls(null, g.t, ctx.held)}"></div><div class="c-fin">${onFin ? btn : ""}</div></div>`;
+  // Hidden members must not hide an identity change from the next visible row.
+  const before = { ...ctx.lastIdent };
+  const members = g.items.map((it) => itemHTML(it, ctx, " member")).map(String).join("");
+  ctx.lastIdent = before;
+  return h`${head}<div class="members" id="${id}" ${open ? "" : "hidden"}>${raw(members)}</div>`;
+}
+
+/** A band for a gap that tells the story; "" for the rest (think time sits on its row). */
 function gapHTML(prev, next, ctx) {
   const a = prev.t, b = next.t, d = b - a, mid = a + d / 2;
   const rail = railAt(mid, ctx.lts);
   const seam = seamCls(null, mid, ctx.held);
   const pr = prev.r || prev.fin || prev.nx || prev.a;
   const nx = next.r || next.nx || next.a;
-  let note, glyph = "clock", onFin = false;
+  let note, glyph = "clock";
   if (rail === "off") {
     note = h`<b>${dur(d)}</b> with no Support compute. The conversation is in history; nothing is billed.`;
     glyph = "power";
   } else if (pr && pr.kind === "model.turn") {
-    note = h`<b>${dur(d)}</b> while ${pr.agent || "the agent"} thinks`;
-    glyph = "think";
-    onFin = pr.lane === "finance";
+    return "";
   } else if (nx && (nx.kind === "lifetime.idle" || nx.kind === "lifetime.drained")) {
-    note = h`<b>${dur(d)}</b>: ${ctx.lts.find((l) => mid >= l.s && mid <= l.e)?.label || "the worker"} stays up for the debounce, then drains`;
-    glyph = "hold";
+    return ""; // the drain row itself says "after the 20 s debounce"
   } else if (seam && [pr?.kind, nx?.kind].includes("nexus.attempt_failed")) {
     // Failure demo: Finance has no task yet, so nothing "works"; the server retries the call.
     note = h`<b>${dur(d)}</b> while the server tries to deliver Support's call; no Finance worker answers`;
     glyph = "warn";
+  } else if (seam && pr && (pr.state === "input-required" || pr.kind === "timer.started")) {
+    note = h`<b>${dur(d)}</b> while Finance waits for a human; the server holds Support's call open`;
+    glyph = "hold";
   } else if (seam) {
     note = h`<b>${dur(d)}</b> while Finance works; the server holds Support's call open`;
-    onFin = false;
   } else {
-    note = h`<b>${dur(d)}</b> with no new events`;
+    return "";
   }
   const cell = h`<div class="gapnote">${icon(glyph)}<span>${note}</span></div>`;
   return h`<div class="row gap" role="listitem"><div class="c-time"></div><div class="c-rail ${rail}" aria-hidden="true"></div>
-    <div class="c-sup">${onFin ? "" : cell}</div><div class="c-seam ${seam}"></div><div class="c-fin">${onFin ? cell : ""}</div></div>`;
+    <div class="c-sup">${cell}</div><div class="c-seam ${seam}"></div><div class="c-fin"></div></div>`;
 }
 
 function nowHTML(last, ctx) {
@@ -244,7 +384,7 @@ function nowHTML(last, ctx) {
   }
   let seamLab = "";
   if (pend && pend.attempt > 1) {
-    seamLab = h`<span class="lab bad" style="top:.45rem">attempt ${pend.attempt}</span>`;
+    seamLab = h`<span class="lab bad">attempt ${pend.attempt}</span>`;
   }
   const task = run.task;
   let fin = "";
@@ -273,29 +413,53 @@ export function lanesKey(state) {
 
 const seen = new Map(); // wf -> Set(seq) for the new-row flash
 
+function wireFolds(rowsEl) {
+  if (rowsEl.dataset.wired) return;
+  rowsEl.dataset.wired = "1";
+  rowsEl.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-fold]");
+    if (!b || e.target.closest("a")) return;
+    const open = !openGroups.has(b.dataset.fold);
+    if (open) openGroups.add(b.dataset.fold); else openGroups.delete(b.dataset.fold);
+    b.setAttribute("aria-expanded", String(open));
+    const sr = b.querySelector(".sr");
+    if (sr) sr.textContent = sr.textContent.replace(/\((show|hide) /, `(${open ? "hide" : "show"} `);
+    const m = document.getElementById(b.getAttribute("aria-controls"));
+    if (m) m.hidden = !open;
+  });
+}
+
 export function renderLanes(state, rowsEl) {
+  wireFolds(rowsEl);
   const run = state.run;
   const rowsBody = state.rows || {};
   const rows = (rowsBody.workflow_id === run?.workflow_id ? rowsBody.rows : []) || [];
   if (!run) { rowsEl.innerHTML = ""; return; }
   const t0 = ms(rowsBody.t0 || run.started_at);
-  const sorted = [...rows].sort((a, b) => (a.t - b.t) || (a.seq - b.seq)).map((r) => (
-    Number.isFinite(r.t) ? r : { ...r, t: (ms(r.at) - t0) / 1000 }));
+  const sorted = [...rows].map((r) => (Number.isFinite(r.t) ? r : { ...r, t: (ms(r.at) - t0) / 1000 }))
+    .sort((a, b) => (a.t - b.t) || (a.seq - b.seq));
   const wf = run.workflow_id;
   const prevSeen = seen.get(wf);
   const fresh = new Set(prevSeen ? sorted.filter((r) => !prevSeen.has(r.seq)).map((r) => r.seq) : []);
   seen.set(wf, new Set(sorted.map((r) => r.seq)));
-  const items = pairRows(sorted);
+  const items = pairRows(mergeRows(sorted, state.config?.debounce_s));
   const lts = lifetimesOf(run, t0);
   const held = heldIntervals(items, run);
-  const ctx = { run, t0, lts, held, fresh, lastIdent: {}, links: run.links || {} };
+  // Each row's successor time: a thought's think time, a group's span.
+  const nextT = new Map();
+  items.forEach((it, i) => { if (it.type === "single" && i + 1 < items.length) nextT.set(it.r.seq, items[i + 1].t); });
+  const ctx = { run, t0, lts, held, fresh, nextT, lastIdent: {}, links: run.links || {} };
   const parts = [];
   if (!items.length) {
     parts.push(h`<div class="lempty">Waiting for the first event in history…</div>`);
   }
-  items.forEach((it, i) => {
-    if (i > 0 && it.t - items[i - 1].t > GAP_S) parts.push(gapHTML(items[i - 1], it, ctx));
-    parts.push(itemHTML(it, ctx));
+  const units = groupItems(items);
+  units.forEach((u, i) => {
+    if (i > 0) {
+      const prev = lastOf(units[i - 1]), next = firstOf(u);
+      if (next.t - prev.t > GAP_S) parts.push(gapHTML(prev, next, ctx));
+    }
+    parts.push(u.type === "group" ? groupHTML(u, ctx) : itemHTML(u, ctx));
   });
   if (run.status === "RUNNING") parts.push(nowHTML(items[items.length - 1], ctx));
 

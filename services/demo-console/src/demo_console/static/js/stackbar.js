@@ -1,10 +1,11 @@
-// The stack bar (profile, Support shape, model, component pips, Build ID, toggles) and the
-// banners under it (Temporal unreachable, profile mismatch, backend lost, stream alerts).
+// The stack bar (profile pills, an "n of m up" summary, the key pips that are down, toggles)
+// and the banners under it (Temporal unreachable, profile mismatch, backend lost, stream
+// alerts). Shape, model, Build ID and every pip live in the Manage stack sheet's header.
 import { post } from "./api.js";
-import { startProcess } from "./actions.js";
+import { runFix, startProcess } from "./actions.js";
 import { PROFILE_LABEL, SHAPE_LABEL, h, icon } from "./format.js";
 import { prefs, store } from "./store.js";
-import { copyBox, toast, toastError } from "./ui.js";
+import { copyBox, patch, toast, toastError } from "./ui.js";
 
 const KEY_PIPS = new Set(["temporal", "finance", "support"]);
 const root = document.documentElement;
@@ -18,17 +19,31 @@ function notNeeded(c, shape) {
   return false;
 }
 
-function pip(c, shape) {
+const PIP_WORD = { up: "up", down: "down", zero: "running zero by design", degraded: "degraded", unknown: "not checked", external: "running outside the console", off: "off, not needed now" };
+
+/** One component: a shape, a word and a count. In the stack bar it opens the sheet; in the
+ *  sheet's header it is plain text. */
+export function pip(c, shape, { button = true } = {}) {
   if (notNeeded(c, shape)) {
     c = { ...c, status: "off", detail: `${c.detail || "not running"}; not used by this Support shape` };
   }
   const n = c.count !== undefined && c.count !== null ? h` <span class="n">${c.count}</span>` : "";
-  const word = { up: "up", down: "down", zero: "running zero by design", degraded: "degraded", unknown: "not checked", external: "running outside the console", off: "off, not needed now" }[c.status] || c.status;
+  const word = PIP_WORD[c.status] || c.status;
+  const inner = h`<span class="dot"></span>${c.label.replace(/ workers$/, "")}${n}<span class="sr"> ${word}</span>`;
   return h`<li class="pip" data-s="${c.status}" ${KEY_PIPS.has(c.id) ? h`data-key` : ""}>
-    <button type="button" data-open-sheet title="${c.label}: ${c.detail || word}"><span class="dot"></span>${c.label.replace(/ workers$/, "")}${n}<span class="sr"> ${word}</span></button></li>`;
+    ${button ? h`<button type="button" data-open-sheet title="${c.label}: ${c.detail || word}">${inner}</button>` : h`<span title="${c.label}: ${c.detail || word}">${inner}</span>`}</li>`;
 }
 
-function buildBadge(stack) {
+const UP = new Set(["up", "zero", "external"]);
+
+/** The components that count for this shape, and how many of them are up. */
+export function upSummary(stack) {
+  const counted = (stack?.components || []).filter((c) => !notNeeded(c, stack?.shape));
+  const up = counted.filter((c) => UP.has(c.status)).length;
+  return { up, total: counted.length, down: counted.length - up };
+}
+
+export function buildBadge(stack) {
   const b = stack?.build_id;
   if ((!b || !b.value) && stack?.shape === "plain") {
     // Plain workers on support-dev-tq are unversioned: nothing is missing.
@@ -48,24 +63,23 @@ export function renderStackBar(state) {
   const el = document.getElementById("stackbar");
   const cfg = state.config || {};
   const stack = state.stack;
-  const profiles = cfg.profiles || ["local", "kind", "kind-plaintext"];
+  const profiles = cfg.profiles || [];
   const comps = stack?.components || [];
-  const counted = comps.filter((c) => !notNeeded(c, stack?.shape));
-  const upCount = counted.filter((c) => c.status === "up" || c.status === "zero" || c.status === "external").length;
+  const sum = upSummary(stack);
+  // Only the key pips that are not up earn a place in the bar; the rest is one count.
+  const keyDown = comps.filter((c) => KEY_PIPS.has(c.id) && !notNeeded(c, stack?.shape) && !UP.has(c.status));
   const fx = state.fixture;
-  el.innerHTML = String(h`
+  patch(el, h`
     <button class="tbtn navbtn" type="button" id="t-drawer" aria-label="Scenarios and runs">${icon("menu")}</button>
     <span class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span><span><span class="full">AgentCore demo </span>console</span></span>
     ${fx ? h`<span class="recorded" title="${fx.description || ""}">${icon("replay")}${fx.replay ? "Recorded replay" : "Recorded data"}</span>` : ""}
     <div class="seg" role="group" aria-label="Temporal profile">
       ${profiles.map((p) => h`<button type="button" data-profile="${p}" aria-pressed="${String(p === cfg.profile)}">${PROFILE_LABEL[p] || p}</button>`)}
     </div>
-    <div class="shape"><span>Support <b>${SHAPE_LABEL[stack?.shape || "unknown"] || stack?.shape}</b></span><span>Model <b>${stack?.model?.mode || "unknown"}</b></span></div>
     <ul class="pips" aria-label="Components">
-      ${comps.map((c) => pip(c, stack?.shape))}
-      <li class="pip summary" data-s="${upCount === counted.length && counted.length ? "up" : "degraded"}"><button type="button" data-open-sheet><span class="dot"></span>${upCount} of ${counted.length} up</button></li>
+      ${stack ? h`<li class="pip summary" data-s="${sum.down ? "down" : "up"}"><button type="button" data-open-sheet title="Support ${SHAPE_LABEL[stack.shape || "unknown"] || stack.shape}, model ${stack.model?.mode || "unknown"}. Open Manage stack for every component."><span class="dot"></span>${sum.up} of ${sum.total} up</button></li>` : ""}
+      ${keyDown.map((c) => pip(c, stack?.shape))}
     </ul>
-    ${buildBadge(stack)}
     <div class="tools">
       <button class="tbtn" type="button" data-open-sheet>${icon("wrench")}<span class="wide">Manage stack</span><span class="sr">Manage stack</span></button>
       <button class="tbtn" type="button" id="t-notes" aria-pressed="${String(root.dataset.notes !== "off")}" aria-label="Presenter notes" title="Presenter notes (N)">${icon("notes")}<kbd class="wide">N</kbd></button>
@@ -82,16 +96,25 @@ export function renderBanners(state) {
     out.push(h`<div class="banner" data-level="error">${icon("warn")}<p>The console backend stopped answering. The page reconnects by itself when it is back.</p>${copyBox("make console")}</div>`);
   }
   const t = (state.stack?.components || []).find((c) => c.id === "temporal");
+  const gap = state.stack?.kind?.gap || null;
   if (t && t.status === "down") {
-    const local = cfg.profile === "local";
-    out.push(h`<div class="banner" data-level="error">${icon("warn")}<p>${(t.detail || "Temporal is not reachable at 127.0.0.1:7233").replace(/\.?$/, ".")} ${local ? "Start the dev server." : `Run the port-forward for ${cfg.profile}.`}</p>
-      ${local ? h`<button class="btn small primary" type="button" data-start-dev>${icon("play")}Start dev server</button>`
-        : copyBox(`make pf TEMPORAL_PROFILE=${cfg.profile}`)}</div>`);
+    if (cfg.profile === "local") {
+      out.push(h`<div class="banner" data-level="error">${icon("warn")}<p>${(t.detail || "Temporal is not reachable at 127.0.0.1:7233").replace(/\.?$/, ".")} Start the dev server.</p>
+        <button class="btn small primary" type="button" data-start-dev>${icon("play")}Start dev server</button></div>`);
+    } else {
+      // kind: name the first missing layer (Docker VM, cluster, port-forward) and its action.
+      const fix = kindFix(gap);
+      out.push(h`<div class="banner" data-level="error">${icon("warn")}<p>Temporal on kind is not reachable: ${gap ? gap.cause : "the port-forward to 127.0.0.1:7233 does not answer"}.</p>
+        <button class="btn small primary" type="button" data-kind-fix>${icon("play")}${fix.label}</button></div>`);
+    }
+  } else if (t && gap && gap.layer === "certs") {
+    out.push(h`<div class="banner" data-level="warn">${icon("warn")}<p>${gap.cause}. Laptop workers would fail the mTLS handshake.</p>
+      <button class="btn small ghost" type="button" data-kind-fix>${gap.fix.label}</button></div>`);
   }
   const mm = state.stack?.profile?.mismatch;
   if (mm) {
     const det = state.stack.profile.detected;
-    out.push(h`<div class="banner" data-level="warn">${icon("warn")}<p>${mm}</p>${det ? h`<button class="btn small ghost" type="button" data-profile="${det}">Switch to ${det}</button>` : ""}</div>`);
+    out.push(h`<div class="banner" data-level="warn">${icon("warn")}<p>${mm}</p>${det ? h`<button class="btn small ghost" type="button" data-profile="${det}">Switch to ${PROFILE_LABEL[det] || det}</button>` : ""}</div>`);
   }
   // The stack banner above already says Temporal is down, with the fix; the stream's alert
   // carries the raw connection error and would only repeat it.
@@ -100,8 +123,10 @@ export function renderBanners(state) {
     if (stackKnown && /^Temporal is not reachable/.test(a.message || "")) continue;
     out.push(h`<div class="banner" data-level="${a.level}">${icon("warn")}<p>${a.message}${a.hint ? h` <span class="muted">${a.hint}</span>` : ""}</p><button class="tbtn" type="button" data-dismiss="${a.id}" aria-label="Dismiss">${icon("close")}</button></div>`);
   }
-  el.innerHTML = out.map(String).join("");
+  patch(el, out.map(String).join(""));
 }
+
+const kindFix = (gap) => gap?.fix || { kind: "action", action: "pf", params: {}, label: "Start port-forward" };
 
 async function switchProfile(p) {
   const cfg = store.state.config || {};
@@ -109,7 +134,7 @@ async function switchProfile(p) {
   try {
     const res = await post("/api/profile", { profile: p });
     store.set({ config: res });
-    toast(`Switched to profile ${p}.`, { level: "ok" });
+    toast(`Switched to profile ${PROFILE_LABEL[p] || p}.`, { level: "ok" });
   } catch (err) {
     const procs = err.extra?.processes;
     if (procs && procs.length) {
@@ -130,11 +155,26 @@ export function toggleNotes() {
   prefs.write(root.dataset.projector === "on" ? { projectorNotes: root.dataset.notes } : { notes: root.dataset.notes });
   store.touch("config", "run");
 }
+// Whether a #/notes window lives elsewhere. State, not prefs: P must not bring the notes back.
+let paired = false;
+
+/** A #/notes window opened (true) or closed (false) elsewhere: notes off here while it lives.
+ *  Not remembered: the presenter's own N choice stays in prefs. */
+export function pairNotes(on) {
+  paired = !!on;
+  const p = prefs.read();
+  const mine = root.dataset.projector === "on" ? (p.projectorNotes || "off") : (p.notes || "on");
+  const next = paired ? "off" : mine;
+  if (root.dataset.notes === next) return;
+  root.dataset.notes = next;
+  store.touch("config", "run");
+}
 export function toggleProjector() {
   root.dataset.projector = root.dataset.projector === "on" ? "off" : "on";
   const p = prefs.read();
   // The projector shows the lanes, not the presenter's notes (those go to #/notes on the laptop).
-  root.dataset.notes = root.dataset.projector === "on" ? (p.projectorNotes || "off") : (p.notes || "on");
+  const mine = root.dataset.projector === "on" ? (p.projectorNotes || "off") : (p.notes || "on");
+  root.dataset.notes = paired ? "off" : mine;
   prefs.write({ projector: root.dataset.projector });
   store.touch("config", "run");
 }
@@ -153,6 +193,7 @@ export function wireStackBar(openSheet) {
     }
     if (t.closest("#t-drawer")) { root.dataset.drawer = root.dataset.drawer === "open" ? "closed" : "open"; return; }
     if (t.closest("[data-start-dev]")) { startProcess("dev-server", { wci: 0 }); return; }
+    if (t.closest("[data-kind-fix]")) { runFix(kindFix(store.state.stack?.kind?.gap)); return; }
     const d = t.closest("[data-dismiss]");
     if (d) store.set({ alerts: store.state.alerts.filter((a) => String(a.id) !== d.dataset.dismiss) });
   });

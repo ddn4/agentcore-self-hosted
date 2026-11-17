@@ -284,6 +284,9 @@ class FakeRunner:
         self.results: dict[str, CommandResult] = {}
         self.children: dict[int, FakeSpawned] = {}
         self.ignore_term: set[int] = set()
+        #: argv prefix -> (exit code, output): a spawned command that ends at once (streamed
+        #: recipe steps); every other spawned child runs until ``exit``.
+        self.auto_exit: dict[str, tuple[int, str]] = {}
         self._next = 4000
 
     def result_for(self, prefix: str, code: int, output: str = "") -> None:
@@ -313,9 +316,17 @@ class FakeRunner:
         with log_path.open("a") as f:
             f.write(f"started {' '.join(argv)}\n")
         self.spawned.append((list(argv), dict(env), log_path))
-        self.alive_groups.add(pid)
         child = FakeSpawned(pid)
         self.children[pid] = child
+        joined = " ".join(argv)
+        for prefix, (code, output) in self.auto_exit.items():
+            if joined.startswith(prefix):
+                with log_path.open("a") as f:
+                    f.write(output)
+                child.code = code
+                child.done.set()
+                return child
+        self.alive_groups.add(pid)
         return child
 
     def exit(self, pid: int, code: int = 0) -> None:

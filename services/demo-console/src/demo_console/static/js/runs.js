@@ -1,11 +1,7 @@
 // Recent conversations (visibility list) and load batches, in the left column (DESIGN 2.1, 5.3).
 import { enc } from "./api.js";
 import { h, hhmm, icon, stateGlyph } from "./format.js";
-
-const SCEN_WORD = {
-  "case-a": "Case A", "case-b": "Case B", crash: "Crash demo", "serverless-b": "Case B, invoke-local",
-  "wci-b": "Case B, WCI", failure: "Failure demo", load: "Load",
-};
+import { patch } from "./ui.js";
 
 const ANSWERED = new Set(["completed", "rejected", "failed", "canceled"]);
 
@@ -32,18 +28,20 @@ export function renderRuns(state) {
   const focus = state.route.name === "run" ? state.route.wf : null;
   if (!body) {
     const down = (state.stack?.components || []).some((c) => c.id === "temporal" && c.status === "down");
-    el.innerHTML = String(h`<li><p class="empty-side">${down ? "Runs appear here once Temporal is reachable." : "Loading runs…"}</p></li>`);
+    patch(el, h`<li><p class="empty-side">${down ? "Runs appear here once Temporal is reachable." : "Loading runs…"}</p></li>`);
     return;
   }
   const runs = (body.runs || []).filter((r) => !r.group);
   const groups = body.groups || [];
   if (!runs.length && !groups.length) {
-    el.innerHTML = String(h`<li><p class="empty-side">No runs yet. Start Case A to see the hop.</p></li>`);
+    const first = (state.scenarios || []).find((s) => s.fit !== "wrong_profile");
+    patch(el, h`<li><p class="empty-side">No runs yet. ${first ? `Start ${first.short || first.title} to see the hop.` : "Pick a scenario to start one."}</p></li>`);
     return;
   }
+  const label = (r) => (state.scenarios || []).find((s) => s.id === r.scenario)?.run_label;
   const items = runs.map((r) => h`<li><a href="#/runs/${enc(r.workflow_id)}" ${focus === r.workflow_id ? h`aria-current="page"` : ""}>
       <span class="id" title="${r.workflow_id}">${r.workflow_id}</span><span class="st">${statusOf(r)}</span>
-      <span class="when">${SCEN_WORD[r.scenario] || (r.case ? `Case ${r.case}` : "Conversation")}, ${r.status === "RUNNING" ? "started " : ""}${hhmm(r.started_at)}</span></a></li>`);
+      <span class="when">${label(r) || (r.case ? `Case ${r.case}` : "Conversation")}, ${r.status === "RUNNING" ? "started " : ""}${hhmm(r.started_at)}</span></a></li>`);
   const gs = groups.map((g) => {
     const done = g.running === 0;
     const ok = done && g.failed === 0;
@@ -51,5 +49,5 @@ export function renderRuns(state) {
       <span class="id">${g.id}</span><span class="st">${h`<span class="sg" data-s="${ok ? "completed" : done ? "failed" : "running"}">${icon(ok ? "check" : done ? "x" : "dot")}${g.completed} of ${g.n}</span>`}</span>
       <span class="when">Load, ${g.kind}${g.failed ? `, ${g.failed} failed` : ""}</span></div></li>`;
   });
-  el.innerHTML = [...items, ...gs].map(String).join("");
+  patch(el, [...items, ...gs].map(String).join(""));
 }

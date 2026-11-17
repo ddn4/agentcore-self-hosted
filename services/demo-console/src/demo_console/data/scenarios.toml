@@ -1,15 +1,31 @@
 # Demo console scenario catalog (docs/console/DESIGN.md 2.2, 5.2).
 #
+# Scenarios are listed in story order; next names the one the console suggests once a run of
+# this one has finished (DESIGN.md 2.2).
+#
+# Names: title heads the scenario card; short and sub are the left-column list entry;
+# run_label names a run of this scenario in the runs list and the run view.
+#
 # {build} in a make string is Support's resolved Build ID (build-id.sh refuses a dirty tree).
 # Each step's done_when uses the closed predicate vocabulary of DESIGN.md 5.4; a unit test
 # parses every one. {wf} in a make string is the run's workflow ID. Cost per profile:
 # free | tokens (the console turns free into tokens when the model is live).
 # preconditions: ids evaluated by demo_console.scenarios against the live stack;
 # preconditions_serverless replaces them when the queue is support-tq.
+#
+# The Start button: start_label is what it says ({n} is filled from the option n);
+# start_action names the action it runs (an id from GET /api/actions) for scenarios that do not
+# start a Support run, with [[scenario.option]] for that action's params; extra_action is one
+# more button next to it; view = "cleanup" shows the waiting runs instead of a Start button.
+# Each step's short is its stepper label; point is what the presenter points at, and
+# point_versioned replaces it on a versioned run.
 
 [[scenario]]
 id = "case-a"
 title = "Case A: $40 headphones, auto-approved"
+short = "Case A"
+sub = "$40 headphones, auto-approved"
+run_label = "Case A"
 summary = "Support's agents look up the order, ask Finance over Nexus, and Finance approves on its own."
 story = { tag = "v0.5-a2a-over-nexus", doc = "docs/story/v0.5-a2a-over-nexus.md" }
 profiles = ["local", "kind", "kind-plaintext"]
@@ -18,6 +34,8 @@ order_id = "1042"
 amount_usd = 40.0
 id_prefix = "support-1042"
 queue = "auto"
+next = "case-b"
+start_label = "Start Case A"
 cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model; Bedrock tokens when the model is live"
 preconditions = ["temporal", "endpoint", "finance", "payments", "support-plain"]
@@ -27,6 +45,8 @@ notes = "Support can't move money, so it asks Finance: a different team's agent,
   [[scenario.step]]
   id = "start"
   title = "Start Case A"
+  short = "Start"
+  point = "The ticket at the top, and the first rows in Support's lane."
   kind = "action"
   action = "start-run"
   done_when = "run.started"
@@ -36,6 +56,8 @@ notes = "Support can't move money, so it asks Finance: a different team's agent,
   [[scenario.step]]
   id = "card"
   title = "Support discovers Finance's Agent Card"
+  short = "Agent Card"
+  point = "The short wire to the seam: get_agent_card, the one thing Finance publishes."
   kind = "watch"
   done_when = "card.discovered"
   talk = "First the A2A discovery: get_agent_card over the finance-agent endpoint."
@@ -43,6 +65,8 @@ notes = "Support can't move money, so it asks Finance: a different team's agent,
   [[scenario.step]]
   id = "ask"
   title = "Support asks Finance for the refund"
+  short = "Ask Finance"
+  point = "The wire crossing the seam into Finance's lane: one Nexus call between two namespaces."
   kind = "watch"
   done_when = "task.state in [submitted, working, input-required, completed, rejected, failed]"
   talk = "send_message crosses into namespace agent-services. Workers never talk to each other."
@@ -50,6 +74,8 @@ notes = "Support can't move money, so it asks Finance: a different team's agent,
   [[scenario.step]]
   id = "approved"
   title = "Finance approves on its own"
+  short = "Approved"
+  point = "Finance's lane: approved_by auto. No human was needed under $100."
   kind = "watch"
   done_when = "task.state in [completed, rejected, failed]"
   talk = "Under $100 at low risk, Finance's policy approves automatically: approved_by auto."
@@ -57,6 +83,9 @@ notes = "Support can't move money, so it asks Finance: a different team's agent,
   [[scenario.step]]
   id = "reply"
   title = "Support replies with the refund ID"
+  short = "Reply"
+  point = "The reply quoting the refund ID. Same run ID from start to finish."
+  point_versioned = "The reply quoting the refund ID, and the pinned Build ID in the header."
   kind = "watch"
   done_when = "run.closed"
   talk = "The answer came back over Nexus, and Support quotes the refund ID."
@@ -65,6 +94,9 @@ notes = "Support can't move money, so it asks Finance: a different team's agent,
 [[scenario]]
 id = "case-b"
 title = "Case B: $450 laptop, a human approves"
+short = "Case B"
+sub = "$450 laptop, a human approves"
+run_label = "Case B"
 summary = "Over $100, Finance's agent asks a human. Support can be switched off while it waits."
 story = { tag = "v0.6-human-in-the-loop", doc = "docs/story/v0.6-human-in-the-loop.md" }
 profiles = ["local", "kind", "kind-plaintext"]
@@ -73,6 +105,8 @@ order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077"
 queue = "auto"
+next = "crash"
+start_label = "Start Case B"
 cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model; Bedrock tokens when the model is live"
 preconditions = ["temporal", "endpoint", "finance", "payments", "support-plain"]
@@ -82,6 +116,8 @@ notes = "Over $100, Finance's agent says 'I need a human', and the task goes to 
   [[scenario.step]]
   id = "start"
   title = "Start Case B"
+  short = "Start"
+  point = "The ticket at the top, and the first rows in Support's lane."
   kind = "action"
   action = "start-run"
   done_when = "run.started"
@@ -91,6 +127,8 @@ notes = "Over $100, Finance's agent says 'I need a human', and the task goes to 
   [[scenario.step]]
   id = "input-required"
   title = "Finance asks a human"
+  short = "A human is asked"
+  point = "The big state, input-required, and the approval card waiting in Finance's lane."
   kind = "watch"
   done_when = "task.state==input-required"
   talk = "Over $100, Finance's agent says 'I need a human'. The task is input-required."
@@ -99,6 +137,8 @@ notes = "Over $100, Finance's agent says 'I need a human', and the task goes to 
   [[scenario.step]]
   id = "stop-support"
   title = "Stop the Support worker (optional)"
+  short = "Stop Support"
+  point = "The compute rail goes dark: no Support worker runs. Finance keeps waiting; nothing is lost."
   kind = "action"
   action = "process.stop"
   params = { name = "worker-support", signal = "TERM" }
@@ -110,6 +150,8 @@ notes = "Over $100, Finance's agent says 'I need a human', and the task goes to 
   [[scenario.step]]
   id = "approve"
   title = "Approve or reject the refund"
+  short = "Approve"
+  point = "The empty Support rail and the glowing held-open line in the seam, side by side. Then the approval card in Finance's lane."
   kind = "human"
   action = "approve"
   done_when = "task.state in [completed, rejected, failed]"
@@ -119,6 +161,8 @@ notes = "Over $100, Finance's agent says 'I need a human', and the task goes to 
   [[scenario.step]]
   id = "restart-support"
   title = "Start the Support worker again (if stopped)"
+  short = "Restart Support"
+  point = "A new worker identity in Support's lane, on the same run."
   kind = "action"
   action = "process.start"
   params = { name = "worker-support" }
@@ -129,6 +173,9 @@ notes = "Over $100, Finance's agent says 'I need a human', and the task goes to 
   [[scenario.step]]
   id = "reply"
   title = "Support replies"
+  short = "Reply"
+  point = "The reply quoting the refund ID. Same run ID from start to finish."
+  point_versioned = "The reply quoting the refund ID, and the pinned Build ID in the header."
   kind = "watch"
   done_when = "run.closed"
   talk = "The reply quotes the refund ID, or apologises if Finance rejected it."
@@ -137,6 +184,9 @@ notes = "Over $100, Finance's agent says 'I need a human', and the task goes to 
   [[scenario.step]]
   id = "report"
   title = "Read the approval report"
+  short = "Report"
+  point = "The report: how long the approval took, and seconds from approval to reply. This run is unversioned: plain workers on support-dev-tq."
+  point_versioned = "The report: lifetimes, one Build ID, and seconds from approval to reply."
   kind = "watch"
   done_when = "run.closed"
   talk = "Support's history went quiet while Finance waited: one Workflow Task recorded that the call started, then nothing until the answer."
@@ -144,7 +194,10 @@ notes = "Over $100, Finance's agent says 'I need a human', and the task goes to 
 
 [[scenario]]
 id = "crash"
-title = "Durable agent: kill the worker mid-thought"
+title = "Worker crash: kill Support mid-thought"
+short = "Worker crash"
+sub = "Kill Support mid-thought; it resumes"
+run_label = "Case A, worker crash"
 summary = "SIGKILL the Support worker while a model turn runs; a new worker carries on from history."
 story = { tag = "v0.2-durable-agent", doc = "docs/story/v0.2-durable-agent.md" }
 profiles = ["local", "kind", "kind-plaintext"]
@@ -153,6 +206,8 @@ order_id = "1042"
 amount_usd = 40.0
 id_prefix = "support-1042-crash"
 queue = "dev"
+next = "failure"
+start_label = "Start Case A"
 cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model"
 preconditions = ["temporal", "endpoint", "finance", "payments", "support-plain-managed"]
@@ -161,6 +216,8 @@ notes = "Every model call and tool call is an Activity. I kill the process mid-t
   [[scenario.step]]
   id = "start"
   title = "Start Case A"
+  short = "Start"
+  point = "The ticket at the top, and the first rows in Support's lane."
   kind = "action"
   action = "start-run"
   done_when = "run.started"
@@ -170,6 +227,8 @@ notes = "Every model call and tool call is an Activity. I kill the process mid-t
   [[scenario.step]]
   id = "kill"
   title = "Kill the Support worker mid-thought"
+  short = "Kill worker"
+  point = "The rail: the lifetime ends abruptly with a red cut."
   kind = "action"
   action = "process.stop"
   params = { name = "worker-support", signal = "KILL" }
@@ -179,6 +238,8 @@ notes = "Every model call and tool call is an Activity. I kill the process mid-t
   [[scenario.step]]
   id = "restart"
   title = "Start a new Support worker"
+  short = "Restart Support"
+  point = "A new worker identity in Support's lane, on the same run."
   kind = "action"
   action = "process.start"
   params = { name = "worker-support" }
@@ -188,13 +249,100 @@ notes = "Every model call and tool call is an Activity. I kill the process mid-t
   [[scenario.step]]
   id = "reply"
   title = "The same run finishes"
+  short = "Reply"
+  point = "The reply quoting the refund ID. Same run ID from start to finish."
   kind = "watch"
   done_when = "run.closed"
   talk = "Two workers, one conversation, nothing repeated that had finished."
 
 [[scenario]]
+id = "failure"
+title = "Finance outage: Finance disappears mid-call"
+short = "Finance outage"
+sub = "Finance goes away; Nexus retries"
+run_label = "Case A, Finance outage"
+summary = "The Finance worker goes away; Support's Nexus call retries until it comes back."
+story = { tag = "v0.5-a2a-over-nexus", doc = "docs/story/v0.5-a2a-over-nexus.md" }
+profiles = ["local"]
+case = "A"
+order_id = "1042"
+amount_usd = 40.0
+id_prefix = "support-1042-failure"
+queue = "dev"
+next = "serverless-b"
+start_label = "Start Case A"
+cost = { local = "free" }
+cost_note = "stops and restarts the console-managed Finance worker"
+preconditions = ["temporal", "endpoint", "finance-managed", "payments", "support-plain"]
+notes = "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives."
+
+  [[scenario.step]]
+  id = "start"
+  title = "Start Case A"
+  short = "Start"
+  point = "The ticket at the top, and the first rows in Support's lane."
+  kind = "action"
+  action = "start-run"
+  done_when = "run.started"
+  talk = "Case A again."
+  make = "make case-a WF={wf}"
+
+  [[scenario.step]]
+  id = "card"
+  title = "Discovery completes"
+  short = "Agent Card"
+  point = "The short wire to the seam: get_agent_card, the one thing Finance publishes."
+  kind = "watch"
+  done_when = "card.discovered"
+  talk = "Discovery is synchronous: Finance must be up for it."
+
+  [[scenario.step]]
+  id = "stop-finance"
+  title = "Stop Finance"
+  short = "Stop Finance"
+  point = "Finance's pip in the stack bar goes down."
+  kind = "action"
+  action = "process.stop"
+  params = { name = "worker-finance", signal = "TERM" }
+  done_when = "process.worker-finance==stopped"
+  talk = "Finance goes away. Nobody polls agent-services-tq."
+
+  [[scenario.step]]
+  id = "retrying"
+  title = "The Nexus call retries"
+  short = "Retries"
+  point = "The seam: send_message on attempt 2, then 3, with the last failure. Support's code has no retry loop."
+  kind = "watch"
+  done_when = "nexus.attempt>=2"
+  talk = "Attempt 2, 3... with the last failure. Nothing fails on Support's side."
+  make = "make pending WF={wf}"
+
+  [[scenario.step]]
+  id = "start-finance"
+  title = "Start Finance again"
+  short = "Start Finance"
+  point = "The same call completing as soon as Finance is back."
+  kind = "action"
+  action = "process.start"
+  params = { name = "worker-finance" }
+  done_when = "nexus.completed"
+  talk = "Finance is back and the operation completes."
+
+  [[scenario.step]]
+  id = "reply"
+  title = "Support replies"
+  short = "Reply"
+  point = "The reply quoting the refund ID. Same run ID from start to finish."
+  kind = "watch"
+  done_when = "run.closed"
+  talk = "The customer never knew."
+
+[[scenario]]
 id = "serverless-b"
-title = "Case B, AgentCore shape, invoke-local"
+title = "AgentCore, you invoke: Case B with a worker built to die"
+short = "AgentCore: you invoke"
+sub = "Case B; you start each worker lifetime"
+run_label = "Case B, you invoke"
 summary = "Support's worker is built to die: it starts when invoked and drains when idle. You play the WCI."
 story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
 profiles = ["local", "kind", "kind-plaintext"]
@@ -203,6 +351,8 @@ order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077-sl"
 queue = "versioned"
+next = "wci-b"
+start_label = "Start Case B"
 cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "scripted model"
 preconditions = ["temporal", "endpoint", "finance", "payments", "build-id", "agentcore", "version-current"]
@@ -214,6 +364,8 @@ notes = "Support's Worker is now built to die. It starts when invoked, drains wh
   [[scenario.step]]
   id = "start"
   title = "Start Case B on support-tq"
+  short = "Start"
+  point = "The ticket at the top, and the first rows in Support's lane."
   kind = "action"
   action = "start-run"
   done_when = "run.started"
@@ -223,6 +375,8 @@ notes = "Support's Worker is now built to die. It starts when invoked, drains wh
   [[scenario.step]]
   id = "invoke1"
   title = "Invoke the AgentCore app (lifetime 1)"
+  short = "Lifetime 1"
+  point = "The compute rail lighting up: lifetime 1. Nothing polled support-tq until the AgentCore app was invoked."
   kind = "action"
   action = "invoke-local"
   done_when = "compute.lifetimes>=1"
@@ -232,6 +386,8 @@ notes = "Support's Worker is now built to die. It starts when invoked, drains wh
   [[scenario.step]]
   id = "input-required"
   title = "Finance asks a human"
+  short = "A human is asked"
+  point = "The big state, input-required, and the approval card waiting in Finance's lane."
   kind = "watch"
   done_when = "task.state==input-required"
   talk = "Over $100, Finance's agent says 'I need a human'."
@@ -239,6 +395,8 @@ notes = "Support's Worker is now built to die. It starts when invoked, drains wh
   [[scenario.step]]
   id = "drained"
   title = "Support's compute drains"
+  short = "Compute drains"
+  point = "The rail on the left is an empty dashed lane: no Support worker exists. The glowing line in the Nexus seam: the server is holding Support's call to Finance open."
   kind = "watch"
   done_when = "compute.drain==drained"
   talk = "Nothing to do, so after the debounce the lifetime drains: /ping is Healthy again."
@@ -247,6 +405,8 @@ notes = "Support's Worker is now built to die. It starts when invoked, drains wh
   [[scenario.step]]
   id = "approve"
   title = "Approve the refund"
+  short = "Approve"
+  point = "The empty Support rail and the glowing held-open line in the seam, side by side. Then the approval card in Finance's lane."
   kind = "human"
   action = "approve"
   done_when = "task.state in [completed, rejected, failed]"
@@ -256,6 +416,8 @@ notes = "Support's Worker is now built to die. It starts when invoked, drains wh
   [[scenario.step]]
   id = "invoke2"
   title = "Invoke again (lifetime 2)"
+  short = "Lifetime 2"
+  point = "The rail lights up again as lifetime 2 (with the server's WCI, its InvokeWorker row sits on the rail's edge)."
   kind = "action"
   action = "invoke-local"
   done_when = "compute.lifetimes>=2"
@@ -265,6 +427,9 @@ notes = "Support's Worker is now built to die. It starts when invoked, drains wh
   [[scenario.step]]
   id = "reply"
   title = "Support replies with the refund ID"
+  short = "Reply"
+  point = "The reply quoting the refund ID. Same run ID from start to finish."
+  point_versioned = "The reply quoting the refund ID, and the pinned Build ID in the header."
   kind = "watch"
   done_when = "run.status==COMPLETED"
   talk = "Same build, pinned."
@@ -272,6 +437,9 @@ notes = "Support's Worker is now built to die. It starts when invoked, drains wh
   [[scenario.step]]
   id = "report"
   title = "Read the report"
+  short = "Report"
+  point = "The report: how long the approval took, and seconds from approval to reply. This run is unversioned: plain workers on support-dev-tq."
+  point_versioned = "The report: lifetimes, one Build ID, and seconds from approval to reply."
   kind = "watch"
   done_when = "run.closed"
   talk = "Two lifetimes, one Build ID."
@@ -279,7 +447,10 @@ notes = "Support's Worker is now built to die. It starts when invoked, drains wh
 
 [[scenario]]
 id = "wci-b"
-title = "Case B, the server's WCI starts the worker"
+title = "AgentCore, WCI invokes: Temporal starts the worker"
+short = "AgentCore: WCI invokes"
+sub = "Case B; Temporal starts the worker"
+run_label = "Case B, WCI invokes"
 summary = "Finance waits for a human while Support's compute is gone; the server restarts it."
 story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
 profiles = ["local"]
@@ -288,7 +459,9 @@ order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077-wci"
 queue = "versioned"
-cost = { local = "free", kind = "free", kind-plaintext = "free" }
+next = "load"
+start_label = "Start Case B"
+cost = { local = "free" }
 cost_note = "scripted model"
 preconditions = ["temporal", "wci", "emulator", "agentcore", "build-id", "version-wci", "finance", "payments", "endpoint"]
 notes = "Finance is waiting for a human, and Support's compute is gone. Nothing runs and nothing is billed, but the conversation is still there. I approve, and Temporal starts a fresh worker to finish the reply."
@@ -296,6 +469,8 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   [[scenario.step]]
   id = "start"
   title = "Start Case B on support-tq"
+  short = "Start"
+  point = "The ticket at the top, and the first rows in Support's lane."
   kind = "action"
   action = "start-run"
   done_when = "run.started"
@@ -305,6 +480,8 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   [[scenario.step]]
   id = "invoke1"
   title = "The WCI starts lifetime 1"
+  short = "Lifetime 1"
+  point = "The compute rail lighting up: lifetime 1. Nothing polled support-tq until the AgentCore app was invoked."
   kind = "watch"
   done_when = "compute.lifetimes>=1"
   talk = "Nothing was polling. The server's Worker Controller invoked AgentCore."
@@ -312,6 +489,8 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   [[scenario.step]]
   id = "input-required"
   title = "Finance asks a human"
+  short = "A human is asked"
+  point = "The big state, input-required, and the approval card waiting in Finance's lane."
   kind = "watch"
   done_when = "task.state==input-required"
   talk = "Over $100, Finance's agent says 'I need a human'."
@@ -319,6 +498,8 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   [[scenario.step]]
   id = "drained"
   title = "Support's compute drains"
+  short = "Compute drains"
+  point = "The rail on the left is an empty dashed lane: no Support worker exists. The glowing line in the Nexus seam: the server is holding Support's call to Finance open."
   kind = "watch"
   done_when = "compute.drain==drained"
   talk = "Support's worker is gone. Nothing runs and nothing is billed."
@@ -326,6 +507,8 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   [[scenario.step]]
   id = "approve"
   title = "Approve the refund"
+  short = "Approve"
+  point = "The empty Support rail and the glowing held-open line in the seam, side by side. Then the approval card in Finance's lane."
   kind = "human"
   action = "approve"
   done_when = "task.state in [completed, rejected, failed]"
@@ -335,6 +518,8 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   [[scenario.step]]
   id = "invoke2"
   title = "The WCI starts lifetime 2"
+  short = "Lifetime 2"
+  point = "The rail lights up again as lifetime 2 (with the server's WCI, its InvokeWorker row sits on the rail's edge)."
   kind = "watch"
   done_when = "compute.lifetimes>=2"
   talk = "Finance's answer landed in Support's history, so the server starts a worker."
@@ -342,6 +527,9 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   [[scenario.step]]
   id = "reply"
   title = "Support replies with the refund ID"
+  short = "Reply"
+  point = "The reply quoting the refund ID. Same run ID from start to finish."
+  point_versioned = "The reply quoting the refund ID, and the pinned Build ID in the header."
   kind = "watch"
   done_when = "run.status==COMPLETED"
   talk = "Same build, pinned."
@@ -349,79 +537,67 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   [[scenario.step]]
   id = "report"
   title = "Read the report"
+  short = "Report"
+  point = "The report: how long the approval took, and seconds from approval to reply. This run is unversioned: plain workers on support-dev-tq."
+  point_versioned = "The report: lifetimes, one Build ID, and seconds from approval to reply."
   kind = "watch"
   done_when = "run.closed"
   talk = "Two lifetimes, one Build ID, reply seconds after the approval."
   make = "make wci-history BUILD={build}"
 
 [[scenario]]
-id = "failure"
-title = "Finance disappears mid-call"
-summary = "The Finance worker goes away; Support's Nexus call retries until it comes back."
-story = { tag = "v0.5-a2a-over-nexus", doc = "docs/story/v0.5-a2a-over-nexus.md" }
-profiles = ["local"]
-case = "A"
-order_id = "1042"
-amount_usd = 40.0
-id_prefix = "support-1042-failure"
-queue = "dev"
+id = "load"
+title = "Load: N conversations at once"
+short = "Load"
+sub = "Up to 20 conversations at once"
+run_label = "Load"
+summary = "N Workflows on support-tq with nothing polling; the WCI scales Support up and back to zero."
+story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
+profiles = ["local", "kind", "kind-plaintext"]
+case = ""
+order_id = ""
+amount_usd = 0.0
+id_prefix = "load"
+queue = "versioned"
+next = "smoke"
+start_action = "load"
+start_label = "Start {n} conversations"
 cost = { local = "free", kind = "free", kind-plaintext = "free" }
-cost_note = "stops and restarts the console-managed Finance worker"
-preconditions = ["temporal", "endpoint", "finance-managed", "payments", "support-plain"]
-notes = "Finance's team has an outage. Support's call doesn't fail: the server keeps the Nexus operation and retries it. When Finance comes back, the answer arrives."
+cost_note = "ping: no model; case-a: model turns"
+preconditions = ["temporal", "build-id", "version", "serverless-compute"]
+notes = "Ten conversations arrive at once. Nothing polls Support's queue until the server's Worker Controller starts capacity, and it all drains back to zero."
+
+  [[scenario.option]]
+  id = "n"
+  label = "Conversations"
+  type = "number"
+  default = 10
+  min = 1
+  max = 20
+
+  [[scenario.option]]
+  id = "kind"
+  label = "What each one runs"
+  type = "choice"
+  choices = ["ping", "case-a"]
+  default = "ping"
 
   [[scenario.step]]
-  id = "start"
-  title = "Start Case A"
+  id = "load"
+  title = "Start the load"
+  short = "Load"
   kind = "action"
-  action = "start-run"
-  done_when = "run.started"
-  talk = "Case A again."
-  make = "make case-a WF={wf}"
-
-  [[scenario.step]]
-  id = "card"
-  title = "Discovery completes"
-  kind = "watch"
-  done_when = "card.discovered"
-  talk = "Discovery is synchronous: Finance must be up for it."
-
-  [[scenario.step]]
-  id = "stop-finance"
-  title = "Stop Finance"
-  kind = "action"
-  action = "process.stop"
-  params = { name = "worker-finance", signal = "TERM" }
-  done_when = "process.worker-finance==stopped"
-  talk = "Finance goes away. Nobody polls agent-services-tq."
-
-  [[scenario.step]]
-  id = "retrying"
-  title = "The Nexus call retries"
-  kind = "watch"
-  done_when = "nexus.attempt>=2"
-  talk = "Attempt 2, 3... with the last failure. Nothing fails on Support's side."
-  make = "make pending WF={wf}"
-
-  [[scenario.step]]
-  id = "start-finance"
-  title = "Start Finance again"
-  kind = "action"
-  action = "process.start"
-  params = { name = "worker-finance" }
-  done_when = "nexus.completed"
-  talk = "Finance is back and the operation completes."
-
-  [[scenario.step]]
-  id = "reply"
-  title = "Support replies"
-  kind = "watch"
-  done_when = "run.closed"
-  talk = "The customer never knew."
+  action = "load"
+  done_when = "job.load==succeeded"
+  talk = "N at once on support-tq."
+  make = "make load N=10 LOAD_KIND=ping"
 
 [[scenario]]
 id = "smoke"
-title = "The hop with no AI"
+title = "Nexus hop with no AI"
+short = "Nexus hop, no AI"
+sub = "Smoke caller and Agent Card"
+run_label = "Smoke"
 summary = "A2ASmokeWorkflow calls Finance over Nexus with no model on the caller; then a standalone get_agent_card."
 story = { tag = "v0.4-finance-agent", doc = "docs/story/v0.4-finance-agent.md" }
 profiles = ["local"]
@@ -430,7 +606,11 @@ order_id = "1042"
 amount_usd = 40.0
 id_prefix = "smoke-1042"
 queue = "smoke"
-cost = { local = "free", kind = "free", kind-plaintext = "free" }
+next = "cleanup"
+start_action = "smoke"
+start_label = "Run the smoke caller"
+extra_action = { action = "card", label = "Fetch the Agent Card" }
+cost = { local = "free" }
 cost_note = "no model on the caller"
 preconditions = ["temporal", "endpoint", "finance", "payments", "smoke-worker"]
 notes = "The Finance team publishes exactly one thing, an A2A-shaped contract. No AI on the caller yet, just the hop."
@@ -438,6 +618,7 @@ notes = "The Finance team publishes exactly one thing, an A2A-shaped contract. N
   [[scenario.step]]
   id = "smoke"
   title = "Run the smoke caller"
+  short = "Smoke"
   kind = "action"
   action = "smoke"
   done_when = "job.smoke==succeeded"
@@ -447,6 +628,8 @@ notes = "The Finance team publishes exactly one thing, an A2A-shaped contract. N
   [[scenario.step]]
   id = "card"
   title = "Standalone get_agent_card"
+  short = "Agent Card"
+  point = "The short wire to the seam: get_agent_card, the one thing Finance publishes."
   kind = "action"
   action = "card"
   done_when = "job.card==succeeded"
@@ -454,33 +637,11 @@ notes = "The Finance team publishes exactly one thing, an A2A-shaped contract. N
   make = "make card"
 
 [[scenario]]
-id = "load"
-title = "N conversations at once"
-summary = "N Workflows on support-tq with nothing polling; the WCI scales Support up and back to zero."
-story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
-profiles = ["local", "kind", "kind-plaintext"]
-case = ""
-order_id = ""
-amount_usd = 0.0
-id_prefix = "load"
-queue = "versioned"
-cost = { local = "free", kind = "free", kind-plaintext = "free" }
-cost_note = "ping: no model; case-a: model turns"
-preconditions = ["temporal", "build-id", "version", "serverless-compute"]
-notes = "Ten conversations arrive at once. Nothing polls Support's queue until the server's Worker Controller starts capacity, and it all drains back to zero."
-
-  [[scenario.step]]
-  id = "load"
-  title = "Start the load"
-  kind = "action"
-  action = "load"
-  done_when = "job.load==succeeded"
-  talk = "N at once on support-tq."
-  make = "make load N=10 LOAD_KIND=ping"
-
-[[scenario]]
 id = "cleanup"
-title = "Leftovers"
+title = "Clean up: runs still waiting for a human"
+short = "Clean up"
+sub = "Reject or terminate stuck runs"
+run_label = "Clean up"
 summary = "Runs still waiting in input-required. Reject or terminate them."
 story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
 profiles = ["local", "kind", "kind-plaintext"]
@@ -489,6 +650,7 @@ order_id = ""
 amount_usd = 0.0
 id_prefix = "support"
 queue = "none"
+view = "cleanup"
 cost = { local = "free", kind = "free", kind-plaintext = "free" }
 cost_note = "signals and terminations only"
 preconditions = ["temporal"]
