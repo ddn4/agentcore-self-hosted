@@ -345,3 +345,29 @@ def test_a_scenario_whose_start_runs_an_action_offers_only_its_params() -> None:
     body = scenario_json(catalog["load"], StackFacts(profile="local"), catalog=catalog)
     assert [o["id"] for o in body["options"]] == ["n", "kind"]
     assert body["start_action"] == "load" and body["start_label"] == "Start {n} conversations"
+
+
+async def test_setup_restarts_an_app_on_a_stale_build(
+    tmp_path: Path, gateway: FakeGateway, runner: FakeRunner, http: FakeHttp
+) -> None:
+    # Recipes register the current Build ID; an app started on an older one would refuse every
+    # invocation, so "already running" is not good enough for it.
+    c = await ready(console(tmp_path, gateway, runner, http))
+    await c.procs.start("agentcore-local", variant="live", confirm=True)
+    c.procs.records["agentcore-local"].build_id = "79663e2"
+
+    class Log:
+        def __init__(self) -> None:
+            self.lines: list[str] = []
+
+        def line(self, text: str) -> None:
+            self.lines.append(text)
+
+    log = Log()
+    await c.actions._ensure(log, "agentcore-local", None, build="4ee7f87")  # type: ignore[arg-type]
+    assert log.lines[0] == "~ restart agentcore-local: Build ID 79663e2 -> 4ee7f87"
+    assert runner.spawned[-1][0] == ["make", "-s", "agentcore-local"]  # kept the live model
+    assert runner.spawned[-1][1]["TEMPORAL_BUILD_ID"] == "4ee7f87"
+    assert c.procs.stale_build("agentcore-local", "4ee7f87") is None
+    await c.actions._ensure(log, "agentcore-local", None, build="4ee7f87")  # type: ignore[arg-type]
+    assert log.lines[-1] == "= agentcore-local already running"

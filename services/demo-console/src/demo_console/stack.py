@@ -531,6 +531,7 @@ class StackProbe:
             current_build=current,
             compute=compute,
             managed=dict.fromkeys(self.procs.records, True),
+            agentcore_stale=self.procs.stale_build("agentcore-local", build.value),
             shape=shape,
             kind_gap=kind_gap,
             read_errors=read_errors,

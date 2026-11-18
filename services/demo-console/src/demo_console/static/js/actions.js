@@ -89,12 +89,21 @@ export async function startProcess(name, { variant = null, wci = undefined } = {
   return res;
 }
 
-export async function stopProcess(name, signal = "TERM") {
+/**
+ * Stop a managed process. With ``wf`` and KILL (the crash demos) the backend first waits for a
+ * model turn of that run to be in flight, so the kill cuts off an agent mid-thought.
+ */
+export async function stopProcess(name, signal = "TERM", wf = null) {
   const p = procByName(name);
+  const label = p?.label || name;
+  const armed = signal === "KILL" && wf;
+  if (armed) toast(`Kill armed: waiting for the next model turn of ${wf}…`);
   const res = await gated({
     key: `proc:${name}`, cost: "free",
-    call: () => post(`/api/processes/${enc(name)}/stop`, { signal }),
-    ok: signal === "KILL" ? `Killed ${p?.label || name} (SIGKILL).` : `Stopped ${p?.label || name}.`,
+    call: () => post(`/api/processes/${enc(name)}/stop`, armed ? { signal, wf } : { signal }),
+    ok: (r) => signal !== "KILL" ? `Stopped ${label}.`
+      : r?.killed_during ? `Killed ${label} (SIGKILL) during the ${r.killed_during}'s model turn.`
+      : `Killed ${label} (SIGKILL).`,
   });
   if (res && res.name) upsertProcess(res);
   return res;
@@ -163,7 +172,9 @@ export async function runStep(step, scenario, run) {
     return null;
   }
   if (a === "process.start") return startProcess(step.params?.name, step.params || {});
-  if (a === "process.stop") return stopProcess(step.params?.name, step.params?.signal || "TERM");
+  if (a === "process.stop") {
+    return stopProcess(step.params?.name, step.params?.signal || "TERM", run?.status === "RUNNING" ? run.workflow_id : null);
+  }
   const params = { ...(step.params || {}) };
   if (run && actionById(a)?.params?.some((p) => p.id === "wf")) params.wf = run.workflow_id;
   return runAction(a, params);

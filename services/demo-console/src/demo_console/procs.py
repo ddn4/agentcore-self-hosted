@@ -136,6 +136,9 @@ class ProcRecord:
     profile: str
     started_at: str
     wci: int | None = None
+    #: The Build ID it was started with (Support's serverless processes); ``None`` when it
+    #: needs none, or for a record written before the console kept it.
+    build_id: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -147,6 +150,7 @@ class ProcRecord:
             "profile": self.profile,
             "started_at": self.started_at,
             "wci": self.wci,
+            "build_id": self.build_id,
         }
 
 
@@ -359,6 +363,18 @@ class ProcessManager:
         rec = self.records.get(name)
         return rec.variant if rec is not None and self._alive(rec) else None
 
+    def stale_build(self, name: str, build_id: str | None) -> str | None:
+        """What a managed process that needs a Build ID runs instead of ``build_id`` ("unknown"
+        for a record from before the console kept it); ``None`` when it is current, not
+        managed, or ``build_id`` is not known."""
+        rec = self.records.get(name)
+        spec = SPECS.get(name)
+        if not build_id or rec is None or spec is None or "build_id" not in spec.needs:
+            return None
+        if not self._alive(rec) or rec.build_id == build_id:
+            return None
+        return rec.build_id or "unknown"
+
     def other_profile(self, profile: str) -> list[str]:
         """Managed processes started under another profile and still running."""
         return [
@@ -435,6 +451,7 @@ class ProcessManager:
             variant=variant,
             profile=self.settings.profile,
             started_at=iso(now()) or "",
+            build_id=build_id,
         )
         self._save(rec)
         self._last.pop(name, None)

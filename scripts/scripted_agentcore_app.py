@@ -1,6 +1,6 @@
 """Offline stand-in for ``make agentcore-local``: the same AgentCore app, scripted model.
 
-    uv run python scripts/scripted_agentcore_app.py [--delay 0.3]   (make agentcore-local-scripted)
+    uv run python scripts/scripted_agentcore_app.py [--delay 2]   (make agentcore-local-scripted)
 
 Builds the entrypoint with ``support_agent.agentcore_app.create_app`` exactly like the
 real one (single-start guard, async task, PINNED versioned Worker on ``support-tq``,
@@ -8,6 +8,8 @@ debounce, drain, ``complete_async_task``), but each Worker lifetime's StrandsPlu
 ``"bedrock"`` to a ``demo_testing.ScriptedModel`` that plays the Support team (as
 ``scripts/scripted_worker.py`` does for the unversioned Worker). Lets the verify script
 run Case B through two AgentCore-shaped Worker lifetimes without AWS. Test seam only.
+Each model turn takes 2 s by default, long enough for the console's AgentCore crash scenario
+to kill the app while a turn is in flight.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ PROMPTS = SupportPrompts(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="AgentCore-shaped Support app, scripted model")
-    parser.add_argument("--delay", type=float, default=0.3, help="seconds per model turn")
+    parser.add_argument("--delay", type=float, default=2.0, help="seconds per model turn")
     args = parser.parse_args()
     model = ScriptedModel(support_responder(PROMPTS), delay=args.delay)
     run = functools.partial(agentcore_app.run_worker, plugins=lambda: [scripted_plugin(model)])

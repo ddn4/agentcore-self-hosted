@@ -12,7 +12,8 @@ function pointAt(step, run) {
   return (run?.versioning?.build_id && step.point_versioned) || step.point || "";
 }
 
-function stepButton(step) {
+/** The step's button (also shown in the run view while the notes are off). */
+export function stepButton(step) {
   const a = step.action;
   if (!a || a === "start-run") return "";
   const busy = store.state.ui.busy || {};

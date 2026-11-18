@@ -231,7 +231,7 @@ for a versioned run). The home page's buttons are the first two scenarios on the
 
 The catalog lists scenarios in **story order**, grouped so the stack changes shape as rarely as
 possible: Case A → Case B → Worker crash → Finance outage (all plain Support) → AgentCore: you
-invoke → AgentCore: WCI invokes → Load → Nexus hop, no AI → Clean up. Each scenario's `next`
+invoke → AgentCore: WCI invokes → AgentCore crash → Load → Nexus hop, no AI → Clean up. Each scenario's `next`
 names the one after it (an unknown id is a startup error); on a profile the next one does not
 run on, the link skips ahead to the first that does.
 
@@ -242,7 +242,7 @@ setup for a scenario is a stack recipe (2.3), chosen from its queue and steps:
 |---|---|---|
 | queue `dev` (Worker crash, Finance outage) | Local, plain Support | Bring up kind |
 | queue `versioned` with an `invoke-local` step (you invoke) | Local, serverless (invoke-local) | Bring up kind |
-| queue `versioned` without one (WCI invokes, Load) | Local, serverless (WCI emulator) | Bring up kind |
+| queue `versioned` without one (WCI invokes, AgentCore crash, Load) | Local, serverless (WCI emulator) | Bring up kind |
 | queue `auto` (Case A, Case B) and the smoke caller | the recipe of the stack's current shape; Local, plain Support when it is unknown | Bring up kind |
 | Clean up (starts nothing) | none | none |
 
@@ -256,7 +256,9 @@ and the checklist does not repeat the button. When a recipe is unavailable its r
 under the start bar, not only in a tooltip. A worker the console must own (Worker crash,
 Finance outage) that is already polling from a terminal is not marked `by_setup`: the recipe
 would skip it as already running. Its line has no fix button and says to stop it in its
-terminal. The next link carries a `setup_recipe` only when the next
+terminal. The same goes for the AgentCore app in AgentCore crash (`agentcore-managed`): one
+answering on :8080 from a terminal cannot be killed by the console, and a second cannot bind
+the port. The next link carries a `setup_recipe` only when the next
 scenario's recipe differs from the one that produces the stack's current shape; its button
 then reads "Set up and go to <short>", opens that scenario's card and starts the recipe.
 
@@ -268,10 +270,11 @@ tokens) or `tokens` (Bedrock).
 |---|---|---|---|---|---|
 | `case-a` | Case A: $40 headphones, auto-approved | all | plain (support-dev-tq) or serverless (support-tq) | start → sub-agents answer → agent card discovered → Nexus send_message → Finance completed `approved_by auto` → reply | free (scripted) / tokens (live) |
 | `case-b` | Case B: $450 laptop, a human approves | all | plain or serverless | start → input-required → (optional) stop Support worker → approve/reject → restart worker → reply | as above |
-| `crash` | Worker crash: kill Support mid-thought | all | plain | start Case A → wait for an `invoke_model` in flight → **Kill Support worker** (SIGKILL to its process group) → start it again → same run finishes; the rail shows two lifetimes, one ending abruptly | free / tokens |
+| `crash` | Worker crash: kill Support mid-thought | all | plain | start Case A → **Kill Support worker** (armed: any time during the run; the console waits for the next sub-agent `invoke_model` in flight, then SIGKILLs the process group) → start it again → same run finishes; the rail shows two lifetimes, one ending abruptly | free / tokens |
 | `failure` | Finance outage: Finance disappears mid-call | local (stop the Finance worker) | plain | start Case A → agent card done → **Stop Finance** → seam shows `send_message` attempt 2, 3… with lastAttemptFailure → **Start Finance** → completes | free |
 | `serverless-b` | AgentCore, you invoke: Case B with a worker built to die | all | serverless invoke-local | AgentCore app up, Invoke and register version `--poller` (the recipe) → start on support-tq → **Invoke** (lifetime 1 picks the run up; the recipe's lifetime has usually drained by then) → input-required → drained (`/ping` Healthy) → approve → **Invoke** (lifetime 2) → reply → report | free / tokens |
 | `wci-b` | AgentCore, WCI invokes: Temporal starts the worker | local | serverless WCI emulator | dev server `WCI=1` (restart only when `/ping` is Healthy) → emulator → register version `--local-wci` → start → input-required → drained → approve → WCI InvokeWorker → lifetime 2 → reply → report | free / tokens |
+| `wci-crash` | AgentCore crash: kill the app mid-thought, the WCI invokes it again | local | serverless WCI emulator | the `local-wci` stack with the app owned by the console → start Case A on support-tq → WCI invokes lifetime 1 → **Kill AgentCore app** (armed, as in `crash`) → **Start it again**, without invoking it (`/ping` Healthy, the rail stays dark; the step is done at `compute.lifetimes>=2`, not when the process runs, which it also did before the kill) → after the turn's 10 s heartbeat timeout the WCI invokes it: lifetime 2 → same run finishes; only the killed turn has attempt 2. In both crash scenarios Kill and the restart are optional, done only at `compute.killed`: a run nobody killed shows them skipped | free / tokens |
 | `load` | Load: N conversations at once | all | serverless (support-tq) | `load.sh N LOAD_KIND=ping|case-a` as a job; the runs list groups the batch; the report shows completed/failed and InvokeWorker count | free (ping or scripted) / tokens |
 | `smoke` | Nexus hop with no AI | local | smoke worker | `A2ASmokeWorkflow` on nexus-smoke-tq, then a standalone `get_agent_card` | free |
 | `cleanup` | Clean up: runs still waiting for a human | all | — | lists runs still in `input-required` with Reject and Terminate | free |
@@ -969,7 +972,8 @@ The list's `task_state` is inferred from each running A2A task's history (no que
 
 `run.started`, `run.closed`, `run.status==<STATUS>`, `task.state==<s>`,
 `task.state in [<s>, ...]`, `compute.lifetimes>=<n>`, `compute.drain==drained`,
-`compute.running==true|false`, `nexus.attempt>=<n>`, `nexus.completed`, `card.discovered`,
+`compute.running==true|false`, `compute.killed` (a lifetime of this run ended in a console
+SIGKILL), `nexus.attempt>=<n>`, `nexus.completed`, `card.discovered`,
 `process.<name>==running|stopped`, `wci.invokes>=<n>`. Unknown predicates are a startup error
 (a unit test checks every catalog step parses). A step's status is `done` if its predicate holds,
 `current` for the first step that is not done, and `todo` after it. `blocked` means the
@@ -1053,7 +1057,11 @@ Steps are rendered for the current profile and each variant (`{v}` -scripted suf
 (`wci` applies to `dev-server` only) → `200` Process.
 
 `POST /api/processes/{name}/stop` with body `{"signal": "TERM"}` (`"KILL"` is the crash demo) →
-`200` Process.
+`200` Process. The crash demos' Kill sends `{"signal": "KILL", "wf": "<run>"}` (armed): the
+console must own the process, and the request waits (up to 120 s) until a model turn of that
+run is in flight, a sub-agent's while one can still come (any agent's once `send_message` is
+scheduled), then kills; the Process carries `killed_during` (the agent). `422
+precondition_failed` when the run closes first.
 
 `GET /api/processes/{name}/log?tail=200` → `{"name": "...", "lines": ["..."]}` (`text/plain`
 with `?raw=1`).

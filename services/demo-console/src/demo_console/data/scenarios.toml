@@ -228,11 +228,12 @@ notes = "Every model call and tool call is an Activity. I kill the process mid-t
   id = "kill"
   title = "Kill the Support worker mid-thought"
   short = "Kill worker"
-  point = "The rail: the lifetime ends abruptly with a red cut."
+  point = "Click Kill any time while the run is going: the console waits for the next sub-agent model turn and kills the worker during it. The rail: the lifetime ends abruptly with a red cut."
   kind = "action"
   action = "process.stop"
   params = { name = "worker-support", signal = "KILL" }
-  done_when = "process.worker-support==stopped"
+  optional = true
+  done_when = "compute.killed"
   talk = "kill -9 while the Supervisor is thinking. No graceful shutdown."
 
   [[scenario.step]]
@@ -243,6 +244,7 @@ notes = "Every model call and tool call is an Activity. I kill the process mid-t
   kind = "action"
   action = "process.start"
   params = { name = "worker-support" }
+  optional = true
   done_when = "compute.lifetimes>=2"
   talk = "A new process with a new pid. It replays the history and carries on."
 
@@ -459,7 +461,7 @@ order_id = "2077"
 amount_usd = 450.0
 id_prefix = "support-2077-wci"
 queue = "versioned"
-next = "load"
+next = "wci-crash"
 start_label = "Start Case B"
 cost = { local = "free" }
 cost_note = "scripted model"
@@ -544,6 +546,82 @@ notes = "Finance is waiting for a human, and Support's compute is gone. Nothing 
   done_when = "run.closed"
   talk = "Two lifetimes, one Build ID, reply seconds after the approval."
   make = "make wci-history BUILD={build}"
+
+[[scenario]]
+id = "wci-crash"
+title = "AgentCore crash: kill the app mid-thought, the WCI invokes it again"
+short = "AgentCore crash"
+sub = "Kill the app mid-turn; Temporal invokes it again"
+run_label = "Case A, AgentCore crash"
+summary = "SIGKILL the AgentCore app while a model turn runs; restart it without invoking it, and the server's WCI invokes it to finish the turn."
+story = { tag = "v0.7-serverless-shape", doc = "docs/story/v0.7-serverless-shape.md" }
+profiles = ["local"]
+case = "A"
+order_id = "1042"
+amount_usd = 40.0
+id_prefix = "support-1042-wci-crash"
+queue = "versioned"
+next = "load"
+start_label = "Start Case A"
+cost = { local = "free" }
+cost_note = "scripted model (2 s per turn); Bedrock tokens when the model is live"
+preconditions = ["temporal", "wci", "emulator", "agentcore-managed", "build-id", "version-wci", "finance", "payments", "endpoint"]
+notes = "Same crash, serverless shape. I kill the AgentCore app mid-thought and start it again, but I don't invoke it. Temporal sees the turn is unfinished and invokes the app itself, and the run carries on."
+
+  [[scenario.step]]
+  id = "start"
+  title = "Start Case A on support-tq"
+  short = "Start"
+  point = "The ticket at the top, and the first rows in Support's lane."
+  kind = "action"
+  action = "start-run"
+  done_when = "run.started"
+  talk = "Case A on the versioned queue. Nothing polls it until the server invokes the app."
+  make = "make case-a-serverless WF={wf}"
+
+  [[scenario.step]]
+  id = "invoke1"
+  title = "The WCI starts lifetime 1"
+  short = "Lifetime 1"
+  point = "The compute rail lighting up: lifetime 1, started by the server's WCI."
+  kind = "watch"
+  done_when = "compute.lifetimes>=1"
+  talk = "The server's Worker Controller invoked AgentCore. Watch the model turns in Support's lane."
+
+  [[scenario.step]]
+  id = "kill"
+  title = "Kill the AgentCore app mid-thought"
+  short = "Kill app"
+  point = "Click Kill any time while the run is going: the console waits for the next sub-agent model turn and kills the app during it. The rail: lifetime 1 ends abruptly with a red cut."
+  kind = "action"
+  action = "process.stop"
+  params = { name = "agentcore-local", signal = "KILL" }
+  optional = true
+  done_when = "compute.killed"
+  talk = "kill -9 while an agent is thinking. On AgentCore this is the microVM going away."
+
+  [[scenario.step]]
+  id = "restart"
+  title = "Start the app again; the WCI invokes it"
+  short = "Restart app"
+  point = "The app is back on :8080 but the rail stays dark: nobody invoked it. About 10 s after the kill (the model turn's heartbeat timeout) the rail lights up as lifetime 2, with its InvokeWorker row on the rail's edge."
+  kind = "action"
+  action = "process.start"
+  params = { name = "agentcore-local" }
+  optional = true
+  done_when = "compute.lifetimes>=2"
+  talk = "The process is back, empty, and I don't invoke it. The unfinished turn times out, the server puts it back on the queue, and its WCI invokes AgentCore."
+  make = "make wci-history BUILD={build}"
+
+  [[scenario.step]]
+  id = "reply"
+  title = "The same run finishes"
+  short = "Reply"
+  point = "The reply quoting the refund ID. Same run ID from start to finish."
+  point_versioned = "The reply quoting the refund ID, and the pinned Build ID in the header."
+  kind = "watch"
+  done_when = "run.status==COMPLETED"
+  talk = "Two lifetimes, one conversation. Only the turn that was cut off ran again."
 
 [[scenario]]
 id = "load"

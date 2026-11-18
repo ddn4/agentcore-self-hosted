@@ -470,9 +470,20 @@ async def start_process(request: Request) -> Response:
 async def stop_process(request: Request) -> Response:
     c = console(request)
     body = await body_of(request)
-    proc = await c.procs.stop(request.path_params["name"], sig=body.get("signal") or "TERM")
+    name = request.path_params["name"]
+    sig = body.get("signal") or "TERM"
+    during = None
+    if body.get("wf") and sig == "KILL":
+        # Crash demo, armed: cut off a model turn of this run, not the gap between turns.
+        if c.procs.managed_variant(name) is None:
+            raise ApiError("precondition_failed", f"The console is not running {name}.")
+        try:
+            during = await c.runs.wait_model_turn(str(body["wf"]))
+        except ValueError as err:
+            raise ApiError("precondition_failed", str(err)) from None
+    proc = await c.procs.stop(name, sig=sig)
     c.hub.stack_cache.invalidate()
-    return JSONResponse(proc)
+    return JSONResponse({**proc, "killed_during": during} if during else proc)
 
 
 @handled

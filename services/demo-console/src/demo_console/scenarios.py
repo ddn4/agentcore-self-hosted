@@ -37,6 +37,8 @@ class StepContext:
     run_status: str | None = None
     task_state: str | None = None
     lifetimes: int = 0
+    #: A lifetime of this run ended in a console SIGKILL (crash demos).
+    killed: bool = False
     drain: str | None = None
     running: bool | None = None
     nexus_attempt: int = 0
@@ -64,6 +66,7 @@ def parse_predicate(text: str) -> Predicate:
         "run.closed": lambda c: c.run_closed,
         "nexus.completed": lambda c: c.nexus_completed,
         "card.discovered": lambda c: c.card_discovered,
+        "compute.killed": lambda c: c.killed,
     }
     if text in flags:
         return flags[text]
@@ -339,6 +342,9 @@ class StackFacts:
     current_build: str | None = None
     compute: str | None = None  # none | local-wci | unknown
     managed: dict[str, bool] = field(default_factory=dict)
+    #: The Build ID the console's AgentCore app runs when it is not ``build_id`` (ProcessManager
+    #: .stale_build): the WCI's invocations ask for ``build_id`` and the app refuses them.
+    agentcore_stale: str | None = None
     shape: str = "unknown"
     #: kind only: the first missing layer (kind.gap): ``{layer, cause, fix}`` or ``None``.
     kind_gap: dict[str, Any] | None = None
@@ -370,6 +376,9 @@ def _outside(pid: str, label: str, who: str) -> dict[str, Any]:
     }
 
 
+#: The preconditions met by the console's AgentCore app, which must run Support's Build ID.
+_APP = frozenset(("agentcore", "agentcore-managed", "serverless-compute"))
+
 #: The reads each precondition depends on: when one failed the line says so, with no fix.
 _READS: dict[str, tuple[str, ...]] = {
     "endpoint": ("endpoint",),
@@ -392,6 +401,24 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
     something that may exist), and a note with the error.
     """
     p = _precondition(pid, f)
+    if p is not None and p["ok"] and pid in _APP and f.agentcore_stale:
+        if f.profile != "local":
+            recipe = "kind-laptop"
+        elif f.dev_server_wci in ("1", "local"):
+            recipe = "local-wci"
+        else:
+            recipe = "local-invoke"
+        p.update(
+            ok=False,
+            note=(
+                f"It runs Build ID {f.agentcore_stale}, but Support's code is now {f.build_id}"
+                if f.agentcore_stale != "unknown"
+                else f"It was started before the console recorded Build IDs; Support's code is "
+                f"now {f.build_id}"
+            )
+            + ": an app on another build refuses every invocation. Set up restarts it.",
+            fix=_action_fix("start-recipe", "Restart AgentCore app", recipe=recipe),
+        )
     error = next((f.read_errors[n] for n in _READS.get(pid, ()) if n in f.read_errors), None)
     if p is not None and not p["ok"] and error:
         p.pop("fix", None)
@@ -473,6 +500,24 @@ def _precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
             "id": pid,
             "label": "AgentCore app on :8080",
             "ok": f.agentcore_up,
+            "fix": _proc_fix("agentcore-local", "Start AgentCore app"),
+        }
+    if pid == "agentcore-managed":
+        label = "The console runs the AgentCore app (so it can kill it)"
+        if not f.managed.get("agentcore-local", False) and f.agentcore_up:
+            # Started in a terminal: the console cannot kill it, and a second app cannot bind
+            # :8080, so there is no fix button.
+            return {
+                "id": pid,
+                "label": label,
+                "ok": False,
+                "note": "An AgentCore app started outside the console answers on :8080. Stop "
+                "it in its terminal; the console then starts its own.",
+            }
+        return {
+            "id": pid,
+            "label": label,
+            "ok": f.managed.get("agentcore-local", False),
             "fix": _proc_fix("agentcore-local", "Start AgentCore app"),
         }
     if pid == "emulator":
@@ -562,7 +607,7 @@ _SERVERLESS = frozenset(("agentcore", "serverless-compute", "version", "version-
 RECIPE_FIXES: dict[str, frozenset[str]] = {
     "local-plain": _BASE | {"support-plain", "support-plain-managed"},
     "local-invoke": _BASE | _SERVERLESS,
-    "local-wci": _BASE | _SERVERLESS | {"wci", "emulator", "version-wci"},
+    "local-wci": _BASE | _SERVERLESS | {"wci", "emulator", "version-wci", "agentcore-managed"},
     # kind-up deploys Finance on the cluster; payments and plain Support stay on the laptop.
     KIND_RECIPE: (_BASE - {"finance-managed", "payments"}) | _SERVERLESS,
 }
