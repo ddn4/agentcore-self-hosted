@@ -36,7 +36,7 @@ from demo_console.lifetimes import (
     lifetimes_from_history,
     parse_app_log,
 )
-from demo_console.payloads import decode, first, iso, now, parse_iso, seconds, ts
+from demo_console.payloads import decode, first, iso, now, parse_iso, seconds, summary, ts
 from demo_console.procs import SPECS, ProcessManager, tail_file
 from demo_console.rows import (
     FinanceFacts,
@@ -256,6 +256,42 @@ def reply_text(history: WorkflowHistory) -> str | None:
     return None
 
 
+SUPERVISOR = "Support Supervisor"
+_STARTED = enums.PendingActivityState.PENDING_ACTIVITY_STATE_STARTED
+
+
+def model_turn_to_kill(
+    desc: DescribeWorkflowExecutionResponse, history: WorkflowHistory
+) -> str | None:
+    """The agent whose model turn a crash demo kills now, ``None`` to keep waiting.
+
+    A sub-agent's turn (Order Lookup, Return Policy) while one can still come; once Support has
+    asked Finance (``send_message`` is scheduled) only the Supervisor's turns are left, so any
+    turn. The agent is the ``invoke_model`` Activity's summary, as in the lanes.
+    """
+    running = {
+        p.activity_id
+        for p in desc.pending_activities
+        if p.activity_type.name == "invoke_model" and p.state == _STARTED
+    }
+    if not running:
+        return None
+    agents: list[str] = []
+    asked_finance = False
+    for e in history.events:
+        if e.event_type == EventType.EVENT_TYPE_NEXUS_OPERATION_SCHEDULED:
+            # Not get_agent_card: discovery is scheduled before the first turn.
+            op = e.nexus_operation_scheduled_event_attributes.operation
+            asked_finance = asked_finance or op == "send_message"
+        elif e.event_type == EventType.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED:
+            if e.activity_task_scheduled_event_attributes.activity_id in running:
+                agents.append(summary(e.user_metadata.summary) or SUPERVISOR)
+    sub = [a for a in agents if a != SUPERVISOR]
+    if sub:
+        return sub[0]
+    return agents[0] if agents and asked_finance else None
+
+
 def apply_kills(lives: list[Lifetime], kills: list[dict[str, Any]]) -> None:
     """A console SIGKILL ends the lifetime that was working before it (crash demo)."""
     for kill in kills:
@@ -342,6 +378,28 @@ class RunService:
 
     async def view(self, workflow_id: str, *, fresh: bool = False) -> dict[str, Any]:
         return (await self._get(support_id(workflow_id), fresh))[0]
+
+    async def wait_model_turn(
+        self, workflow_id: str, *, within: float = 120.0, every: float = 0.25
+    ) -> str:
+        """Wait until ``model_turn_to_kill`` names an agent for this run (the crash demo's
+        armed Kill); ``ValueError`` when the run closes or ``within`` passes first."""
+        wf = support_id(workflow_id)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + within
+        while True:
+            desc = await self.gateway.describe(AGENTS_NS, wf)
+            status = desc.workflow_execution_info.status
+            if status != enums.WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_RUNNING:
+                raise ValueError(f"{wf} finished before a model turn could be cut off.")
+            if desc.pending_activities:
+                history = await self.gateway.fetch_history(AGENTS_NS, wf)
+                agent = model_turn_to_kill(desc, history)
+                if agent:
+                    return agent
+            if loop.time() >= deadline:
+                raise ValueError(f"No model turn ran on {wf} within {within:g}s.")
+            await asyncio.sleep(every)
 
     async def rows(self, workflow_id: str, after: int | None = None) -> dict[str, Any]:
         wf = support_id(workflow_id)
@@ -689,6 +747,7 @@ class RunService:
             run_status=status,
             task_state=task["state"],
             lifetimes=len(lives),
+            killed=any(life.end_reason == "killed" for life in lives),
             drain=compute["drain"]["state"],
             running=compute["running"],
             nexus_attempt=max(

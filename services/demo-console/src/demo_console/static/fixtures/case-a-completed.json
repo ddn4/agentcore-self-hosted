@@ -614,15 +614,16 @@
       "n": 2,
       "title": "Kill the Support worker mid-thought",
       "kind": "action",
-      "done_when": "process.worker-support==stopped",
+      "done_when": "compute.killed",
       "talk": "kill -9 while the Supervisor is thinking. No graceful shutdown.",
       "short": "Kill worker",
-      "point": "The rail: the lifetime ends abruptly with a red cut.",
+      "point": "Click Kill any time while the run is going: the console waits for the next sub-agent model turn and kills the worker during it. The rail: the lifetime ends abruptly with a red cut.",
       "action": "process.stop",
       "params": {
        "name": "worker-support",
        "signal": "KILL"
-      }
+      },
+      "optional": true
      },
      {
       "id": "restart",
@@ -636,7 +637,8 @@
       "action": "process.start",
       "params": {
        "name": "worker-support"
-      }
+      },
+      "optional": true
      },
      {
       "id": "reply",
@@ -1440,15 +1442,16 @@
       "n": 3,
       "title": "Kill the AgentCore app mid-thought",
       "kind": "action",
-      "done_when": "process.agentcore-local==stopped",
+      "done_when": "compute.killed",
       "talk": "kill -9 while an agent is thinking. On AgentCore this is the microVM going away.",
       "short": "Kill app",
-      "point": "The rail: lifetime 1 ends abruptly with a red cut, while a model turn is in flight.",
+      "point": "Click Kill any time while the run is going: the console waits for the next sub-agent model turn and kills the app during it. The rail: lifetime 1 ends abruptly with a red cut.",
       "action": "process.stop",
       "params": {
        "name": "agentcore-local",
        "signal": "KILL"
-      }
+      },
+      "optional": true
      },
      {
       "id": "restart",
@@ -1463,6 +1466,7 @@
       "params": {
        "name": "agentcore-local"
       },
+      "optional": true,
       "make": "make wci-history BUILD=4ee7f87"
      },
      {

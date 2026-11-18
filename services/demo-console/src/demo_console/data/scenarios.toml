@@ -228,11 +228,12 @@ notes = "Every model call and tool call is an Activity. I kill the process mid-t
   id = "kill"
   title = "Kill the Support worker mid-thought"
   short = "Kill worker"
-  point = "The rail: the lifetime ends abruptly with a red cut."
+  point = "Click Kill any time while the run is going: the console waits for the next sub-agent model turn and kills the worker during it. The rail: the lifetime ends abruptly with a red cut."
   kind = "action"
   action = "process.stop"
   params = { name = "worker-support", signal = "KILL" }
-  done_when = "process.worker-support==stopped"
+  optional = true
+  done_when = "compute.killed"
   talk = "kill -9 while the Supervisor is thinking. No graceful shutdown."
 
   [[scenario.step]]
@@ -243,6 +244,7 @@ notes = "Every model call and tool call is an Activity. I kill the process mid-t
   kind = "action"
   action = "process.start"
   params = { name = "worker-support" }
+  optional = true
   done_when = "compute.lifetimes>=2"
   talk = "A new process with a new pid. It replays the history and carries on."
 
@@ -590,11 +592,12 @@ notes = "Same crash, serverless shape. I kill the AgentCore app mid-thought and 
   id = "kill"
   title = "Kill the AgentCore app mid-thought"
   short = "Kill app"
-  point = "The rail: lifetime 1 ends abruptly with a red cut, while a model turn is in flight."
+  point = "Click Kill any time while the run is going: the console waits for the next sub-agent model turn and kills the app during it. The rail: lifetime 1 ends abruptly with a red cut."
   kind = "action"
   action = "process.stop"
   params = { name = "agentcore-local", signal = "KILL" }
-  done_when = "process.agentcore-local==stopped"
+  optional = true
+  done_when = "compute.killed"
   talk = "kill -9 while an agent is thinking. On AgentCore this is the microVM going away."
 
   [[scenario.step]]
@@ -605,6 +608,7 @@ notes = "Same crash, serverless shape. I kill the AgentCore app mid-thought and 
   kind = "action"
   action = "process.start"
   params = { name = "agentcore-local" }
+  optional = true
   done_when = "compute.lifetimes>=2"
   talk = "The process is back, empty, and I don't invoke it. The unfinished turn times out, the server puts it back on the queue, and its WCI invokes AgentCore."
   make = "make wci-history BUILD={build}"

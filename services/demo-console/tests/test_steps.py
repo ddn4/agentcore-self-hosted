@@ -390,27 +390,25 @@ def test_unknown_next_is_a_startup_error() -> None:
         load_catalog(text.replace('next = "case-b"', 'next = "case-z"'))
 
 
-def test_agentcore_crash_steps_wait_for_the_kill() -> None:
-    # The app runs before the kill and again after the restart, so "running" cannot mark the
-    # restart done: it would make Kill look done before anyone clicked it.
-    steps = load_catalog()["wci-crash"].steps
-    seen: set[str] = set()
+@pytest.mark.parametrize("sid", ["crash", "wci-crash"])
+def test_crash_steps_need_a_real_kill(sid: str) -> None:
+    # The worker runs before the kill and again after the restart, and a finished run passes
+    # every required step: only a console SIGKILL of this run's worker marks Kill done.
+    steps = load_catalog()[sid].steps
 
-    def status(lifetimes: int, app: str) -> dict[str, str]:
-        ctx = StepContext(run_started=True, lifetimes=lifetimes, processes={"agentcore-local": app})
-        out = step_statuses(steps, ctx, sticky=seen)
+    def status(seen: set[str], **ctx: Any) -> dict[str, str]:
+        out = step_statuses(steps, StepContext(run_started=True, **ctx), sticky=seen)
         seen.update(s["id"] for s in out if s["status"] == "done")
         return {s["id"]: s["status"] for s in out}
 
-    assert status(1, "running")["kill"] == "current"
-    assert status(1, "stopped") == {
-        "start": "done",
-        "invoke1": "done",
-        "kill": "done",
-        "restart": "current",
-        "reply": "todo",
-    }
-    # Restarted but not invoked yet: still waiting on the WCI.
-    assert status(1, "running")["restart"] == "current"
-    after = status(2, "running")
+    seen: set[str] = set()
+    assert status(seen, lifetimes=1, processes={"agentcore-local": "running"})["kill"] == "current"
+    after = status(seen, lifetimes=1, killed=True)
+    assert after["kill"] == "done" and after["restart"] == "current"
+    # Restarted, not picked up yet (the WCI waits out the turn's heartbeat timeout).
+    assert status(seen, lifetimes=1, killed=True)["restart"] == "current"
+    after = status(seen, lifetimes=2, killed=True)
     assert after["restart"] == "done" and after["reply"] == "current"
+    # Nobody clicked Kill: the run finished, and the crash steps say so.
+    done = status(set(), lifetimes=1, run_closed=True, run_status="COMPLETED")
+    assert done["kill"] == done["restart"] == "skipped" and done["reply"] == "done"

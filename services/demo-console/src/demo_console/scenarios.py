@@ -37,6 +37,8 @@ class StepContext:
     run_status: str | None = None
     task_state: str | None = None
     lifetimes: int = 0
+    #: A lifetime of this run ended in a console SIGKILL (crash demos).
+    killed: bool = False
     drain: str | None = None
     running: bool | None = None
     nexus_attempt: int = 0
@@ -64,6 +66,7 @@ def parse_predicate(text: str) -> Predicate:
         "run.closed": lambda c: c.run_closed,
         "nexus.completed": lambda c: c.nexus_completed,
         "card.discovered": lambda c: c.card_discovered,
+        "compute.killed": lambda c: c.killed,
     }
     if text in flags:
         return flags[text]

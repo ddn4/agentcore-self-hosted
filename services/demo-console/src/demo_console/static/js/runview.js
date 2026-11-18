@@ -5,7 +5,8 @@ import { updateApproval } from "./approval.js";
 import { TERMINAL, dur, h, icon, sinceText } from "./format.js";
 import { lanesKey, renderLanes } from "./lanes.js";
 import { nextButton } from "./launcher.js";
-import { mergedSteps, renderSteps } from "./steps.js";
+import { stepButton } from "./notes.js";
+import { currentStep, mergedSteps, renderSteps } from "./steps.js";
 
 let mounted = null;   // workflow id the scaffold belongs to
 let lastKey = null;
@@ -72,6 +73,7 @@ function scaffold(el, wf) {
       <details class="rundetails" id="rv-details"><summary>Run details</summary><div class="meta" id="rv-meta"></div></details>
     </div>
     <ol class="steps" id="rv-steps" aria-label="Guided steps"></ol>
+    <div class="do rv-do" id="rv-do"></div>
     <section class="lanes" id="lanes" aria-label="Both workflows over time">
       <div class="lhead" aria-hidden="true">
         <div></div><div class="railh">compute</div>
@@ -259,6 +261,11 @@ export function renderRunView(state, el) {
   // The stepper is presenter navigation: it lives in the notes; here only when notes are off.
   renderSteps(stepsEl, steps);
   if (closed && steps.every((x) => x.status === "done" || x.status === "skipped")) stepsEl.hidden = true;
+  // The current step's button (Kill, Restart, …): with the notes off it has no other home.
+  const cur = closed ? null : currentStep(steps);
+  const doHtml = cur ? String(stepButton(cur)) : "";
+  const doEl = el.querySelector("#rv-do");
+  if (doEl.innerHTML !== doHtml) doEl.innerHTML = doHtml;
 
   updateApproval(state);
   const key = lanesKey(state);

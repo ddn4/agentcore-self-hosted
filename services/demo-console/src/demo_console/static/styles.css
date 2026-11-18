@@ -314,7 +314,9 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 /* stepper */
 .steps { list-style: none; margin: .4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: .35rem; }
 /* Presenter navigation: in the notes; in the run view only while the notes are off. */
-:root:not([data-notes="off"]) .run .steps { display: none; }
+:root:not([data-notes="off"]) .run .steps, :root:not([data-notes="off"]) .run .rv-do { display: none; }
+.run .rv-do { display: flex; flex-wrap: wrap; gap: .5rem; margin: .4rem 0 .6rem; }
+.run .rv-do:empty { display: none; }
 .notes .steps { margin: 0 0 1.1rem; }
 .notes .steps li:not(.current):not(.blocked):not(.alldone) .lab { display: none; }
 .notes .steps li:not(.current):not(.blocked) { padding: .2rem; }
