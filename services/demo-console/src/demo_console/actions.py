@@ -725,16 +725,28 @@ class ActionService:
         return code, output
 
     async def _ensure(
-        self, log: JobLog, name: str, variant: str | None = None, wci: int = 0
+        self,
+        log: JobLog,
+        name: str,
+        variant: str | None = None,
+        wci: int = 0,
+        build: str | None = None,
     ) -> None:
         if self.procs.running(name):
             have = self.procs.managed_variant(name)
-            if variant is None or have in (None, variant):
+            # Support's code changed since it started: the version this recipe registers is
+            # ``build``, and a worker on another Build ID refuses the WCI's invocations.
+            stale = self.procs.stale_build(name, build)
+            if stale is None and (variant is None or have in (None, variant)):
                 note = "" if have or variant is None else " (outside the console; variant unknown)"
                 log.line(f"= {name} already running{note}")
                 return
-            # The recipe asked for the other model (scripted <-> live): restart it.
-            log.line(f"~ restart {name}: {have} -> {variant}")
+            if stale is not None:
+                variant = variant or have
+                log.line(f"~ restart {name}: Build ID {stale} -> {build}")
+            else:
+                # The recipe asked for the other model (scripted <-> live): restart it.
+                log.line(f"~ restart {name}: {have} -> {variant}")
             try:
                 await self.procs.stop(name)
             except ProcessError as err:
@@ -877,7 +889,7 @@ class ActionService:
             with log.step("agentcore-emulator"):
                 await self._ensure(log, "agentcore-emulator")
         with log.step("agentcore-local"):
-            await self._ensure(log, "agentcore-local", variant)
+            await self._ensure(log, "agentcore-local", variant, build=build)
         with log.step("ping"):
             await self._wait_ping(log, None)
         if recipe == "local-invoke":
@@ -949,7 +961,7 @@ class ActionService:
         with log.step("nexus-endpoint"):
             await self._make(log, "nexus-endpoint")
         with log.step("agentcore-local"):
-            await self._ensure(log, "agentcore-local", variant)
+            await self._ensure(log, "agentcore-local", variant, build=build)
         with log.step("ping"):
             await self._wait_ping(log, None)
         with log.step("invoke-local"):

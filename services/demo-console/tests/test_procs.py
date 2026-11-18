@@ -182,3 +182,24 @@ async def test_other_profile_blocks_a_switch(tmp_path: Path, runner: FakeRunner)
     await procs.start("worker-support")
     assert procs.other_profile("kind") == ["worker-support"]
     assert procs.other_profile("local") == []
+
+
+async def test_stale_build_names_what_the_app_runs(tmp_path: Path, runner: FakeRunner) -> None:
+    # Support's code changed after the app started: it would refuse the WCI's invocations.
+    procs = manager(tmp_path, runner)
+    await procs.start("agentcore-local")
+    record = json.loads((tmp_path / ".temporal/console/procs/agentcore-local.json").read_text())
+    assert record["build_id"] == "4ee7f87"
+    assert procs.stale_build("agentcore-local", "4ee7f87") is None
+    assert procs.stale_build("agentcore-local", "6d9111a") == "4ee7f87"
+    assert procs.stale_build("agentcore-local", None) is None  # unknown: nothing to compare
+    # Needs no Build ID, or not started by the console: never stale.
+    await procs.start("worker-support")
+    assert procs.stale_build("worker-support", "6d9111a") is None
+    assert procs.stale_build("worker-support-versioned", "6d9111a") is None
+    # A record written before the console kept Build IDs is adopted as "unknown".
+    del record["build_id"]
+    (tmp_path / ".temporal/console/procs/agentcore-local.json").write_text(json.dumps(record))
+    again = manager(tmp_path, runner)
+    assert "agentcore-local" in again.adopt()
+    assert again.stale_build("agentcore-local", "6d9111a") == "unknown"

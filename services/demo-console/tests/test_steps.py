@@ -412,3 +412,23 @@ def test_crash_steps_need_a_real_kill(sid: str) -> None:
     # Nobody clicked Kill: the run finished, and the crash steps say so.
     done = status(set(), lifetimes=1, run_closed=True, run_status="COMPLETED")
     assert done["kill"] == done["restart"] == "skipped" and done["reply"] == "done"
+
+
+def test_a_stale_agentcore_app_is_left_to_setup() -> None:
+    # The console's app runs an older Build ID than the one setup registers: not ok, and
+    # Set up restarts it (the recipe of the stack's WCI mode).
+    c = load_catalog()
+    managed = {"agentcore-local": True}
+    base = dict(profile="local", agentcore_up=True, managed=managed, build_id="6d9111a")
+    for sid, pid, wci, recipe in (
+        ("wci-crash", "agentcore-managed", "1", "local-wci"),
+        ("wci-b", "agentcore", "1", "local-wci"),
+        ("serverless-b", "agentcore", None, "local-invoke"),
+    ):
+        f = StackFacts(**base, dev_server_wci=wci, agentcore_stale="79663e2")  # type: ignore[arg-type]
+        p = next(x for x in scenario_json(c[sid], f, catalog=c)["preconditions"] if x["id"] == pid)
+        assert not p["ok"] and p["by_setup"], (sid, p)
+        assert p["fix"]["params"] == {"recipe": recipe} and "79663e2" in p["note"]
+        f = StackFacts(**base, dev_server_wci=wci)  # type: ignore[arg-type]
+        p = next(x for x in scenario_json(c[sid], f, catalog=c)["preconditions"] if x["id"] == pid)
+        assert p["ok"] and "note" not in p

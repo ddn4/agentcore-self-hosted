@@ -342,6 +342,9 @@ class StackFacts:
     current_build: str | None = None
     compute: str | None = None  # none | local-wci | unknown
     managed: dict[str, bool] = field(default_factory=dict)
+    #: The Build ID the console's AgentCore app runs when it is not ``build_id`` (ProcessManager
+    #: .stale_build): the WCI's invocations ask for ``build_id`` and the app refuses them.
+    agentcore_stale: str | None = None
     shape: str = "unknown"
     #: kind only: the first missing layer (kind.gap): ``{layer, cause, fix}`` or ``None``.
     kind_gap: dict[str, Any] | None = None
@@ -373,6 +376,9 @@ def _outside(pid: str, label: str, who: str) -> dict[str, Any]:
     }
 
 
+#: The preconditions met by the console's AgentCore app, which must run Support's Build ID.
+_APP = frozenset(("agentcore", "agentcore-managed", "serverless-compute"))
+
 #: The reads each precondition depends on: when one failed the line says so, with no fix.
 _READS: dict[str, tuple[str, ...]] = {
     "endpoint": ("endpoint",),
@@ -395,6 +401,24 @@ def precondition(pid: str, f: StackFacts) -> dict[str, Any] | None:
     something that may exist), and a note with the error.
     """
     p = _precondition(pid, f)
+    if p is not None and p["ok"] and pid in _APP and f.agentcore_stale:
+        if f.profile != "local":
+            recipe = "kind-laptop"
+        elif f.dev_server_wci in ("1", "local"):
+            recipe = "local-wci"
+        else:
+            recipe = "local-invoke"
+        p.update(
+            ok=False,
+            note=(
+                f"It runs Build ID {f.agentcore_stale}, but Support's code is now {f.build_id}"
+                if f.agentcore_stale != "unknown"
+                else f"It was started before the console recorded Build IDs; Support's code is "
+                f"now {f.build_id}"
+            )
+            + ": an app on another build refuses every invocation. Set up restarts it.",
+            fix=_action_fix("start-recipe", "Restart AgentCore app", recipe=recipe),
+        )
     error = next((f.read_errors[n] for n in _READS.get(pid, ()) if n in f.read_errors), None)
     if p is not None and not p["ok"] and error:
         p.pop("fix", None)
